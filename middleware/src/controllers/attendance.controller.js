@@ -5,8 +5,6 @@ import Membership from '../models/membership.model.js';
 import Booking from '../models/booking.model.js';
 import MembershipSwitchRequest from '../models/membershipSwitchRequest.model.js';
 import Gym from '../models/gym.model.js';
-import User from '../models/user.model.js';
-import Section from '../models/section.model.js';
 import { autoCheckoutStaleRecords } from '../services/attendanceCron.service.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
@@ -566,12 +564,14 @@ export const getTodayAttendance = async (req, res, next) => {
     })
       .populate('userId', 'fullName phone email avatar profilePicture customerProfile customerId')
       .populate('membershipId', 'membershipId membershipTier startDate endDate status entryOtp')
+      .populate('bookingId', 'bookingId title category sectionId entryOtp')
       .sort({ checkInTime: -1 })
       .lean();
 
     const formattedLogs = logs.map((log) => {
       const user = log.userId;
       const mem = log.membershipId;
+      const bk = log.bookingId;
 
       const checkInDate = new Date(log.checkInTime);
       const timeStr = checkInDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -588,14 +588,14 @@ export const getTodayAttendance = async (req, res, next) => {
       return {
         key: log._id.toString(),
         attendanceId: log._id.toString(),
-        passId: mem?.membershipId || 'PASS-' + log._id.toString().slice(-6),
-        membershipId: mem?.membershipId || 'N/A',
+        passId: mem?.membershipId || bk?.bookingId || 'PASS-' + log._id.toString().slice(-6),
+        membershipId: mem?.membershipId || bk?.bookingId || 'N/A',
         userId: user?._id?.toString() || 'N/A',
         customerId: user?.customerId || user?._id?.toString().slice(-8) || 'N/A',
         memberName: user?.fullName || 'Gym Member',
         avatar: user?.avatar || user?.profilePicture || null,
         phone: user?.phone || 'N/A',
-        plan: mem?.membershipTier || 'General Pass',
+        plan: mem?.membershipTier || (bk ? `Section: ${bk.title}` : 'General Pass'),
         time: timeStr,
         checkInTime: log.checkInTime,
         checkOutTime: log.checkOutTime,
@@ -707,3 +707,174 @@ export const triggerAttendanceCron = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Get Attendance History for Logged-In User
+ * GET /api/v1/attendance/my-history
+ * Query params: userId, membershipId, bookingId, gymId
+ */
+export const getMyAttendanceHistory = async (req, res, next) => {
+  try {
+    const rawUserId = req.user?.userId || req.user?.id || req.user?._id || req.query?.userId;
+    if (!rawUserId) {
+      return res.status(200).json(
+        ApiResponse.success(
+          {
+            logs: [],
+            summary: { total: 0, thisMonth: 0, completed: 0, activeNow: 0 },
+          },
+          'Attendance history retrieved.'
+        )
+      );
+    }
+
+    const filter = {
+      userId: mongoose.Types.ObjectId.isValid(rawUserId)
+        ? new mongoose.Types.ObjectId(rawUserId)
+        : rawUserId,
+    };
+
+    const { membershipId, bookingId, gymId } = req.query;
+
+    if (membershipId) {
+      if (mongoose.Types.ObjectId.isValid(membershipId)) {
+        filter.membershipId = new mongoose.Types.ObjectId(membershipId);
+      } else {
+        const mem = await Membership.findOne({ membershipId }).select('_id');
+        if (mem) {
+          filter.membershipId = mem._id;
+        } else {
+          return res.status(200).json(
+            ApiResponse.success(
+              {
+                logs: [],
+                summary: { total: 0, thisMonth: 0, completed: 0, activeNow: 0 },
+              },
+              'No records found.'
+            )
+          );
+        }
+      }
+    }
+
+    if (bookingId) {
+      if (mongoose.Types.ObjectId.isValid(bookingId)) {
+        filter.bookingId = new mongoose.Types.ObjectId(bookingId);
+      } else {
+        const bk = await Booking.findOne({ bookingId }).select('_id');
+        if (bk) {
+          filter.bookingId = bk._id;
+        } else {
+          return res.status(200).json(
+            ApiResponse.success(
+              {
+                logs: [],
+                summary: { total: 0, thisMonth: 0, completed: 0, activeNow: 0 },
+              },
+              'No records found.'
+            )
+          );
+        }
+      }
+    }
+
+    if (gymId && mongoose.Types.ObjectId.isValid(gymId)) {
+      filter.gymId = new mongoose.Types.ObjectId(gymId);
+    }
+
+    const rawLogs = await Attendance.find(filter)
+      .populate('gymId', 'name partnerId address location logo image coverPhoto phone')
+      .populate('membershipId', 'membershipId membershipTier startDate endDate status entryOtp')
+      .populate('bookingId', 'bookingId title category bookingType startDate endDate status entryOtp attendedSessionsCount durationDays customDates attendanceHistory')
+      .sort({ checkInTime: -1 })
+      .lean();
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const logs = (rawLogs || []).map((log) => {
+      const checkInDate = new Date(log.checkInTime);
+      const timeStr = checkInDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      let checkOutStr = null;
+      let durationStr = null;
+      let durationMinutes = 0;
+
+      if (log.checkOutTime) {
+        const outDate = new Date(log.checkOutTime);
+        checkOutStr = outDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        durationMinutes = Math.max(1, Math.round((outDate.getTime() - checkInDate.getTime()) / (1000 * 60)));
+        durationStr = durationMinutes >= 60
+          ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
+          : `${durationMinutes} mins`;
+      }
+
+      const mem = log.membershipId;
+      const bk = log.bookingId;
+
+      return {
+        _id: log._id,
+        key: log._id.toString(),
+        checkInTime: log.checkInTime,
+        checkOutTime: log.checkOutTime,
+        timeStr,
+        checkOutStr,
+        durationStr,
+        durationMinutes,
+        status: log.status,
+        method: log.method,
+        area: log.area,
+        verifiedBy: log.verifiedBy,
+        type: mem ? 'MEMBERSHIP' : bk ? 'BOOKING' : 'GENERAL',
+        gym: {
+          id: log.gymId?._id,
+          name: log.gymId?.name || 'GYMEZY Partner Gym',
+          partnerId: log.gymId?.partnerId,
+          address: log.gymId?.address,
+          logo: log.gymId?.logo || log.gymId?.image,
+        },
+        membership: mem
+          ? {
+              id: mem._id,
+              membershipId: mem.membershipId,
+              tier: mem.membershipTier,
+              status: mem.status,
+            }
+          : null,
+        booking: bk
+          ? {
+              id: bk._id,
+              bookingId: bk.bookingId,
+              title: bk.title,
+              category: bk.category,
+              bookingType: bk.bookingType,
+              status: bk.status,
+            }
+          : null,
+      };
+    });
+
+    const total = logs.length;
+    const thisMonth = logs.filter((l) => new Date(l.checkInTime) >= startOfMonth).length;
+    const completed = logs.filter((l) => l.status === 'Completed').length;
+    const activeNow = logs.filter((l) => l.status === 'Checked-In').length;
+
+    return res.status(200).json(
+      ApiResponse.success(
+        {
+          logs,
+          summary: {
+            total,
+            thisMonth,
+            completed,
+            activeNow,
+          },
+        },
+        'Attendance history retrieved successfully.'
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+

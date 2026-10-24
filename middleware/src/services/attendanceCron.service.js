@@ -4,6 +4,8 @@ import Attendance from '../models/attendance.model.js';
 import Membership from '../models/membership.model.js';
 import MembershipSwitchRequest from '../models/membershipSwitchRequest.model.js';
 import Employee from '../models/employee.model.js';
+import User from '../models/user.model.js';
+import { sendPushNotification } from './firebase.service.js';
 
 /**
  * Auto-transition memberships based on date window:
@@ -188,14 +190,105 @@ export const autoDeactivateExpiredTemporaryStaff = async () => {
 };
 
 /**
+ * Send push notification alerts to members whose pass is expiring within 3 days.
+ * Strictly respects user.preferences.passExpiryAlerts.
+ */
+export const sendPassExpiryAlerts = async () => {
+  try {
+    const now = new Date();
+    const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+
+    const expiringMemberships = await Membership.find({
+      status: 'Active',
+      endDate: { $gte: now, $lte: threeDaysFromNow },
+    }).populate('userId', 'fcmTokens preferences fullName');
+
+    let sentCount = 0;
+    for (const mem of expiringMemberships) {
+      const user = mem.userId;
+      if (!user) continue;
+
+      const isAlertEnabled = user.preferences?.passExpiryAlerts !== false;
+      if (!isAlertEnabled || !user.fcmTokens || user.fcmTokens.length === 0) continue;
+
+      const daysLeft = Math.max(1, Math.ceil((new Date(mem.endDate) - now) / (1000 * 60 * 60 * 24)));
+      const gymName = mem.gymName || 'your gym';
+
+      await sendPushNotification(user.fcmTokens, {
+        title: 'Pass Expiry Alert ⚠️',
+        body: `Your pass at ${gymName} expires in ${daysLeft} day${daysLeft > 1 ? 's' : ''}. Renew now to stay active!`,
+        data: {
+          type: 'PASS_EXPIRY',
+          membershipId: String(mem._id),
+        },
+      });
+      sentCount++;
+    }
+
+    if (sentCount > 0) {
+      console.log(`[PASS EXPIRY ALERTS] Dispatched ${sentCount} pass expiration push notifications.`);
+    }
+    return sentCount;
+  } catch (error) {
+    console.error('[PASS EXPIRY ALERTS ERROR]:', error.message);
+    return 0;
+  }
+};
+
+/**
+ * Send daily workout reminder push notifications before workouts.
+ * Strictly respects user.preferences.workoutReminders.
+ */
+export const sendWorkoutReminders = async () => {
+  try {
+    const activeUsers = await User.find({
+      isActive: true,
+      role: 'CUSTOMER',
+      $or: [
+        { 'preferences.workoutReminders': true },
+        { 'preferences.workoutReminders': { $exists: false } },
+      ],
+      'fcmTokens.0': { $exists: true },
+    }).select('fcmTokens fullName preferences');
+
+    let sentCount = 0;
+    for (const user of activeUsers) {
+      await sendPushNotification(user.fcmTokens, {
+        title: 'Daily Workout Reminder 🏋️‍♂️',
+        body: `Ready for your session, ${user.fullName || 'Champion'}? Consistency is key to reaching your fitness goals!`,
+        data: {
+          type: 'WORKOUT_REMINDER',
+        },
+      });
+      sentCount++;
+    }
+
+    if (sentCount > 0) {
+      console.log(`[WORKOUT REMINDERS] Dispatched ${sentCount} daily workout push reminders.`);
+    }
+    return sentCount;
+  } catch (error) {
+    console.error('[WORKOUT REMINDERS ERROR]:', error.message);
+    return 0;
+  }
+};
+
+/**
  * Initialize nightly cron job at 2:00 AM
  */
 export const initAttendanceCron = () => {
-  // Run daily at 02:00 AM
+  // Run daily at 02:00 AM: nightly stale check-out, staff deactivation & pass expiry alerts
   cron.schedule('0 2 * * *', async () => {
-    console.log('[ATTENDANCE CRON] Running 02:00 AM nightly stale check-out, membership sync & staff expiration check...');
+    console.log('[ATTENDANCE CRON] Running 02:00 AM nightly tasks...');
     await autoCheckoutStaleRecords();
     await autoDeactivateExpiredTemporaryStaff();
+    await sendPassExpiryAlerts();
+  });
+
+  // Daily morning workout reminder at 07:00 AM
+  cron.schedule('0 7 * * *', async () => {
+    console.log('[ATTENDANCE CRON] Running 07:00 AM daily workout reminders...');
+    await sendWorkoutReminders();
   });
 
   // Also run every hour to activate memberships as soon as their start date arrives
@@ -203,7 +296,7 @@ export const initAttendanceCron = () => {
     await syncMembershipStatuses();
   });
 
-  console.log('[ATTENDANCE CRON] Attendance nightly auto-checkout & hourly membership sync initialized.');
+  console.log('[ATTENDANCE CRON] Attendance cron jobs initialized (membership sync, pass expiry alerts, workout reminders).');
 };
 
 // If run directly via CLI (e.g. node src/services/attendanceCron.service.js)
@@ -231,4 +324,6 @@ export default {
   initAttendanceCron,
   autoCheckoutStaleRecords,
   syncMembershipStatuses,
+  sendPassExpiryAlerts,
+  sendWorkoutReminders,
 };

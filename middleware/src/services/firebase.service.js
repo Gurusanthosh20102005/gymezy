@@ -21,7 +21,7 @@ const initializeFirebaseAdmin = () => {
   // 1. Check for Service Account JSON file path or default file
   const candidatePaths = [
     process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
-    path.resolve(process.cwd(), 'firebase-service-account.json'),
+    path.resolve(process.cwd(), '``firebase-service-account.json``'),
     path.resolve(process.cwd(), 'middleware/firebase-service-account.json'),
   ].filter(Boolean);
 
