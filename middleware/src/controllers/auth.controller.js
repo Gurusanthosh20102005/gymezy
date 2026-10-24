@@ -23,10 +23,17 @@ const resolveExpectedRole = (body) => {
  */
 const fetchUserGym = async (user) => {
   if (user.gymId) {
-    return Gym.findById(user.gymId).select('-auditHistory -documents -galleryPhotos -images');
+    const gym = await Gym.findById(user.gymId).select('-auditHistory -documents -galleryPhotos -images');
+    if (gym) return gym;
   }
   if (user.role === USER_ROLES.GYM_OWNER) {
     return Gym.findOne({ ownerId: user._id }).select('-auditHistory -documents -galleryPhotos -images');
+  }
+  if (user.role === USER_ROLES.SUPER_ADMIN) {
+    return (
+      (await Gym.findOne({ partnerId: 'GYM1' }).select('-auditHistory -documents -galleryPhotos -images')) ||
+      (await Gym.findOne({}).select('-auditHistory -documents -galleryPhotos -images'))
+    );
   }
   return null;
 };
@@ -316,6 +323,15 @@ export const updateProfile = asyncHandler(async (req, res) => {
   if (gender !== undefined) updates.gender = gender;
   if (emergencyContact !== undefined) updates.emergencyContact = String(emergencyContact).trim();
   if (address !== undefined) updates.address = String(address).trim();
+  if (req.body.biometricEnabled !== undefined) {
+    updates.biometricEnabled = Boolean(req.body.biometricEnabled);
+  }
+  if (req.body.preferences && typeof req.body.preferences === 'object') {
+    updates.preferences = req.body.preferences;
+    if (req.body.preferences.biometricLogin !== undefined) {
+      updates.biometricEnabled = Boolean(req.body.preferences.biometricLogin);
+    }
+  }
 
   const user = await User.findByIdAndUpdate(userId, { $set: updates }, { new: true, runValidators: true });
   if (!user) {

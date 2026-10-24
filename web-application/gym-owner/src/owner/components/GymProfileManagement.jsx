@@ -474,8 +474,6 @@ export const GymProfileManagement = () => {
       user?.gym?.id ||
       user?.gym?.partnerId ||
       user?.gymId ||
-      user?.id ||
-      user?._id ||
       'me'
     );
   }, [
@@ -487,8 +485,6 @@ export const GymProfileManagement = () => {
     user?.gym?.id,
     user?.gym?.partnerId,
     user?.gymId,
-    user?.id,
-    user?._id,
   ]);
 
   const [activeTab, setActiveTab] = useState('basic');
@@ -512,10 +508,10 @@ export const GymProfileManagement = () => {
   const [safetyMeasures, setSafetyMeasures] = useState(DEFAULT_SAFETY);
   const [isSavingWorkoutsRules, setIsSavingWorkoutsRules] = useState(false);
   const [newRuleInput, setNewRuleInput] = useState('');
+  const [newSafetyInput, setNewSafetyInput] = useState('');
   const [pricingPlans, setPricingPlans] = useState([]);
   const [gymTrainersPricing, setGymTrainersPricing] = useState([]);
   const [isSavingTrainerPricing, setIsSavingTrainerPricing] = useState(false);
-  const [singleSessionEnabled, setSingleSessionEnabled] = useState(true);
   const [singleSessionPrice, setSingleSessionPrice] = useState(199);
   const [isSavingSessionConfig, setIsSavingSessionConfig] = useState(false);
   const [operatingHours, setOperatingHours] = useState(DEFAULT_DAYS);
@@ -715,11 +711,6 @@ export const GymProfileManagement = () => {
     // Standardized 4-Tier Pricing Plans
     setPricingPlans(normalizeGymStandardPlans(effectiveCustomPricingPlans, effectivePricingPlans));
 
-    setSingleSessionEnabled(
-      pending.singleSessionBookingEnabled !== undefined
-        ? Boolean(pending.singleSessionBookingEnabled)
-        : (data.singleSessionBookingEnabled !== undefined ? Boolean(data.singleSessionBookingEnabled) : true)
-    );
     setSingleSessionPrice(
       pending.singleSessionPrice !== undefined
         ? Number(pending.singleSessionPrice)
@@ -872,7 +863,16 @@ export const GymProfileManagement = () => {
     if (!targetGymId) return;
     setIsLoadingProfile(true);
     try {
-      const res = await apiClient.get(`/gyms/${targetGymId}`);
+      let res;
+      try {
+        res = await apiClient.get(`/gyms/${targetGymId}`);
+      } catch (primaryErr) {
+        if (targetGymId !== 'me') {
+          res = await apiClient.get('/gyms/me');
+        } else {
+          throw primaryErr;
+        }
+      }
       const payload = res.data?.data || res.data;
       if (payload) {
         applyGymData(payload);
@@ -1279,10 +1279,10 @@ export const GymProfileManagement = () => {
     try {
       await saveGymToBackend(
         {
-          singleSessionBookingEnabled: singleSessionEnabled,
+          singleSessionBookingEnabled: true,
           singleSessionPrice: Number(singleSessionPrice) || 199,
         },
-        'Per-session booking settings updated successfully!'
+        'Day pass price updated successfully!'
       );
     } finally {
       setIsSavingSessionConfig(false);
@@ -2564,16 +2564,11 @@ export const GymProfileManagement = () => {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Title level={4} style={{ margin: 0, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                        Per-Session / Day Pass Booking
-                      </Title>
-                      <Tag color={singleSessionEnabled ? 'green' : 'default'} style={{ fontWeight: 600 }}>
-                        {singleSessionEnabled ? 'Enabled' : 'Disabled'}
-                      </Tag>
-                    </div>
+                    <Title level={4} style={{ margin: 0, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                      Per-Session / Day Pass Pricing
+                    </Title>
                     <Text style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 13, marginTop: 4, display: 'block' }}>
-                      Allow users to book 1-day visits or custom date ranges with or without a personal trainer.
+                      Configure base day pass pricing for 1-day visits and custom date passes.
                     </Text>
                   </div>
                   <Button
@@ -2583,46 +2578,29 @@ export const GymProfileManagement = () => {
                     onClick={handleSaveSessionPricing}
                     style={{ borderRadius: 'var(--radius-base)', fontWeight: 600 }}
                   >
-                    Save Session Settings
+                    Save Day Pass Price
                   </Button>
                 </div>
 
                 <Divider style={{ margin: '16px 0', borderColor: isDarkMode ? '#222222' : '#e2e8f0' }} />
 
                 <Row gutter={[24, 16]} align="middle">
-                  <Col xs={24} sm={12} md={8}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: isDarkMode ? '#1a1a1a' : '#f8fafc', borderRadius: 8, border: `1px solid ${isDarkMode ? '#2a2a2a' : '#e2e8f0'}` }}>
-                      <div>
-                        <div style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13.5 }}>
-                          Enable Per-Session Booking
-                        </div>
-                        <div style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>
-                          Accept single-day and custom visit passes
-                        </div>
-                      </div>
-                      <Switch
-                        checked={singleSessionEnabled}
-                        onChange={(checked) => setSingleSessionEnabled(checked)}
-                      />
-                    </div>
-                  </Col>
-                  <Col xs={24} sm={12} md={8}>
-                    <div style={{ padding: '12px 16px', background: isDarkMode ? '#1a1a1a' : '#f8fafc', borderRadius: 8, border: `1px solid ${isDarkMode ? '#2a2a2a' : '#e2e8f0'}` }}>
+                  <Col xs={24} sm={12} md={10}>
+                    <div style={{ padding: '14px 18px', background: isDarkMode ? '#1a1a1a' : '#f8fafc', borderRadius: 8, border: `1px solid ${isDarkMode ? '#2a2a2a' : '#e2e8f0'}` }}>
                       <div style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13.5, marginBottom: 6 }}>
                         Day Pass Base Price (₹ / day)
                       </div>
                       <InputNumber
                         prefix="₹"
                         min={0}
-                        disabled={!singleSessionEnabled}
                         value={singleSessionPrice}
                         onChange={(val) => setSingleSessionPrice(Number(val) || 0)}
                         style={{ width: '100%', borderRadius: 'var(--radius-base)' }}
                       />
                     </div>
                   </Col>
-                  <Col xs={24} md={8}>
-                    <div style={{ padding: '12px 16px', background: isDarkMode ? 'rgba(56,189,248,0.06)' : '#f0f9ff', borderRadius: 8, border: `1px solid ${isDarkMode ? 'rgba(56,189,248,0.2)' : '#bae6fd'}` }}>
+                  <Col xs={24} md={14}>
+                    <div style={{ padding: '14px 18px', background: isDarkMode ? 'rgba(56,189,248,0.06)' : '#f0f9ff', borderRadius: 8, border: `1px solid ${isDarkMode ? 'rgba(56,189,248,0.2)' : '#bae6fd'}` }}>
                       <div style={{ fontSize: 12.5, color: isDarkMode ? '#38bdf8' : '#0284c7', lineHeight: 1.5 }}>
                         <strong>Trainer Session Fee:</strong> When a user chooses a personal trainer with their day pass, the trainer single session rate configured below is automatically added.
                       </div>

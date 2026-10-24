@@ -154,6 +154,11 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    preferences: {
+      workoutReminders: { type: Boolean, default: true },
+      passExpiryAlerts: { type: Boolean, default: true },
+      biometricLogin: { type: Boolean, default: false },
+    },
     isActive: {
       type: Boolean,
       default: true,

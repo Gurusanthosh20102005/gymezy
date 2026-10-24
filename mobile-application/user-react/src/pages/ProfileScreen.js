@@ -23,6 +23,30 @@ import { useToast } from '../widgets/CustomScaffoldMessage';
 import { BrandWatermarkFooter } from '../widgets/BrandWatermarkFooter';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
+import { attendanceService } from '../services/attendanceService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Storage keys for user preferences & security
+const PREF_WORKOUT_REMINDERS_KEY = '@gymezy_pref_workout_reminders';
+const PREF_PASS_EXPIRY_ALERTS_KEY = '@gymezy_pref_pass_expiry_alerts';
+const PREF_BIOMETRIC_LOGIN_KEY = '@gymezy_pref_biometric_login';
+
+// Safely load ExpoLocalAuthentication only if registered in native runtime
+const getSafeLocalAuthentication = () => {
+  try {
+    const isLinked = Boolean(
+      NativeModules?.ExpoLocalAuthentication ||
+      globalThis?.expo?.modules?.ExpoLocalAuthentication ||
+      globalThis?.ExpoModules?.ExpoLocalAuthentication
+    );
+    if (!isLinked) {
+      return null;
+    }
+    return require('expo-local-authentication');
+  } catch {
+    return null;
+  }
+};
 
 // Safely check if native ImagePicker module is registered before requiring
 const getSafeImagePicker = () => {
@@ -115,10 +139,276 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   const [targetWeightKg, setTargetWeightKg] = useState(70.0);
   const [fitnessGoal, setFitnessGoal] = useState('Muscle Building & Hypertrophy');
 
-  // Preferences Toggles
-  const [workoutReminders, setWorkoutReminders] = useState(true);
-  const [passExpiryAlerts, setPassExpiryAlerts] = useState(true);
-  const [biometricLogin, setBiometricLogin] = useState(true);
+  // Preferences Toggles - initialized from user preferences or defaults
+  const [workoutReminders, setWorkoutReminders] = useState(
+    user?.preferences?.workoutReminders !== undefined ? Boolean(user.preferences.workoutReminders) : true
+  );
+  const [passExpiryAlerts, setPassExpiryAlerts] = useState(
+    user?.preferences?.passExpiryAlerts !== undefined ? Boolean(user.preferences.passExpiryAlerts) : true
+  );
+  const [biometricLogin, setBiometricLogin] = useState(
+    user?.preferences?.biometricLogin !== undefined
+      ? Boolean(user.preferences.biometricLogin)
+      : Boolean(user?.biometricEnabled)
+  );
+  const [monthlyCheckInsCount, setMonthlyCheckInsCount] = useState(null);
+
+  // Load saved preferences from AsyncStorage and sync with Auth user
+  useEffect(() => {
+    let isMounted = true;
+    const loadStoredPreferences = async () => {
+      try {
+        const [storedWorkout, storedPassExpiry, storedBiometric] = await Promise.all([
+          AsyncStorage.getItem(PREF_WORKOUT_REMINDERS_KEY),
+          AsyncStorage.getItem(PREF_PASS_EXPIRY_ALERTS_KEY),
+          AsyncStorage.getItem(PREF_BIOMETRIC_LOGIN_KEY),
+        ]);
+
+        if (isMounted) {
+          if (storedWorkout !== null) {
+            setWorkoutReminders(storedWorkout === 'true');
+          } else if (user?.preferences?.workoutReminders !== undefined) {
+            setWorkoutReminders(Boolean(user.preferences.workoutReminders));
+          }
+
+          if (storedPassExpiry !== null) {
+            setPassExpiryAlerts(storedPassExpiry === 'true');
+          } else if (user?.preferences?.passExpiryAlerts !== undefined) {
+            setPassExpiryAlerts(Boolean(user.preferences.passExpiryAlerts));
+          }
+
+          if (storedBiometric !== null) {
+            setBiometricLogin(storedBiometric === 'true');
+          } else if (user?.preferences?.biometricLogin !== undefined) {
+            setBiometricLogin(Boolean(user.preferences.biometricLogin));
+          } else if (user?.biometricEnabled !== undefined) {
+            setBiometricLogin(Boolean(user.biometricEnabled));
+          }
+        }
+      } catch (err) {
+        console.warn('Could not read saved preferences from AsyncStorage:', err);
+      }
+    };
+
+    loadStoredPreferences();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  // Handler for Workout Reminders toggle
+  const handleToggleWorkoutReminders = async (nextVal) => {
+    setWorkoutReminders(nextVal);
+    try {
+      await AsyncStorage.setItem(PREF_WORKOUT_REMINDERS_KEY, String(nextVal));
+      if (updateUser) {
+        await updateUser({
+          preferences: {
+            ...(user?.preferences || {}),
+            workoutReminders: nextVal,
+          },
+        });
+      }
+      apiService
+        .updateProfile({
+          preferences: {
+            ...(user?.preferences || {}),
+            workoutReminders: nextVal,
+            passExpiryAlerts,
+            biometricLogin,
+          },
+        })
+        .catch(() => {});
+
+      showToast({
+        message: nextVal
+          ? 'Workout Reminders enabled! You will receive daily session alerts.'
+          : 'Workout Reminders disabled.',
+        isSuccess: nextVal,
+      });
+    } catch (err) {
+      showToast({
+        message: 'Failed to update reminder settings: ' + (err.message || 'Error'),
+        isError: true,
+      });
+    }
+  };
+
+  // Handler for Pass Expiry Alerts toggle
+  const handleTogglePassExpiryAlerts = async (nextVal) => {
+    setPassExpiryAlerts(nextVal);
+    try {
+      await AsyncStorage.setItem(PREF_PASS_EXPIRY_ALERTS_KEY, String(nextVal));
+      if (updateUser) {
+        await updateUser({
+          preferences: {
+            ...(user?.preferences || {}),
+            passExpiryAlerts: nextVal,
+          },
+        });
+      }
+      apiService
+        .updateProfile({
+          preferences: {
+            ...(user?.preferences || {}),
+            workoutReminders,
+            passExpiryAlerts: nextVal,
+            biometricLogin,
+          },
+        })
+        .catch(() => {});
+
+      showToast({
+        message: nextVal
+          ? 'Pass Expiry Alerts enabled! You will be notified 3 days prior.'
+          : 'Pass Expiry Alerts disabled.',
+        isSuccess: nextVal,
+      });
+    } catch (err) {
+      showToast({
+        message: 'Failed to update expiry alert settings: ' + (err.message || 'Error'),
+        isError: true,
+      });
+    }
+  };
+
+  // Handler for Biometric / Face ID Login toggle with hardware & enrollment verification
+  const handleToggleBiometricLogin = async (nextVal) => {
+    if (nextVal) {
+      try {
+        const localAuth = getSafeLocalAuthentication();
+        if (!localAuth) {
+          // Native module not linked in this build; save preference directly
+          setBiometricLogin(true);
+          await AsyncStorage.setItem(PREF_BIOMETRIC_LOGIN_KEY, 'true');
+          showToast({
+            message: 'Biometric login preference enabled for this device.',
+            isSuccess: true,
+          });
+          return;
+        }
+
+        const hasHardware = await localAuth.hasHardwareAsync();
+        if (!hasHardware) {
+          showToast({
+            message: 'Biometric hardware sensor is not available on this device.',
+            isError: true,
+          });
+          return;
+        }
+
+        const isEnrolled = await localAuth.isEnrolledAsync();
+        if (!isEnrolled) {
+          showToast({
+            message: 'No biometric credentials found. Please set up fingerprint or Face ID in device settings first.',
+            isError: true,
+          });
+          return;
+        }
+
+        const authResult = await localAuth.authenticateAsync({
+          promptMessage: 'Verify identity to enable Biometric & Face ID Login',
+          cancelLabel: 'Cancel',
+          disableDeviceFallback: false,
+        });
+
+        if (!authResult.success) {
+          if (authResult.error !== 'user_cancel' && authResult.error !== 'system_cancel') {
+            showToast({
+              message: 'Biometric verification could not be completed.',
+              isError: true,
+            });
+          }
+          return;
+        }
+
+        // Successfully authenticated
+        setBiometricLogin(true);
+        await AsyncStorage.setItem(PREF_BIOMETRIC_LOGIN_KEY, 'true');
+        if (updateUser) {
+          await updateUser({
+            biometricEnabled: true,
+            preferences: {
+              ...(user?.preferences || {}),
+              biometricLogin: true,
+            },
+          });
+        }
+        apiService
+          .updateProfile({
+            biometricEnabled: true,
+            preferences: {
+              ...(user?.preferences || {}),
+              workoutReminders,
+              passExpiryAlerts,
+              biometricLogin: true,
+            },
+          })
+          .catch(() => {});
+
+        showToast({
+          message: 'Biometric / Face ID Login enabled successfully!',
+          isSuccess: true,
+        });
+      } catch (err) {
+        showToast({
+          message: 'Could not enable biometric: ' + (err.message || 'Error'),
+          isError: true,
+        });
+      }
+    } else {
+      // User turning off biometric login
+      setBiometricLogin(false);
+      try {
+        await AsyncStorage.setItem(PREF_BIOMETRIC_LOGIN_KEY, 'false');
+        if (updateUser) {
+          await updateUser({
+            biometricEnabled: false,
+            preferences: {
+              ...(user?.preferences || {}),
+              biometricLogin: false,
+            },
+          });
+        }
+        apiService
+          .updateProfile({
+            biometricEnabled: false,
+            preferences: {
+              ...(user?.preferences || {}),
+              workoutReminders,
+              passExpiryAlerts,
+              biometricLogin: false,
+            },
+          })
+          .catch(() => {});
+
+        showToast({
+          message: 'Biometric authentication turned off.',
+          isSuccess: false,
+        });
+      } catch (err) {
+        showToast({
+          message: 'Failed to update setting: ' + (err.message || 'Error'),
+          isError: true,
+        });
+      }
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    attendanceService
+      .fetchAttendanceHistory()
+      .then((data) => {
+        if (isMounted && data?.summary?.thisMonth !== undefined) {
+          setMonthlyCheckInsCount(data.summary.thisMonth);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Modals state
   const [showAvatarPickerModal, setShowAvatarPickerModal] = useState(false);
@@ -696,7 +986,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
 
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => showToast({ message: '18 successful check-ins logged on GYMEZY' })}
+          onPress={() => navigation.navigate('AttendanceHistory')}
           style={[styles.menuTile, { backgroundColor: cardColor, borderColor: borderColor }]}
         >
           <View style={[styles.menuIconBox, { backgroundColor: isDark ? '#262626' : 'rgba(0, 56, 130, 0.08)' }]}>
@@ -704,7 +994,11 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
           </View>
           <View style={styles.menuTileContent}>
             <Text style={[styles.menuTileTitle, { color: textColor }]}>Check-in & Attendance History</Text>
-            <Text style={[styles.menuTileSubtitle, { color: subtitleColor }]}>18 check-ins recorded this month</Text>
+            <Text style={[styles.menuTileSubtitle, { color: subtitleColor }]}>
+              {monthlyCheckInsCount !== null
+                ? `${monthlyCheckInsCount} check-ins recorded this month`
+                : 'View all check-in & workout logs'}
+            </Text>
           </View>
           <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
         </TouchableOpacity>
@@ -756,7 +1050,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
             </View>
             <Switch
               value={workoutReminders}
-              onValueChange={setWorkoutReminders}
+              onValueChange={handleToggleWorkoutReminders}
               trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
               thumbColor={workoutReminders ? '#003882' : '#F4F3F4'}
             />
@@ -773,7 +1067,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
             </View>
             <Switch
               value={passExpiryAlerts}
-              onValueChange={setPassExpiryAlerts}
+              onValueChange={handleTogglePassExpiryAlerts}
               trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
               thumbColor={passExpiryAlerts ? '#003882' : '#F4F3F4'}
             />
@@ -790,7 +1084,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
             </View>
             <Switch
               value={biometricLogin}
-              onValueChange={setBiometricLogin}
+              onValueChange={handleToggleBiometricLogin}
               trackColor={{ false: '#D1D5DB', true: '#93C5FD' }}
               thumbColor={biometricLogin ? '#003882' : '#F4F3F4'}
             />

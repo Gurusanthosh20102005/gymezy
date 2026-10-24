@@ -283,6 +283,39 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
           </View>
         )}
 
+        {/* Check-in & Attendance History Action Card */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() =>
+            navigation.navigate('AttendanceHistory', {
+              bookingId: booking.id || booking._id,
+              title: `${booking.sessionSubtitle || booking.title || 'Session'} Attendance`,
+              contextName: `${booking.gymName || 'Gym'} • ${booking.id || booking.bookingId}`,
+            })
+          }
+          style={[
+            styles.attendanceActionTile,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              marginBottom: 18,
+            },
+          ]}
+        >
+          <View style={[styles.attendanceIconBox, { backgroundColor: isDark ? '#1E293B' : 'rgba(0, 56, 130, 0.08)' }]}>
+            <MaterialIcons name="history" size={22} color={isDark ? '#93C5FD' : '#003882'} />
+          </View>
+          <View style={styles.attendanceTileContent}>
+            <Text style={[styles.attendanceTileTitle, { color: colors.text }]}>Check-in & Attendance History</Text>
+            <Text style={[styles.attendanceTileSubtitle, { color: colors.subtitle }]}>
+              {booking.attendedSessionsCount
+                ? `${booking.attendedSessionsCount} session(s) attended • View check-in logs`
+                : 'View all turnstile check-ins for this pass'}
+            </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={22} color={colors.subtitle} />
+        </TouchableOpacity>
+
         {/* Custom Sessions Schedule Breakdown */}
         {booking.isCustomDates && Array.isArray(booking.customDates) && booking.customDates.length > 0 && (
           <View style={{ marginBottom: 20 }}>
@@ -1657,5 +1690,33 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',
+  },
+
+  /* Attendance Action Tile */
+  attendanceActionTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  attendanceIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  attendanceTileContent: {
+    flex: 1,
+  },
+  attendanceTileTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  attendanceTileSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

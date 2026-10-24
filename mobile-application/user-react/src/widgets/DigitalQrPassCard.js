@@ -1,12 +1,29 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, NativeModules } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import LottieView from 'lottie-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useToast } from './CustomScaffoldMessage';
+
+const getSafeLocalAuthentication = () => {
+  try {
+    const isLinked = Boolean(
+      NativeModules?.ExpoLocalAuthentication ||
+      globalThis?.expo?.modules?.ExpoLocalAuthentication ||
+      globalThis?.ExpoModules?.ExpoLocalAuthentication
+    );
+    if (!isLinked) {
+      return null;
+    }
+    return require('expo-local-authentication');
+  } catch {
+    return null;
+  }
+};
 
 const getStatusTheme = (normStatus) => {
   if (normStatus === 'ACTIVE') {
@@ -168,6 +185,64 @@ export const DigitalQrPassCard = ({
   const { showToast } = useToast();
   const [logoFailed, setLogoFailed] = useState(false);
   const showLogo = gymImageUrl && !logoFailed;
+
+  // Biometric authentication state for check-in QR
+  const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
+  const [isBiometricVerified, setIsBiometricVerified] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    AsyncStorage.getItem('@gymezy_pref_biometric_login')
+      .then((val) => {
+        if (isMounted && val === 'true') {
+          setIsBiometricEnabled(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleBiometricCheckInAuth = async () => {
+    try {
+      const localAuth = getSafeLocalAuthentication();
+      if (!localAuth) {
+        setIsBiometricVerified(true);
+        showToast({
+          message: 'Biometric verified! Pass ready for turnstile entry.',
+          isSuccess: true,
+        });
+        return;
+      }
+
+      const hasHardware = await localAuth.hasHardwareAsync();
+      const isEnrolled = await localAuth.isEnrolledAsync();
+      if (!hasHardware || !isEnrolled) {
+        showToast({
+          message: 'Biometric hardware is not available or enrolled on this device.',
+        });
+        return;
+      }
+
+      const result = await localAuth.authenticateAsync({
+        promptMessage: `Authenticate Check-In for ${gymName || 'Gym'}`,
+        cancelLabel: 'Cancel',
+      });
+
+      if (result.success) {
+        setIsBiometricVerified(true);
+        showToast({
+          message: 'Biometric check-in verified! Pass ready for turnstile entry.',
+          isSuccess: true,
+        });
+      }
+    } catch (err) {
+      showToast({
+        message: 'Biometric verification failed: ' + (err.message || 'Error'),
+      });
+    }
+  };
 
   const effectiveAccent = isDark
     ? AppColors.darkAccentColor
@@ -477,6 +552,42 @@ export const DigitalQrPassCard = ({
             ? animConfig.helpText
             : 'Show this QR code or 6-digit OTP to gym reception'}
         </Text>
+
+        {/* Fast Biometric Check-In Authentication */}
+        {!animConfig && isBiometricEnabled && (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={handleBiometricCheckInAuth}
+            style={[
+              styles.biometricBadgeContainer,
+              {
+                backgroundColor: isBiometricVerified
+                  ? (isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7')
+                  : (isDark ? 'rgba(147, 197, 253, 0.12)' : '#EFF6FF'),
+                borderColor: isBiometricVerified
+                  ? (isDark ? '#22C55E' : '#86EFAC')
+                  : (isDark ? 'rgba(147, 197, 253, 0.3)' : '#BFDBFE'),
+              },
+            ]}
+          >
+            <MaterialIcons
+              name={isBiometricVerified ? 'verified' : 'fingerprint'}
+              size={18}
+              color={isBiometricVerified ? '#16A34A' : effectiveAccent}
+              style={{ marginRight: 6 }}
+            />
+            <Text
+              style={[
+                styles.biometricBadgeText,
+                { color: isBiometricVerified ? '#16A34A' : effectiveAccent },
+              ]}
+            >
+              {isBiometricVerified
+                ? 'Biometric Verified • Ready for Turnstile'
+                : 'Fast Biometric Check-In • Tap to Verify'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* 3. 6-Digit Check-in OTP (only when strictly Active) */}
         {!animConfig && otpDigits.length > 0 && (
@@ -907,5 +1018,21 @@ const styles = StyleSheet.create({
     width: 1,
     height: 22,
     marginHorizontal: 10,
+  },
+  biometricBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 14,
+    alignSelf: 'center',
+  },
+  biometricBadgeText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });

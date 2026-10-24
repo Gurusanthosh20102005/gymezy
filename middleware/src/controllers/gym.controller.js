@@ -1198,6 +1198,9 @@ export const getGymById = asyncHandler(async (req, res) => {
     if (!gym && req.user?._id) {
       gym = await Gym.findOne({ ownerId: req.user._id });
     }
+    if (!gym && req.user?.role === USER_ROLES.SUPER_ADMIN) {
+      gym = (await Gym.findOne({ partnerId: 'GYM1' })) || (await Gym.findOne({}));
+    }
   }
 
   // Handle Mongo ID (Gym _id or Owner _id)
@@ -1205,6 +1208,14 @@ export const getGymById = asyncHandler(async (req, res) => {
     gym = await Gym.findById(id);
     if (!gym) {
       gym = await Gym.findOne({ ownerId: id });
+    }
+    if (!gym && req.user?.role === USER_ROLES.SUPER_ADMIN && String(req.user._id) === String(id)) {
+      if (req.user?.gymId) {
+        gym = await Gym.findById(req.user.gymId);
+      }
+      if (!gym) {
+        gym = (await Gym.findOne({ partnerId: 'GYM1' })) || (await Gym.findOne({}));
+      }
     }
   }
 

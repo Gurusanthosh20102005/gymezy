@@ -935,6 +935,37 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
           />
         </View>
 
+        {/* 2.6 Check-in & Attendance History for this Membership */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() =>
+            navigation.navigate('AttendanceHistory', {
+              membershipId: membership.membershipId || membership.id,
+              title: `${membership.planName || 'Membership'} Attendance`,
+              contextName: `${membership.gymName || 'Gym'} • ${membership.membershipId || membership.id}`,
+            })
+          }
+          style={[
+            styles.attendanceActionTile,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              marginTop: 16,
+            },
+          ]}
+        >
+          <View style={[styles.attendanceIconBox, { backgroundColor: isDark ? '#1E293B' : 'rgba(0, 56, 130, 0.08)' }]}>
+            <MaterialIcons name="history" size={22} color={isDark ? '#93C5FD' : '#003882'} />
+          </View>
+          <View style={styles.attendanceTileContent}>
+            <Text style={[styles.attendanceTileTitle, { color: colors.text }]}>Check-in & Attendance History</Text>
+            <Text style={[styles.attendanceTileSubtitle, { color: colors.subtitle }]}>
+              View all turnstile check-ins for this membership
+            </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={22} color={colors.subtitle} />
+        </TouchableOpacity>
+
         {/* 3. Membership Details Key-Value List Card */}
         <View
           style={[
@@ -2115,6 +2146,26 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
             <TouchableOpacity
               onPress={() => {
                 setShowMoreMenu(false);
+                navigation.navigate('AttendanceHistory', {
+                  membershipId: membership.membershipId || membership.id,
+                  title: `${membership.planName || 'Membership'} Attendance`,
+                  contextName: `${membership.gymName || 'Gym'} • ${membership.membershipId || membership.id}`,
+                });
+              }}
+              style={styles.menuItemRow}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="history" size={20} color={primaryNavy} style={{ marginRight: 12 }} />
+              <Text style={[styles.menuItemText, { color: colors.text }]}>
+                Attendance History
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+
+            <TouchableOpacity
+              onPress={() => {
+                setShowMoreMenu(false);
                 void copyToClipboard(membership.membershipId || membership.id, 'Membership ID');
               }}
               style={styles.menuItemRow}
@@ -2763,5 +2814,33 @@ const styles = StyleSheet.create({
   menuDivider: {
     height: 1,
     marginHorizontal: 12,
+  },
+
+  /* Attendance Action Tile */
+  attendanceActionTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  attendanceIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  attendanceTileContent: {
+    flex: 1,
+  },
+  attendanceTileTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  attendanceTileSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

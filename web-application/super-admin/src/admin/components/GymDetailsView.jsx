@@ -1805,13 +1805,7 @@ export const GymDetailsView = ({
                 label: 'Pricing & Capacity',
                 children: (
                   <>
-                    <Row gutter={16} align="middle">
-                      <Col xs={24} sm={12}>
-                        <Form.Item name="singleSessionBookingEnabled" label="Enable Per-Session / Day Pass Booking" valuePropName="checked">
-                          <Switch checkedChildren="Enabled" unCheckedChildren="Disabled" />
-                        </Form.Item>
-                      </Col>
-                    </Row>
+
                     <Row gutter={16}>
                       <Col xs={24} sm={12}>
                         <Form.Item name="singleSessionPrice" label="Single Session Pass Base Price (₹)">

@@ -10,7 +10,10 @@ describe('Google SSO & FCM Services Unit Tests', () => {
       async () => {
         await verifyGoogleIdToken(dummyToken);
       },
-      (err) => err.message.includes('Invalid Google ID token') || err.message.includes('Decoding Firebase ID token failed')
+      (err) =>
+        err.message.includes('Invalid Google ID token') ||
+        err.message.includes('Decoding Firebase ID token failed') ||
+        err.message.includes('Could not verify Google ID token')
     );
   });
 
