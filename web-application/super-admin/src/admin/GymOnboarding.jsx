@@ -46,6 +46,7 @@ import {
   MobileOutlined,
   PlusOutlined,
   FileTextOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
@@ -155,6 +156,42 @@ const WORKOUT_OPTIONS = [
 const BADGE_OPTIONS = ['Trending', 'Top Rated', 'Verified SuperGym', 'Popular', 'Premium Club', '24/7 Access', 'CrossFit Ready'];
 
 const AT_COORDS_REGEX = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/;
+const DOCUMENT_MAX_SIZE = 10 * 1024 * 1024;
+const IMAGE_MAX_SIZE = 5 * 1024 * 1024;
+
+const parse12HourTime = (value) => {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return '';
+  let hours = Number(match[1]);
+  const minutes = match[2];
+  const period = match[3].toUpperCase();
+  if (hours === 12) hours = 0;
+  if (period === 'PM') hours += 12;
+  return `${String(hours).padStart(2, '0')}:${minutes}`;
+};
+
+const format24HourTime = (value) => {
+  const [hoursValue, minutes = '00'] = String(value || '').split(':');
+  let hours = Number(hoursValue);
+  if (!Number.isInteger(hours) || hours < 0 || hours > 23) return '';
+  const period = hours >= 12 ? 'PM' : 'AM';
+  hours %= 12;
+  if (hours === 0) hours = 12;
+  return `${String(hours).padStart(2, '0')}:${minutes} ${period}`;
+};
+
+const validateUpload = (file, allowedTypes, maxSize, label) => {
+  const isAllowed = allowedTypes.some((type) => type === file.type);
+  if (!isAllowed) {
+    message.error(`Invalid ${label} format`);
+    return false;
+  }
+  if (file.size > maxSize) {
+    message.error(`${label} must be smaller than ${Math.round(maxSize / (1024 * 1024))}MB`);
+    return false;
+  }
+  return true;
+};
 const Q_COORDS_REGEX = /[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/;
 const D3D4_COORDS_REGEX = /!3d(-?\d+(?:\.\d+)?)[^!]*!4d(-?\d+(?:\.\d+)?)/;
 const LL_COORDS_REGEX = /(?:ll|loc:)(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/;
@@ -237,6 +274,7 @@ export const GymOnboarding = () => {
   const [createdGymSummary, setCreatedGymSummary] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetchingGps, setIsFetchingGps] = useState(false);
+  const [filePreview, setFilePreview] = useState(null);
 
   // Live Validation Errors and Touched State
   const [errors, setErrors] = useState({});
@@ -1357,6 +1395,7 @@ export const GymOnboarding = () => {
 
                   {!formData.businessCertificate ? (
                     <Dragger
+                      accept=".pdf,image/jpeg,image/png,image/webp"
                       style={{
                         padding: '24px',
                         background: isDarkMode ? '#141414' : '#fafafa',
@@ -1365,6 +1404,12 @@ export const GymOnboarding = () => {
                       }}
                       showUploadList={false}
                       beforeUpload={async (file) => {
+                        if (!validateUpload(
+                          file,
+                          ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+                          DOCUMENT_MAX_SIZE,
+                          'Document'
+                        )) return false;
                         try {
                           const base64 = await fileToBase64(file);
                           const sizeStr = file.size > 1024 * 1024
@@ -1449,6 +1494,17 @@ export const GymOnboarding = () => {
                         </div>
                       </div>
 
+                      <Button
+                        icon={<EyeOutlined />}
+                        onClick={() => setFilePreview({
+                          url: formData.businessCertificate,
+                          name: formData.businessCertificateName,
+                          type: formData.businessCertificateType,
+                        })}
+                        style={{ fontWeight: 600 }}
+                      >
+                        Preview
+                      </Button>
                       <Button
                         type="text"
                         danger
@@ -1700,8 +1756,11 @@ export const GymOnboarding = () => {
                     onChange={(e) => {
                       const val = e.target.value;
                       handleFieldChange('timingMode', val);
-                      handleFieldChange('is24Hours', val === '24_HOURS');
-                      handleFieldChange('isSplitShift', val === 'SPLIT_SHIFT');
+                      handleFieldsChange({
+                        timingMode: val,
+                        is24Hours: val === '24_HOURS',
+                        isSplitShift: val === 'SPLIT_SHIFT',
+                      });
                     }}
                     buttonStyle="solid"
                     style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}
@@ -1726,9 +1785,9 @@ export const GymOnboarding = () => {
                         Weekday Open (Mon – Fri)
                       </div>
                       <Input
-                        value={formData.weekdayOpen}
-                        onChange={(e) => handleFieldChange('weekdayOpen', e.target.value)}
-                        placeholder="05:30 AM"
+                        type="time"
+                        value={parse12HourTime(formData.weekdayOpen)}
+                        onChange={(e) => handleFieldChange('weekdayOpen', format24HourTime(e.target.value))}
                         style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                       />
                     </Col>
@@ -1737,9 +1796,9 @@ export const GymOnboarding = () => {
                         Weekday Close (Mon – Fri)
                       </div>
                       <Input
-                        value={formData.weekdayClose}
-                        onChange={(e) => handleFieldChange('weekdayClose', e.target.value)}
-                        placeholder="10:30 PM"
+                        type="time"
+                        value={parse12HourTime(formData.weekdayClose)}
+                        onChange={(e) => handleFieldChange('weekdayClose', format24HourTime(e.target.value))}
                         style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                       />
                     </Col>
@@ -1748,9 +1807,9 @@ export const GymOnboarding = () => {
                         Weekend Open (Sat – Sun)
                       </div>
                       <Input
-                        value={formData.weekendOpen}
-                        onChange={(e) => handleFieldChange('weekendOpen', e.target.value)}
-                        placeholder="06:00 AM"
+                        type="time"
+                        value={parse12HourTime(formData.weekendOpen)}
+                        onChange={(e) => handleFieldChange('weekendOpen', format24HourTime(e.target.value))}
                         style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                       />
                     </Col>
@@ -1759,9 +1818,9 @@ export const GymOnboarding = () => {
                         Weekend Close (Sat – Sun)
                       </div>
                       <Input
-                        value={formData.weekendClose}
-                        onChange={(e) => handleFieldChange('weekendClose', e.target.value)}
-                        placeholder="09:00 PM"
+                        type="time"
+                        value={parse12HourTime(formData.weekendClose)}
+                        onChange={(e) => handleFieldChange('weekendClose', format24HourTime(e.target.value))}
                         style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                       />
                     </Col>
@@ -1779,9 +1838,9 @@ export const GymOnboarding = () => {
                           Morning Shift Open
                         </div>
                         <Input
-                          value={formData.morningOpen}
-                          onChange={(e) => handleFieldChange('morningOpen', e.target.value)}
-                          placeholder="05:30 AM"
+                          type="time"
+                          value={parse12HourTime(formData.morningOpen)}
+                          onChange={(e) => handleFieldChange('morningOpen', format24HourTime(e.target.value))}
                           style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                         />
                       </Col>
@@ -1790,9 +1849,9 @@ export const GymOnboarding = () => {
                           Morning Shift Close
                         </div>
                         <Input
-                          value={formData.morningClose}
-                          onChange={(e) => handleFieldChange('morningClose', e.target.value)}
-                          placeholder="11:30 AM"
+                          type="time"
+                          value={parse12HourTime(formData.morningClose)}
+                          onChange={(e) => handleFieldChange('morningClose', format24HourTime(e.target.value))}
                           style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                         />
                       </Col>
@@ -1801,9 +1860,9 @@ export const GymOnboarding = () => {
                           Evening Shift Open
                         </div>
                         <Input
-                          value={formData.eveningOpen}
-                          onChange={(e) => handleFieldChange('eveningOpen', e.target.value)}
-                          placeholder="04:30 PM"
+                          type="time"
+                          value={parse12HourTime(formData.eveningOpen)}
+                          onChange={(e) => handleFieldChange('eveningOpen', format24HourTime(e.target.value))}
                           style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                         />
                       </Col>
@@ -1812,9 +1871,9 @@ export const GymOnboarding = () => {
                           Evening Shift Close
                         </div>
                         <Input
-                          value={formData.eveningClose}
-                          onChange={(e) => handleFieldChange('eveningClose', e.target.value)}
-                          placeholder="10:30 PM"
+                          type="time"
+                          value={parse12HourTime(formData.eveningClose)}
+                          onChange={(e) => handleFieldChange('eveningClose', format24HourTime(e.target.value))}
                           style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                         />
                       </Col>
@@ -1925,6 +1984,7 @@ export const GymOnboarding = () => {
                     {!formData.logo && !formData.coverPhoto ? (
                       <div>
                         <Dragger
+                          accept="image/jpeg,image/png,image/webp"
                           style={{
                             padding: '16px',
                             background: isDarkMode ? '#141414' : '#fafafa',
@@ -1933,6 +1993,7 @@ export const GymOnboarding = () => {
                           }}
                           showUploadList={false}
                           beforeUpload={async (file) => {
+                            if (!validateUpload(file, ['image/jpeg', 'image/png', 'image/webp'], IMAGE_MAX_SIZE, 'Logo')) return false;
                             try {
                               const base64 = await fileToBase64(file);
                               handleFieldsChange({ logo: base64, coverPhoto: base64 });
@@ -1995,9 +2056,21 @@ export const GymOnboarding = () => {
                         </div>
 
                         <div style={{ display: 'flex', gap: 8 }}>
+                          <Button
+                            size="small"
+                            icon={<EyeOutlined />}
+                            onClick={() => setFilePreview({
+                              url: formData.logo || formData.coverPhoto,
+                              name: 'Gym logo',
+                              type: 'image',
+                            })}
+                          >
+                            Preview
+                          </Button>
                           <Upload
                             showUploadList={false}
                             beforeUpload={async (file) => {
+                              if (!validateUpload(file, ['image/jpeg', 'image/png', 'image/webp'], IMAGE_MAX_SIZE, 'Logo')) return false;
                               try {
                                 const base64 = await fileToBase64(file);
                                 handleFieldsChange({ logo: base64, coverPhoto: base64 });
@@ -2043,6 +2116,7 @@ export const GymOnboarding = () => {
                         accept="image/*"
                         showUploadList={false}
                         beforeUpload={async (file) => {
+                          if (!validateUpload(file, ['image/jpeg', 'image/png', 'image/webp'], IMAGE_MAX_SIZE, 'Facility photo')) return false;
                           try {
                             const b64 = await fileToBase64(file);
                             handleFieldChange('galleryPhotos', [...(formData.galleryPhotos || []), b64]);
@@ -2099,6 +2173,29 @@ export const GymOnboarding = () => {
                             alt={`Facility ${idx + 1}`}
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           />
+                          <button
+                            type="button"
+                            onClick={() => setFilePreview({
+                              url: photoSrc,
+                              name: `Facility photo ${idx + 1}`,
+                              type: 'image',
+                            })}
+                            title="Preview"
+                            style={{
+                              position: 'absolute',
+                              top: 4,
+                              left: 4,
+                              width: 24,
+                              height: 24,
+                              borderRadius: '50%',
+                              backgroundColor: 'rgba(67,56,202,0.9)',
+                              color: '#ffffff',
+                              border: 'none',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <EyeOutlined />
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
@@ -2873,6 +2970,29 @@ export const GymOnboarding = () => {
           </Card>
         </Col>
       </Row>
+
+      <Modal
+        open={Boolean(filePreview)}
+        title={filePreview?.name || 'File preview'}
+        onCancel={() => setFilePreview(null)}
+        footer={null}
+        centered
+        width={800}
+      >
+        {filePreview?.type?.includes('pdf') ? (
+          <iframe
+            src={filePreview.url}
+            title={filePreview.name}
+            style={{ width: '100%', height: '70vh', border: 0 }}
+          />
+        ) : (
+          <img
+            src={filePreview?.url}
+            alt={filePreview?.name || 'Preview'}
+            style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+          />
+        )}
+      </Modal>
 
       {/* ========================================================================= */}
       {/* SUCCESS CELEBRATION MODAL */}
