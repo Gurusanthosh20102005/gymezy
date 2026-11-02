@@ -2,8 +2,7 @@ import { NativeModules } from 'react-native';
 import { getCloudApiUrl } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
-const CURRENT_MAC_IP = '10.117.236.244';
-const LOCAL_WIFI_IP = '192.168.0.102';
+const CURRENT_MAC_IP = '192.168.0.111';
 
 const getMetroHost = () => {
   try {
@@ -108,7 +107,6 @@ class ApiService {
           `http://localhost:${BACKEND_PORT}/api/v1`,
           metroHost ? `http://${metroHost}:${BACKEND_PORT}/api/v1` : null,
           `http://${CURRENT_MAC_IP}:${BACKEND_PORT}/api/v1`,
-          `http://${LOCAL_WIFI_IP}:${BACKEND_PORT}/api/v1`,
           `http://10.0.2.2:${BACKEND_PORT}/api/v1`,
           `http://127.0.0.1:${BACKEND_PORT}/api/v1`,
           cloudUrl,

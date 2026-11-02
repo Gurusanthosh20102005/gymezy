@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { BANKS, getBankByName } from '../../utils/bankData';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateGymProfile, setGymProfile } from '../../redux/slices/gymSlice';
 import {
@@ -4342,7 +4343,18 @@ export const GymProfileManagement = () => {
             </Col>
             <Col span={12}>
               <Form.Item name="bankName" label="Bank Name" rules={[{ required: true, message: 'Enter bank name' }]}>
-                <Input placeholder="e.g. HDFC Bank" />
+                <Select
+                  showSearch
+                  optionFilterProp="children"
+                  placeholder="Select bank"
+                  onChange={(bankName) => {
+                    bankForm.setFieldValue('ifscCode', getBankByName(bankName)?.ifscPrefix || '');
+                  }}
+                >
+                  {BANKS.map((bank) => (
+                    <Select.Option key={bank.name} value={bank.name}>{bank.name}</Select.Option>
+                  ))}
+                </Select>
               </Form.Item>
             </Col>
             <Col span={12}>

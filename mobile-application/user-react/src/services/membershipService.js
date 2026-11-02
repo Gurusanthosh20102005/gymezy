@@ -99,11 +99,42 @@ class MembershipService {
       if (!response.ok || !json.success) {
         throw new Error(json.message || 'Failed to cancel membership.');
       }
+
       return json.data;
     } catch (error) {
       console.error('[MEMBERSHIP SERVICE] cancelMembership error:', error);
       throw error;
     }
+  }
+
+  async requestCancellationNegotiation(id, reason = 'Member requested cancellation') {
+    return this.cancelMembership(id, reason);
+  }
+
+  async fetchMyCancellationNegotiations(userId) {
+    const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    const response = await apiService.executeFetch(`/memberships/my/cancellation-negotiations${query}`, {
+      method: 'GET',
+      headers: apiService.getHeaders(),
+    }, 8000);
+    const json = await response.json();
+    if (!response.ok || !json.success) throw new Error(json.message || 'Failed to fetch cancellation negotiations.');
+    return json.data;
+  }
+
+  async respondToCancellationOffer(requestId, action, message = '') {
+    const response = await apiService.executeFetch(
+      `/memberships/cancellation-negotiations/${encodeURIComponent(requestId)}/member-response`,
+      {
+        method: 'PATCH',
+        headers: apiService.getHeaders(),
+        body: JSON.stringify({ action, message }),
+      },
+      8000
+    );
+    const json = await response.json();
+    if (!response.ok || !json.success) throw new Error(json.message || 'Failed to respond to refund offer.');
+    return json.data;
   }
 
   /**
