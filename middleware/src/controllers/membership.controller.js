@@ -2,12 +2,17 @@ import mongoose from 'mongoose';
 import crypto from 'node:crypto';
 import { Membership, MEMBERSHIP_TIERS } from '../models/membership.model.js';
 import { MembershipSwitchRequest } from '../models/membershipSwitchRequest.model.js';
+import { MembershipCancellation } from '../models/membershipCancellation.model.js';
 import { Wallet } from '../models/wallet.model.js';
 import Gym from '../models/gym.model.js';
 import Employee from '../models/employee.model.js';
 import User from '../models/user.model.js';
 import Counter from '../models/counter.model.js';
 import { ProrationEngine } from '../services/proration.service.js';
+import {
+  calculateCancellationQuote,
+  createCancellationRequestId,
+} from '../services/cancellationNegotiation.service.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 
@@ -700,15 +705,209 @@ export const cancelMembership = async (req, res, next) => {
       throw ApiError.badRequest('Membership is already cancelled.');
     }
 
-    membership.status = 'Cancelled';
-    membership.cancellation = {
-      cancelledAt: new Date(),
+    return requestCancellationNegotiation(
+      { ...req, params: { id }, body: { reason } },
+      res,
+      next
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const requestCancellationNegotiation = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const reason = String(req.body?.reason || 'Cancelled by member').trim();
+    const membership = await Membership.findOne(
+      mongoose.Types.ObjectId.isValid(id)
+        ? { $or: [{ _id: id }, { membershipId: id }] }
+        : { membershipId: id }
+    );
+    if (!membership) throw ApiError.notFound('Membership not found.');
+    if (membership.status === 'Cancelled') {
+      throw ApiError.badRequest('Membership is already cancelled.');
+    }
+
+    const activeNegotiation = await MembershipCancellation.findOne({
+      membershipId: membership._id,
+      status: { $in: ['PENDING_GYM_APPROVAL', 'PENDING_MEMBER_APPROVAL'] },
+    });
+    if (activeNegotiation) return res.status(200).json(ApiResponse.success(activeNegotiation, 'Cancellation negotiation already exists.'));
+
+    const quote = calculateCancellationQuote(membership);
+    const negotiation = await MembershipCancellation.create({
+      requestId: createCancellationRequestId(),
+      membershipId: membership._id,
+      gymId: membership.gymId,
+      userId: membership.userId,
       reason,
+      originalAmount: quote.originalAmount,
+      maximumRefundAmount: quote.maximumRefundAmount,
+    });
+
+    return res.status(201).json(ApiResponse.success(negotiation, 'Cancellation negotiation requested.'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMyCancellationNegotiations = async (req, res, next) => {
+  try {
+    const userId = req.user?.userId || req.user?.id || req.query.userId;
+    if (!userId) return res.status(200).json(ApiResponse.success([], 'Cancellation negotiations retrieved.'));
+    const filter = mongoose.Types.ObjectId.isValid(userId)
+      ? { userId: new mongoose.Types.ObjectId(userId) }
+      : { userId };
+    const negotiations = await MembershipCancellation.find(filter)
+      .populate('gymId', 'name partnerId logo address')
+      .populate('membershipId', 'membershipId membershipTier startDate endDate pricing')
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.status(200).json(ApiResponse.success(negotiations, 'Cancellation negotiations retrieved successfully.'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getGymCancellationNegotiations = async (req, res, next) => {
+  try {
+    const gym = await Gym.findOne(
+      mongoose.Types.ObjectId.isValid(req.params.gymId)
+        ? { $or: [{ _id: req.params.gymId }, { partnerId: req.params.gymId }] }
+        : { partnerId: req.params.gymId }
+    );
+    if (!gym) throw ApiError.notFound('Gym not found.');
+    const filter = { gymId: gym._id };
+    if (req.query.status) filter.status = req.query.status;
+    const negotiations = await MembershipCancellation.find(filter)
+      .populate('userId', 'fullName email phone avatar profilePicture')
+      .populate('membershipId', 'membershipId membershipTier startDate endDate pricing')
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.status(200).json(ApiResponse.success({ negotiations, total: negotiations.length }, 'Gym cancellation negotiations retrieved successfully.'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const findNegotiation = async (requestId) => {
+  const query = mongoose.Types.ObjectId.isValid(requestId)
+    ? { $or: [{ _id: requestId }, { requestId }] }
+    : { requestId };
+  const negotiation = await MembershipCancellation.findOne(query);
+  if (!negotiation) throw ApiError.notFound('Cancellation negotiation not found.');
+  return negotiation;
+};
+
+export const gymOfferCancellationRefund = async (req, res, next) => {
+  try {
+    const negotiation = await findNegotiation(req.params.requestId);
+    if (!['PENDING_GYM_APPROVAL', 'PENDING_MEMBER_APPROVAL'].includes(negotiation.status)) {
+      throw ApiError.badRequest('This negotiation can no longer be updated.');
+    }
+    const deductionAmount = Number(req.body.deductionAmount);
+    if (!Number.isFinite(deductionAmount) || deductionAmount < 0 || deductionAmount > negotiation.maximumRefundAmount) {
+      throw ApiError.badRequest(`Deduction must be between 0 and ${negotiation.maximumRefundAmount}.`);
+    }
+    const refundAmount = Math.round((negotiation.maximumRefundAmount - deductionAmount) * 100) / 100;
+    const offer = {
+      round: negotiation.offers.length + 1,
+      deductionAmount: Math.round(deductionAmount * 100) / 100,
+      refundAmount,
+      message: String(req.body.message || '').trim(),
+      offeredAt: new Date(),
     };
+    negotiation.offers.push(offer);
+    negotiation.currentOffer = offer;
+    negotiation.status = 'PENDING_MEMBER_APPROVAL';
+    await negotiation.save();
+    return res.status(200).json(ApiResponse.success(negotiation, 'Refund offer sent to the member.'));
+  } catch (error) {
+    next(error);
+  }
+};
 
-    await membership.save();
+export const gymAcceptCancellation = async (req, res, next) => {
+  try {
+    const negotiation = await findNegotiation(req.params.requestId);
+    if (!['PENDING_GYM_APPROVAL', 'PENDING_MEMBER_APPROVAL'].includes(negotiation.status)) {
+      throw ApiError.badRequest('This negotiation can no longer be updated.');
+    }
+    const deductionAmount = Number(req.body.deductionAmount ?? negotiation.currentOffer?.deductionAmount ?? 0);
+    if (!Number.isFinite(deductionAmount) || deductionAmount < 0 || deductionAmount > negotiation.maximumRefundAmount) {
+      throw ApiError.badRequest(`Deduction must be between 0 and ${negotiation.maximumRefundAmount}.`);
+    }
+    const refundAmount = Math.round((negotiation.maximumRefundAmount - deductionAmount) * 100) / 100;
+    negotiation.status = 'COMPLETED';
+    negotiation.approvedRefundAmount = refundAmount;
+    negotiation.completedAt = new Date();
+    if (!negotiation.currentOffer) {
+      negotiation.currentOffer = {
+        round: 1,
+        deductionAmount,
+        refundAmount,
+        message: String(req.body.message || 'Cancellation accepted by gym owner').trim(),
+        offeredAt: new Date(),
+      };
+    }
+    await negotiation.save();
+    await Membership.updateOne(
+      { _id: negotiation.membershipId },
+      { $set: { status: 'Cancelled', cancellation: { cancelledAt: new Date(), reason: negotiation.reason } } }
+    );
+    return res.status(200).json(ApiResponse.success(negotiation, 'Cancellation accepted and refund approved.'));
+  } catch (error) {
+    next(error);
+  }
+};
 
-    return res.status(200).json(ApiResponse.success(membership, 'Membership cancelled successfully.'));
+export const gymRejectCancellation = async (req, res, next) => {
+  try {
+    const negotiation = await findNegotiation(req.params.requestId);
+    if (negotiation.status !== 'PENDING_GYM_APPROVAL') {
+      throw ApiError.badRequest('Only a pending cancellation can be rejected.');
+    }
+    negotiation.status = 'REJECTED_BY_GYM';
+    negotiation.currentOffer = null;
+    await negotiation.save();
+    return res.status(200).json(ApiResponse.success(negotiation, 'Cancellation request rejected.'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const memberRespondCancellationOffer = async (req, res, next) => {
+  try {
+    const negotiation = await findNegotiation(req.params.requestId);
+    if (negotiation.status !== 'PENDING_MEMBER_APPROVAL' || !negotiation.currentOffer) {
+      throw ApiError.badRequest('There is no offer waiting for member approval.');
+    }
+    const action = String(req.body.action || '').toUpperCase();
+    if (!['ACCEPT', 'REJECT'].includes(action)) {
+      throw ApiError.badRequest("Action must be 'ACCEPT' or 'REJECT'.");
+    }
+    const round = negotiation.currentOffer.round;
+    negotiation.memberResponses.push({
+      round,
+      action: action === 'ACCEPT' ? 'ACCEPTED' : 'REJECTED',
+      respondedAt: new Date(),
+      message: String(req.body.message || '').trim(),
+    });
+    if (action === 'ACCEPT') {
+      negotiation.status = 'COMPLETED';
+      negotiation.approvedRefundAmount = negotiation.currentOffer.refundAmount;
+      negotiation.completedAt = new Date();
+      await negotiation.save();
+      await Membership.updateOne(
+        { _id: negotiation.membershipId },
+        { $set: { status: 'Cancelled', cancellation: { cancelledAt: new Date(), reason: negotiation.reason } } }
+      );
+    } else {
+      negotiation.status = 'PENDING_GYM_APPROVAL';
+    }
+    await negotiation.save();
+    return res.status(200).json(ApiResponse.success(negotiation, action === 'ACCEPT' ? 'Refund offer accepted.' : 'Offer rejected. Negotiation restarted with the gym owner.'));
   } catch (error) {
     next(error);
   }

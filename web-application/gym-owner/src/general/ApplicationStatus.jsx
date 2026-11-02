@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { BANKS, getBankByName } from '../utils/bankData';
 import {
   Button,
   Image,
@@ -1770,7 +1771,18 @@ export const ApplicationStatus = () => {
 
                       <Col xs={24} sm={12}>
                         <Form.Item label="Bank Name" name="bankName">
-                          <Input placeholder="e.g. HDFC Bank" />
+                          <Select
+                            showSearch
+                            optionFilterProp="children"
+                            placeholder="Select bank"
+                            onChange={(bankName) => {
+                              editForm.setFieldValue('ifscCode', getBankByName(bankName)?.ifscPrefix || '');
+                            }}
+                          >
+                            {BANKS.map((bank) => (
+                              <Select.Option key={bank.name} value={bank.name}>{bank.name}</Select.Option>
+                            ))}
+                          </Select>
                         </Form.Item>
                       </Col>
 

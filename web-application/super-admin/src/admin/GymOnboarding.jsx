@@ -52,6 +52,7 @@ import { useDispatch } from 'react-redux';
 import { addGym } from '../redux/slices/gymSlice';
 import { useTheme } from '../theme/ThemeContext';
 import { apiClient } from '../services/apiClient';
+import { BANKS, getBankByName } from '../utils/bankData';
 
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
@@ -385,7 +386,7 @@ export const GymOnboarding = () => {
     commissionRate: 10,
     settlementCycle: 'Daily (T+1)',
     accountHolder: '',
-    bankName: 'HDFC Bank',
+    bankName: '',
     accountNumber: '',
     ifscCode: '',
     upiId: '',
@@ -414,8 +415,11 @@ export const GymOnboarding = () => {
         if (!strVal) {
           error = 'Contact Mobile Number is required';
         } else {
-          const cleanPhone = strVal.replace(/^\+91\s*|^91\s*/, '').replace(/\D/g, '');
-          if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+          const normalizedPhone = strVal.replace(/[\s()-]/g, '');
+          const phoneDigits = /^(?:\+91|91)\d{10}$/.test(normalizedPhone)
+            ? normalizedPhone.replace(/^(?:\+91|91)/, '')
+            : normalizedPhone;
+          if (!/^[6-9]\d{9}$/.test(phoneDigits)) {
             error = 'Enter a valid 10-digit Indian mobile number (e.g. 9876543210)';
           }
         }
@@ -540,6 +544,26 @@ export const GymOnboarding = () => {
         delete next[name];
       }
       return next;
+    });
+  };
+
+  const handleFieldsChange = (changes) => {
+    const updatedData = { ...formData, ...changes };
+    setFormData(updatedData);
+
+    Object.entries(changes).forEach(([name, value]) => {
+      setTouched((prev) => ({ ...prev, [name]: true }));
+
+      const fieldErr = validateField(name, value, updatedData);
+      setErrors((prev) => {
+        const next = { ...prev };
+        if (fieldErr) {
+          next[name] = fieldErr;
+        } else {
+          delete next[name];
+        }
+        return next;
+      });
     });
   };
 
@@ -1234,8 +1258,17 @@ export const GymOnboarding = () => {
                     <Input
                       addonBefore="+91"
                       value={formData.phone}
+                      maxLength={12}
                       status={touched.phone && errors.phone ? 'error' : ''}
-                      onChange={(e) => handleFieldChange('phone', e.target.value)}
+                      onChange={(e) => {
+                        let digits = e.target.value.replace(/\D/g, '');
+                        if (digits.length === 12 && digits.startsWith('91')) {
+                          digits = digits.slice(2);
+                        } else if (digits.length === 11 && digits.startsWith('0')) {
+                          digits = digits.slice(1);
+                        }
+                        handleFieldChange('phone', digits.slice(0, 10));
+                      }}
                       onBlur={() => handleFieldBlur('phone')}
                       style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                     />
@@ -1264,13 +1297,16 @@ export const GymOnboarding = () => {
                       value={formData.password}
                       maxLength={16}
                       status={touched.password && errors.password ? 'error' : ''}
-                      onChange={(e) => {
-                        const cleanVal = e.target.value.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|[^\x20-\x7E]/gu, '');
-                        handleFieldChange('password', cleanVal);
-                      }}
+                      onChange={(e) => handleFieldChange('password', e.target.value)}
                       onBlur={() => handleFieldBlur('password')}
                       style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                     />
+                    <Text
+                      type="secondary"
+                      style={{ display: 'block', fontSize: 11, marginTop: 5, lineHeight: 1.5 }}
+                    >
+                      Use 8-16 characters with 1 uppercase letter, 1 number, and 1 symbol.
+                    </Text>
                     {renderFieldError('password')}
                   </Col>
 
@@ -1899,8 +1935,7 @@ export const GymOnboarding = () => {
                           beforeUpload={async (file) => {
                             try {
                               const base64 = await fileToBase64(file);
-                              handleFieldChange('logo', base64);
-                              handleFieldChange('coverPhoto', base64);
+                              handleFieldsChange({ logo: base64, coverPhoto: base64 });
                               message.success(`Gym logo "${file.name}" attached!`);
                             } catch {
                               message.error('Failed to read image file');
@@ -1965,8 +2000,7 @@ export const GymOnboarding = () => {
                             beforeUpload={async (file) => {
                               try {
                                 const base64 = await fileToBase64(file);
-                                handleFieldChange('logo', base64);
-                                handleFieldChange('coverPhoto', base64);
+                                handleFieldsChange({ logo: base64, coverPhoto: base64 });
                                 message.success(`Gym logo updated with "${file.name}"!`);
                               } catch {
                                 message.error('Failed to read image file');
@@ -1981,8 +2015,7 @@ export const GymOnboarding = () => {
                             danger
                             icon={<DeleteOutlined />}
                             onClick={() => {
-                              handleFieldChange('logo', '');
-                              handleFieldChange('coverPhoto', '');
+                              handleFieldsChange({ logo: '', coverPhoto: '' });
                             }}
                           >
                             Remove
@@ -2451,15 +2484,20 @@ export const GymOnboarding = () => {
                     </div>
                     <Select
                       value={formData.bankName}
-                      onChange={(v) => handleFieldChange('bankName', v)}
+                      showSearch
+                      optionFilterProp="children"
+                      placeholder="Select bank"
+                      onChange={(bankName) => {
+                        handleFieldsChange({
+                          bankName,
+                          ifscCode: getBankByName(bankName)?.ifscPrefix || '',
+                        });
+                      }}
                       style={{ width: '100%', height: 40 }}
                     >
-                      <Option value="HDFC Bank">HDFC Bank</Option>
-                      <Option value="ICICI Bank">ICICI Bank</Option>
-                      <Option value="State Bank of India">State Bank of India</Option>
-                      <Option value="Axis Bank">Axis Bank</Option>
-                      <Option value="Kotak Mahindra Bank">Kotak Mahindra Bank</Option>
-                      <Option value="IndusInd Bank">IndusInd Bank</Option>
+                      {BANKS.map((bank) => (
+                        <Option key={bank.name} value={bank.name}>{bank.name}</Option>
+                      ))}
                     </Select>
                   </Col>
 
