@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import { apiService } from '../services/apiService';
+import { membershipService } from '../services/membershipService';
 
 const BookingContext = createContext();
 
@@ -156,20 +157,18 @@ export const BookingProvider = ({ children }) => {
     );
   };
 
-  const cancelMembership = (membershipId, reason) => {
+  const cancelMembership = async (membershipId, reason) => {
+    const negotiation = await membershipService.requestCancellationNegotiation(membershipId, reason);
     setMemberships((prev) =>
       prev.map((m) =>
         m.id === membershipId ||
         (m._id && String(m._id) === String(membershipId)) ||
         m.membershipId === membershipId
-          ? {
-              ...m,
-              status: 'Cancelled',
-              cancellationReason: reason,
-            }
+          ? { ...m, cancellationNegotiation: negotiation, cancellationStatus: negotiation.status }
           : m
       )
     );
+    return negotiation;
   };
 
   const setAllMemberships = (items) => {

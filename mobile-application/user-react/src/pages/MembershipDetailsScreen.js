@@ -627,13 +627,20 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleConfirmCancel = () => {
-    cancelMembership(membership._id || membership.id, selectedReason);
-    setShowCancelSheet(false);
-    showToast({
-      message: 'Cancellation request submitted successfully',
-      isSuccess: true,
-    });
+  const handleConfirmCancel = async () => {
+    try {
+      await cancelMembership(membership._id || membership.id, selectedReason);
+      setShowCancelSheet(false);
+      showToast({
+        message: 'Cancellation negotiation submitted successfully',
+        isSuccess: true,
+      });
+    } catch (error) {
+      showToast({
+        message: error.message || 'Failed to submit cancellation negotiation.',
+        isSuccess: false,
+      });
+    }
   };
 
   const shouldShowNoticeBanner =
