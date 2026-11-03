@@ -35,6 +35,7 @@ import {
   ShopOutlined,
   StarFilled,
   StopOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { customerService } from '../services/customerService';
