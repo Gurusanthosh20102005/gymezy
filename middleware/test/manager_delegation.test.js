@@ -100,3 +100,4 @@ test('Gym Manager vs. Gym Admin Delegation Architecture Tests', async (t) => {
     assert.strictEqual(cancellation.status, 'PENDING_GYM_ADMIN_APPROVAL');
   });
 });
+

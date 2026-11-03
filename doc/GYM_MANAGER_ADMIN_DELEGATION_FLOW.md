@@ -217,3 +217,4 @@ All delegation rules are verified under automated unit tests in `middleware/test
 - ✅ State validation for `PENDING_GYM_ADMIN_APPROVAL` in Membership Switch requests.
 - ✅ State validation for `PENDING_GYM_ADMIN_APPROVAL` in Membership Cancellation requests.
 - **Run command:** `node --test middleware/test/*.test.js` (34/34 passing).
+

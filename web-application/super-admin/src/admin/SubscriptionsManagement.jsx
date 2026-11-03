@@ -630,21 +630,6 @@ export const SubscriptionsManagement = () => {
         </Space>
       ),
     },
-        return (
-          <Button
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => {
-              setSelectedAdminSwitchReq(record);
-              setIsAdminSwitchModalOpen(true);
-            }}
-            style={{ borderRadius: 'var(--radius-base)', fontSize: 12, fontWeight: 500, height: 30, padding: '0 14px' }}
-          >
-            View Details
-          </Button>
-        );
-      },
-    },
   ];
 
   // Selected Partner for details modal
