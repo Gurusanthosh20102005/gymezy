@@ -1,8 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
-  Row,
-  Col,
   Input,
   Select,
   Button,
@@ -11,10 +9,10 @@ import {
   Modal,
   Pagination,
   Typography,
-  Space,
   message,
+  Avatar,
+  Divider,
   Tooltip,
-  Alert,
 } from 'antd';
 import {
   SearchOutlined,
@@ -27,297 +25,92 @@ import {
   CalendarOutlined,
   EnvironmentOutlined,
   PhoneOutlined,
-  CloseOutlined,
   CreditCardOutlined,
   DollarOutlined,
-  ExclamationCircleOutlined,
   InfoCircleOutlined,
+  UserOutlined,
+  ShopOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
+import { transactionService } from '../services/transactionService';
 
 const { Option } = Select;
+const { Text } = Typography;
 
-// Sample Initial Transactions Data matching user mockup exactly
-const INITIAL_TRANSACTIONS = [
-  {
-    key: '1',
-    id: 1,
-    transactionId: 'TXN100123456',
-    customerName: 'Arun Kumar',
-    customerId: 'CUST100245',
-    customerPhone: '+91 98765 43210',
-    customerInitials: 'AK',
-    avatarColor: '#f3e8ff',
-    avatarTextColor: '#7e22ce',
-    bookingId: 'BK100121',
-    gymName: 'FitZone Gym',
-    gymLocation: 'Anna Nagar, Chennai',
-    bookingDate: '18 May 2026',
-    bookingTime: '07:30 AM',
-    daysBooked: '18 May 2026 - 25 May 2026 (8 Days)',
-    dateTime: '18 May 2026 07:28 AM',
-    transactionDate: '18 May 2026, 07:28 AM',
-    amount: '350.00',
-    paymentMode: 'UPI',
-    gatewayTxnId: 'UPI418526780912',
-    status: 'Completed',
-  },
-  {
-    key: '2',
-    id: 2,
-    transactionId: 'TXN100123457',
-    customerName: 'Priya Sharma',
-    customerId: 'CUST100246',
-    customerPhone: '+91 91234 56789',
-    customerInitials: 'PS',
-    avatarColor: '#fce7f3',
-    avatarTextColor: '#db2777',
-    bookingId: 'BK100122',
-    gymName: 'Powerhouse Gym',
-    gymLocation: 'T. Nagar, Chennai',
-    bookingDate: '18 May 2026',
-    bookingTime: '06:15 PM',
-    daysBooked: '18 May 2026 - 18 May 2026 (1 Day)',
-    dateTime: '18 May 2026 06:15 PM',
-    transactionDate: '18 May 2026, 06:15 PM',
-    amount: '250.00',
-    paymentMode: 'Online (Card)',
-    gatewayTxnId: 'CARD_992147102',
-    status: 'Completed',
-  },
-  {
-    key: '3',
-    id: 3,
-    transactionId: 'TXN100123458',
-    customerName: 'Rahul Krishnan',
-    customerId: 'CUST100247',
-    customerPhone: '+91 99887 66554',
-    customerInitials: 'RK',
-    avatarColor: '#dcfce7',
-    avatarTextColor: '#16a34a',
-    bookingId: 'BK100123',
-    gymName: 'Muscle Factory',
-    gymLocation: 'Adyar, Chennai',
-    bookingDate: '17 May 2026',
-    bookingTime: '09:10 AM',
-    daysBooked: '17 May 2026 - 17 May 2026 (1 Day)',
-    dateTime: '17 May 2026 09:10 AM',
-    transactionDate: '17 May 2026, 09:10 AM',
-    amount: '250.00',
-    paymentMode: 'UPI',
-    gatewayTxnId: 'UPI901238472910',
-    status: 'Cancelled',
-  },
-  {
-    key: '4',
-    id: 4,
-    transactionId: 'TXN100123459',
-    customerName: 'Sneha Nair',
-    customerId: 'CUST100248',
-    customerPhone: '+91 90123 45678',
-    customerInitials: 'SN',
-    avatarColor: '#ffedd5',
-    avatarTextColor: '#ea580c',
-    bookingId: 'BK100124',
-    gymName: 'Iron Club',
-    gymLocation: 'Velachery, Chennai',
-    bookingDate: '16 May 2026',
-    bookingTime: '07:00 PM',
-    daysBooked: '16 May 2026 - 16 May 2026 (1 Day)',
-    dateTime: '16 May 2026 07:00 PM',
-    transactionDate: '16 May 2026, 07:00 PM',
-    amount: '300.00',
-    paymentMode: 'Pay at Gym',
-    gatewayTxnId: 'CASH_REC_1092',
-    status: 'Completed',
-  },
-  {
-    key: '5',
-    id: 5,
-    transactionId: 'TXN100123460',
-    customerName: 'Vijay Joseph',
-    customerId: 'CUST100249',
-    customerPhone: '+91 93456 78901',
-    customerInitials: 'VJ',
-    avatarColor: '#e0e7ff',
-    avatarTextColor: '#4f46e5',
-    bookingId: 'BK100125',
-    gymName: 'Fitness First',
-    gymLocation: 'Porur, Chennai',
-    bookingDate: '16 May 2026',
-    bookingTime: '06:30 AM',
-    daysBooked: '16 May 2026 - 16 May 2026 (1 Day)',
-    dateTime: '16 May 2026 06:30 AM',
-    transactionDate: '16 May 2026, 06:30 AM',
-    amount: '300.00',
-    paymentMode: 'UPI',
-    gatewayTxnId: 'UPI109283746152',
-    status: 'Completed',
-  },
-  {
-    key: '6',
-    id: 6,
-    transactionId: 'TXN100123461',
-    customerName: 'Ananya Singh',
-    customerId: 'CUST100250',
-    customerPhone: '+91 98712 34567',
-    customerInitials: 'AS',
-    avatarColor: '#ccfbf1',
-    avatarTextColor: '#0d9488',
-    bookingId: 'BK100126',
-    gymName: 'Body Garage',
-    gymLocation: 'OMR, Chennai',
-    bookingDate: '15 May 2026',
-    bookingTime: '08:45 PM',
-    daysBooked: '15 May 2026 - 15 May 2026 (1 Day)',
-    dateTime: '15 May 2026 08:45 PM',
-    transactionDate: '15 May 2026, 08:45 PM',
-    amount: '350.00',
-    paymentMode: 'Online (NetBanking)',
-    gatewayTxnId: 'NETB_7788990011',
-    status: 'Completed',
-  },
-  {
-    key: '7',
-    id: 7,
-    transactionId: 'TXN100123462',
-    customerName: 'Manoj Gupta',
-    customerId: 'CUST100251',
-    customerPhone: '+91 98123 65432',
-    customerInitials: 'MG',
-    avatarColor: '#fef3c7',
-    avatarTextColor: '#d97706',
-    bookingId: 'BK100127',
-    gymName: 'Next Level Fitness',
-    gymLocation: 'Tambaram, Chennai',
-    bookingDate: '15 May 2026',
-    bookingTime: '06:20 PM',
-    daysBooked: '15 May 2026 - 15 May 2026 (1 Day)',
-    dateTime: '15 May 2026 06:20 PM',
-    transactionDate: '15 May 2026, 06:20 PM',
-    amount: '250.00',
-    paymentMode: 'UPI',
-    gatewayTxnId: 'UPI998877665544',
-    status: 'Cancelled',
-  },
-  {
-    key: '8',
-    id: 8,
-    transactionId: 'TXN100123463',
-    customerName: 'Harish Babu',
-    customerId: 'CUST100253',
-    customerPhone: '+91 90987 61234',
-    customerInitials: 'HB',
-    avatarColor: '#fce7f3',
-    avatarTextColor: '#be185d',
-    bookingId: 'BK100128',
-    gymName: 'Fitness Pro',
-    gymLocation: 'Nungambakkam, Chennai',
-    bookingDate: '14 May 2026',
-    bookingTime: '10:05 AM',
-    daysBooked: '14 May 2026 - 14 May 2026 (1 Day)',
-    dateTime: '14 May 2026 10:05 AM',
-    transactionDate: '14 May 2026, 10:05 AM',
-    amount: '350.00',
-    paymentMode: 'Online (Card)',
-    gatewayTxnId: 'CARD_881290312',
-    status: 'Completed',
-  },
-  {
-    key: '9',
-    id: 9,
-    transactionId: 'TXN100123464',
-    customerName: 'Nithya Thakur',
-    customerId: 'CUST100254',
-    customerPhone: '+91 94876 54321',
-    customerInitials: 'NT',
-    avatarColor: '#dbeafe',
-    avatarTextColor: '#1d4ed8',
-    bookingId: 'BK100129',
-    gymName: 'Gold Gym',
-    gymLocation: 'Alwarpet, Chennai',
-    bookingDate: '14 May 2026',
-    bookingTime: '09:15 AM',
-    daysBooked: '14 May 2026 - 21 May 2026 (7 Days)',
-    dateTime: '14 May 2026 09:15 AM',
-    transactionDate: '14 May 2026, 09:15 AM',
-    amount: '500.00',
-    paymentMode: 'UPI',
-    gatewayTxnId: 'UPI556677889900',
-    status: 'Pending',
-  },
-  {
-    key: '10',
-    id: 10,
-    transactionId: 'TXN100123465',
-    customerName: 'Deepak Raj',
-    customerId: 'CUST100255',
-    customerPhone: '+91 97890 12345',
-    customerInitials: 'DR',
-    avatarColor: '#f1f5f9',
-    avatarTextColor: '#334155',
-    bookingId: 'BK100130',
-    gymName: 'Talwalkars Gym',
-    gymLocation: 'Kilpauk, Chennai',
-    bookingDate: '13 May 2026',
-    bookingTime: '05:40 PM',
-    daysBooked: '13 May 2026 - 13 May 2026 (1 Day)',
-    dateTime: '13 May 2026 05:40 PM',
-    transactionDate: '13 May 2026, 05:40 PM',
-    amount: '250.00',
-    paymentMode: 'Pay at Gym',
-    gatewayTxnId: 'CASH_REC_1098',
-    status: 'Completed',
-  },
-];
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 export const TransactionsManagement = () => {
   const { isDarkMode } = useTheme();
 
-  // Filters State
+  // Data & Loading States
+  const [transactions, setTransactions] = useState([]);
+  const [stats, setStats] = useState({
+    totalTransactions: 0,
+    successfulTransactions: 0,
+    successfulPct: '0%',
+    pendingTransactions: 0,
+    pendingPct: '0%',
+    failedTransactions: 0,
+    failedPct: '0%',
+    totalAmount: '0.00',
+  });
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  // Filters & Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentModeFilter, setPaymentModeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
 
-  // Selected Transaction for details modal
-  const [selectedTransaction, setSelectedTransaction] = useState(INITIAL_TRANSACTIONS[0]);
+  // Modal State
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-
-  // Refund Modal State
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [refundReason, setRefundReason] = useState('Customer Request');
 
-  // Cancel Booking Modal State
-  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
-
-  // Filtered List
-  const filteredTransactions = useMemo(() => {
-    return INITIAL_TRANSACTIONS.filter((item) => {
-      // Payment Mode Filter
-      if (paymentModeFilter !== 'all' && item.paymentMode.toLowerCase() !== paymentModeFilter.toLowerCase()) {
-        return false;
+  // Fetch Transactions from Backend API
+  const fetchTransactions = useCallback(
+    async (page = 1, search = searchQuery, mode = paymentModeFilter, status = statusFilter) => {
+      setLoading(true);
+      try {
+        const params = {
+          page,
+          limit: pageSize,
+          search: search.trim() || undefined,
+          paymentMode: mode === 'all' ? undefined : mode,
+          status: status === 'all' ? undefined : status,
+        };
+        const res = await transactionService.getTransactions(params);
+        setTransactions(res.transactions || []);
+        if (res.stats) setStats(res.stats);
+        if (res.pagination) {
+          setTotalRecords(res.pagination.totalRecords || 0);
+          setCurrentPage(res.pagination.page || 1);
+        }
+      } catch (err) {
+        console.error('Failed to load transactions:', err);
+        message.error('Failed to fetch transactions from server');
+      } finally {
+        setLoading(false);
       }
+    },
+    [pageSize, searchQuery, paymentModeFilter, statusFilter]
+  );
 
-      // Status Filter
-      if (statusFilter !== 'all' && item.status.toLowerCase() !== statusFilter.toLowerCase()) {
-        return false;
-      }
+  useEffect(() => {
+    fetchTransactions(currentPage, searchQuery, paymentModeFilter, statusFilter);
+  }, [fetchTransactions, currentPage, paymentModeFilter, statusFilter]);
 
-      // Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchName = item.customerName.toLowerCase().includes(q);
-        const matchTxn = item.transactionId.toLowerCase().includes(q) || item.gatewayTxnId.toLowerCase().includes(q);
-        const matchBooking = item.bookingId.toLowerCase().includes(q);
-        if (!matchName && !matchTxn && !matchBooking) return false;
-      }
-
-      return true;
-    });
-  }, [searchQuery, paymentModeFilter, statusFilter]);
-
-  // Handle View
+  // Open Details Modal
   const handleView = (record) => {
     setSelectedTransaction(record);
     setIsDetailsModalOpen(true);
@@ -325,17 +118,65 @@ export const TransactionsManagement = () => {
 
   // Handle Initiate Refund
   const handleInitiateRefund = () => {
-    message.success(`Refund of ₹${selectedTransaction.amount} initiated for ${selectedTransaction.transactionId} successfully!`);
+    message.success(
+      `Refund of ₹${selectedTransaction?.amount} initiated for ${selectedTransaction?.transactionId} successfully!`
+    );
     setIsRefundModalOpen(false);
   };
 
   // Handle Cancel Booking
   const handleCancelBooking = () => {
-    message.warning(`Booking ${selectedTransaction.bookingId} has been cancelled.`);
+    message.warning(`Booking ${selectedTransaction?.bookingId} has been cancelled.`);
     setIsCancelModalOpen(false);
   };
 
-  // Columns for Transaction Table
+  // Export CSV Handler
+  const handleExportCSV = () => {
+    if (transactions.length === 0) {
+      message.warning('No transactions available to export');
+      return;
+    }
+    const headers = [
+      'Transaction ID',
+      'Gateway Txn ID',
+      'Customer Name',
+      'Customer Phone',
+      'Customer Email',
+      'Reference ID',
+      'Reference Type',
+      'Gym Name',
+      'Date & Time',
+      'Amount',
+      'Payment Mode',
+      'Status',
+    ];
+    const rows = transactions.map((t) => [
+      t.transactionId || '',
+      t.gatewayTxnId || '',
+      t.customerName || '',
+      t.customerPhone || '',
+      t.customerEmail || '',
+      t.referenceId || '',
+      t.referenceType || '',
+      t.gymName || '',
+      t.dateTime || '',
+      t.amount || '0',
+      t.paymentMode || '',
+      t.status || '',
+    ]);
+    const csvContent =
+      'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Gymezy_Transactions_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    message.success('Transactions exported to CSV');
+  };
+
+  // Table Columns
   const columns = [
     {
       title: 'Transaction ID',
@@ -343,64 +184,123 @@ export const TransactionsManagement = () => {
       key: 'transactionId',
       width: 170,
       render: (text, record) => (
-        <span
-          onClick={() => handleView(record)}
-          style={{
-            fontWeight: 700,
-            color: '#4f46e5',
-            cursor: 'pointer',
-            textDecoration: 'underline',
-          }}
-        >
-          {text}
-        </span>
+        <Tooltip title="View transaction details">
+          <span
+            onClick={() => handleView(record)}
+            style={{
+              fontWeight: 750,
+              color: '#4f46e5',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              fontSize: 13,
+            }}
+          >
+            {text}
+          </span>
+        </Tooltip>
       ),
     },
     {
       title: 'Customer',
-      dataIndex: 'customerName',
-      key: 'customerName',
-      width: 160,
-      render: (name, record) => (
-        <span
-          onClick={() => handleView(record)}
-          style={{
-            fontWeight: 700,
-            color: isDarkMode ? '#818cf8' : '#4338ca',
-            cursor: 'pointer',
-            textDecoration: 'underline',
-          }}
-        >
-          {name}
-        </span>
+      key: 'customer',
+      width: 200,
+      render: (_, record) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {hasValidProfilePic(record.avatar) ? (
+            <Avatar src={record.avatar} size={34} style={{ flexShrink: 0 }} />
+          ) : (
+            <Avatar
+              icon={<UserOutlined style={{ fontSize: 16 }} />}
+              size={34}
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            />
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div
+              onClick={() => handleView(record)}
+              style={{
+                fontWeight: 700,
+                fontSize: 13,
+                color: isDarkMode ? '#818cf8' : '#4338ca',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {record.customerName}
+            </div>
+            <div style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+              {record.customerPhone !== '—' ? record.customerPhone : record.customerId}
+            </div>
+          </div>
+        </div>
       ),
     },
     {
-      title: 'Booking ID',
-      dataIndex: 'bookingId',
-      key: 'bookingId',
-      width: 130,
-      render: (id, record) => (
-        <span
-          onClick={() => handleView(record)}
-          style={{
-            fontWeight: 700,
-            color: '#4f46e5',
-            cursor: 'pointer',
-            textDecoration: 'underline',
-          }}
-        >
-          {id}
-        </span>
+      title: 'Reference / Item',
+      key: 'reference',
+      width: 170,
+      render: (_, record) => {
+        const isMem = record.referenceType === 'MEMBERSHIP';
+        return (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <Tag
+                color={isMem ? 'purple' : 'blue'}
+                style={{ padding: '1px 6px', fontSize: 10, fontWeight: 700, borderRadius: 4, margin: 0 }}
+              >
+                {isMem ? 'Membership' : 'Booking'}
+              </Tag>
+              <span style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 12, color: '#4f46e5' }}>
+                {record.referenceId}
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: 11.5,
+                color: isDarkMode ? '#cbd5e1' : '#475569',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 160,
+              }}
+            >
+              {record.title}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Gym Partner',
+      key: 'gym',
+      width: 170,
+      render: (_, record) => (
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 13, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+            {record.gymName}
+          </div>
+          <div style={{ fontSize: 11.5, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+            {record.gymLocation}
+          </div>
+        </div>
       ),
     },
     {
       title: 'Date & Time',
       dataIndex: 'dateTime',
       key: 'dateTime',
-      width: 180,
+      width: 170,
       render: (text) => (
-        <span style={{ fontSize: 13, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+        <span style={{ fontSize: 12.5, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
           {text}
         </span>
       ),
@@ -409,10 +309,10 @@ export const TransactionsManagement = () => {
       title: 'Amount',
       dataIndex: 'amount',
       key: 'amount',
-      width: 130,
+      width: 120,
       render: (val) => (
-        <span style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-          ₹ {val}
+        <span style={{ fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+          ₹ {Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
         </span>
       ),
     },
@@ -420,18 +320,27 @@ export const TransactionsManagement = () => {
       title: 'Payment Mode',
       dataIndex: 'paymentMode',
       key: 'paymentMode',
-      width: 160,
+      width: 130,
       render: (mode) => (
-        <span style={{ fontSize: 13, color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>
-          {mode}
-        </span>
+        <Tag
+          color="default"
+          style={{
+            borderRadius: 6,
+            fontWeight: 600,
+            fontSize: 12,
+            backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9',
+            borderColor: isDarkMode ? '#334155' : '#cbd5e1',
+          }}
+        >
+          {mode || 'UPI'}
+        </Tag>
       ),
     },
     {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 130,
+      width: 120,
       render: (status) => {
         let bg = isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#eaf8ef';
         let color = '#00bf62';
@@ -441,6 +350,9 @@ export const TransactionsManagement = () => {
         } else if (status === 'Pending') {
           bg = isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#fef4e8';
           color = '#d97706';
+        } else if (status === 'Refunded') {
+          bg = isDarkMode ? 'rgba(168, 85, 247, 0.15)' : '#f3effe';
+          color = '#7e22ce';
         }
         return (
           <span
@@ -487,11 +399,11 @@ export const TransactionsManagement = () => {
 
   return (
     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
-      {/* 1. TOP 5 METRIC CARDS (IN ONE LINE) */}
+      {/* 1. TOP 5 LIVE METRIC CARDS */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: 16,
           marginBottom: 20,
         }}
@@ -518,17 +430,17 @@ export const TransactionsManagement = () => {
                 flexShrink: 0,
               }}
             >
-              <span style={{ fontSize: 20, fontWeight: 900, color: '#6366f1' }}>₹</span>
+              <CreditCardOutlined style={{ fontSize: 20, color: '#6366f1' }} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
                 Total Transactions
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                12,845
+                {(stats.totalTransactions || 0).toLocaleString('en-IN')}
               </div>
               <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
-                All time
+                All Platform Txns
               </div>
             </div>
           </div>
@@ -559,14 +471,14 @@ export const TransactionsManagement = () => {
               <CheckCircleOutlined style={{ fontSize: 20, color: '#00bf62' }} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
                 Successful
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                10,256
+                {(stats.successfulTransactions || 0).toLocaleString('en-IN')}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#00bf62' }}>
-                79.80%
+                {stats.successfulPct || '0%'}
               </div>
             </div>
           </div>
@@ -597,20 +509,20 @@ export const TransactionsManagement = () => {
               <ClockCircleOutlined style={{ fontSize: 20, color: '#f59e0b' }} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
                 Pending
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                356
+                {(stats.pendingTransactions || 0).toLocaleString('en-IN')}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b' }}>
-                2.77%
+                {stats.pendingPct || '0%'}
               </div>
             </div>
           </div>
         </Card>
 
-        {/* Failed */}
+        {/* Failed / Cancelled */}
         <Card
           style={{
             backgroundColor: 'var(--bg-surface-elevated)',
@@ -635,14 +547,14 @@ export const TransactionsManagement = () => {
               <CloseCircleOutlined style={{ fontSize: 20, color: '#ef4444' }} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Failed
+              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                Failed / Cancelled
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                987
+                {(stats.failedTransactions || 0).toLocaleString('en-IN')}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>
-                7.68%
+                {stats.failedPct || '0%'}
               </div>
             </div>
           </div>
@@ -673,22 +585,21 @@ export const TransactionsManagement = () => {
               <WalletOutlined style={{ fontSize: 20, color: '#6366f1' }} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Total Amount
+              <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                Total Revenue
               </div>
-              <div style={{ fontSize: 17, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0', whiteSpace: 'nowrap' }}>
-                ₹ 18,75,430
+              <div style={{ fontSize: 18, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
+                ₹ {Number(stats.totalAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </div>
-              <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
-                All time
+              <div style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>
+                Gross Settlement
               </div>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* 2. FULL-WIDTH TRANSACTIONS TABLE & FILTERS */}
-      {/* Filter Bar */}
+      {/* 2. FILTER CONTROLS & EXPORT BAR */}
       <Card
         style={{
           backgroundColor: 'var(--bg-surface-elevated)',
@@ -698,42 +609,80 @@ export const TransactionsManagement = () => {
         }}
         styles={{ body: { padding: '14px 18px' } }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <Input
-            placeholder="Search by customer name, transaction ID, booking ID..."
-            prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ flex: 1, minWidth: 220, borderRadius: 'var(--radius-base)' }}
-            allowClear
-          />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 }}>
+            <Input
+              placeholder="Search by customer name, phone, transaction ID, booking ID..."
+              prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onPressEnter={() => {
+                setCurrentPage(1);
+                fetchTransactions(1, searchQuery, paymentModeFilter, statusFilter);
+              }}
+              style={{ minWidth: 260, maxWidth: 380, borderRadius: 'var(--radius-base)' }}
+              allowClear
+            />
 
-          <Select
-            value={paymentModeFilter}
-            onChange={setPaymentModeFilter}
-            style={{ width: 180 }}
-          >
-            <Option value="all">All Payment Modes</Option>
-            <Option value="upi">UPI</Option>
-            <Option value="online (card)">Online (Card)</Option>
-            <Option value="online (netbanking)">Online (NetBanking)</Option>
-            <Option value="pay at gym">Pay at Gym</Option>
-          </Select>
+            <Button
+              type="primary"
+              icon={<SearchOutlined />}
+              onClick={() => {
+                setCurrentPage(1);
+                fetchTransactions(1, searchQuery, paymentModeFilter, statusFilter);
+              }}
+              style={{ backgroundColor: '#4f46e5', borderRadius: 'var(--radius-base)' }}
+            >
+              Search
+            </Button>
 
-          <Select
-            value={statusFilter}
-            onChange={setStatusFilter}
-            style={{ width: 140 }}
+            <Select
+              value={paymentModeFilter}
+              onChange={(val) => {
+                setPaymentModeFilter(val);
+                setCurrentPage(1);
+              }}
+              style={{ width: 170 }}
+            >
+              <Option value="all">All Payment Modes</Option>
+              <Option value="UPI">UPI</Option>
+              <Option value="Card">Card</Option>
+              <Option value="Net Banking">Net Banking</Option>
+              <Option value="Cash">Cash / Desk</Option>
+              <Option value="Wallet">Wallet</Option>
+            </Select>
+
+            <Select
+              value={statusFilter}
+              onChange={(val) => {
+                setStatusFilter(val);
+                setCurrentPage(1);
+              }}
+              style={{ width: 140 }}
+            >
+              <Option value="all">All Status</Option>
+              <Option value="Completed">Completed</Option>
+              <Option value="Pending">Pending</Option>
+              <Option value="Cancelled">Cancelled</Option>
+              <Option value="Refunded">Refunded</Option>
+            </Select>
+          </div>
+
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={handleExportCSV}
+            style={{
+              borderRadius: 'var(--radius-base)',
+              fontWeight: 600,
+              borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+            }}
           >
-            <Option value="all">All Status</Option>
-            <Option value="completed">Completed</Option>
-            <Option value="cancelled">Cancelled</Option>
-            <Option value="pending">Pending</Option>
-          </Select>
+            Export CSV
+          </Button>
         </div>
       </Card>
 
-      {/* Table */}
+      {/* 3. TRANSACTIONS TABLE */}
       <Card
         style={{
           backgroundColor: 'var(--bg-surface-elevated)',
@@ -745,24 +694,45 @@ export const TransactionsManagement = () => {
       >
         <Table
           columns={columns}
-          dataSource={filteredTransactions}
+          dataSource={transactions}
+          loading={loading}
           pagination={false}
-          rowKey="key"
-          scroll={{ x: 1150 }}
+          rowKey={(r) => r.key || r.transactionId}
+          scroll={{ x: 1200 }}
+          locale={{ emptyText: 'No transactions found for the selected filter.' }}
         />
+
+        {/* Server-Side Pagination Bar */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '16px 20px',
+            borderTop: `1px solid ${isDarkMode ? '#1e293b' : '#e2e8f0'}`,
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+            Showing {transactions.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} to{' '}
+            {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} transactions
+          </div>
+          <Pagination
+            current={currentPage}
+            pageSize={pageSize}
+            total={totalRecords}
+            onChange={(page, pSize) => {
+              setCurrentPage(page);
+              setPageSize(pSize);
+            }}
+            showSizeChanger
+            pageSizeOptions={['10', '20', '50']}
+          />
+        </div>
       </Card>
 
-      {/* Pagination */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
-          Showing 1 to {filteredTransactions.length} of 12,845 transactions
-        </div>
-        <Pagination current={currentPage} total={12845} pageSize={10} onChange={setCurrentPage} />
-      </div>
-
-      {/* -------------------------------------------------------------
-          3. TRANSACTION DETAILS POPUP MODAL
-         ------------------------------------------------------------- */}
+      {/* 4. TRANSACTION DETAILS POPUP MODAL */}
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 17, fontWeight: 800 }}>
@@ -773,7 +743,12 @@ export const TransactionsManagement = () => {
         open={isDetailsModalOpen}
         onCancel={() => setIsDetailsModalOpen(false)}
         footer={[
-          <Button key="close" type="primary" onClick={() => setIsDetailsModalOpen(false)} style={{ backgroundColor: '#4f46e5', minWidth: 90 }}>
+          <Button
+            key="close"
+            type="primary"
+            onClick={() => setIsDetailsModalOpen(false)}
+            style={{ backgroundColor: '#4f46e5', minWidth: 90 }}
+          >
             Close
           </Button>,
         ]}
@@ -783,25 +758,32 @@ export const TransactionsManagement = () => {
         {selectedTransaction && (
           <div style={{ paddingTop: 10 }}>
             {/* Status & ID Badge Row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <span
-                style={{
-                  padding: '3px 12px',
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  backgroundColor: selectedTransaction.status === 'Completed'
-                    ? isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#eaf8ef'
-                    : isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed',
-                  color: selectedTransaction.status === 'Completed' ? '#00bf62' : '#e11d48',
-                }}
-              >
-                ● {selectedTransaction.status}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span
+                  style={{
+                    padding: '3px 12px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    backgroundColor:
+                      selectedTransaction.status === 'Completed'
+                        ? isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#eaf8ef'
+                        : isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed',
+                    color: selectedTransaction.status === 'Completed' ? '#00bf62' : '#e11d48',
+                  }}
+                >
+                  ● {selectedTransaction.status}
+                </span>
+                <Tag color={selectedTransaction.referenceType === 'MEMBERSHIP' ? 'purple' : 'blue'}>
+                  {selectedTransaction.referenceType === 'MEMBERSHIP' ? 'Membership Purchase' : 'Session Booking'}
+                </Tag>
+              </div>
+
               <span style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                Transaction ID:{' '}
-                <strong style={{ color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedTransaction.transactionId}
+                Ref ID:{' '}
+                <strong style={{ color: '#4f46e5', fontFamily: 'monospace' }}>
+                  {selectedTransaction.referenceId}
                 </strong>
               </span>
             </div>
@@ -820,23 +802,18 @@ export const TransactionsManagement = () => {
             >
               {/* Customer */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: '50%',
-                    backgroundColor: selectedTransaction.avatarColor,
-                    color: selectedTransaction.avatarTextColor,
-                    fontWeight: 800,
-                    fontSize: 14,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  {selectedTransaction.customerInitials}
-                </div>
+                {hasValidProfilePic(selectedTransaction.avatar) ? (
+                  <Avatar src={selectedTransaction.avatar} size={44} />
+                ) : (
+                  <Avatar
+                    icon={<UserOutlined style={{ fontSize: 22 }} />}
+                    size={44}
+                    style={{
+                      backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+                      color: '#6366f1',
+                    }}
+                  />
+                )}
                 <div>
                   <div style={{ fontWeight: 800, fontSize: 14, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
                     {selectedTransaction.customerName}
@@ -863,13 +840,10 @@ export const TransactionsManagement = () => {
                 </div>
               </div>
 
-              {/* Gym & Booking ID */}
+              {/* Gym */}
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b' }}>
-                  Booking ID:{' '}
-                  <span style={{ color: '#4f46e5', fontWeight: 700 }}>
-                    {selectedTransaction.bookingId}
-                  </span>
+                  Gym Partner
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 13, color: isDarkMode ? '#ffffff' : '#0f172a', marginTop: 3 }}>
                   {selectedTransaction.gymName}
@@ -878,46 +852,6 @@ export const TransactionsManagement = () => {
                   <EnvironmentOutlined style={{ color: '#6366f1', fontSize: 10 }} />
                   <span>{selectedTransaction.gymLocation}</span>
                 </div>
-              </div>
-            </div>
-
-            {/* Schedule Info */}
-            <div
-              style={{
-                padding: '14px 16px',
-                border: `1px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
-                borderRadius: 10,
-                marginBottom: 16,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CalendarOutlined style={{ color: '#6366f1' }} /> Booking Date
-                </span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedTransaction.bookingDate}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <ClockCircleOutlined style={{ color: '#6366f1' }} /> Booking Time
-                </span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedTransaction.bookingTime}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CalendarOutlined style={{ color: '#6366f1' }} /> Days Booked (From - To)
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedTransaction.daysBooked}
-                </span>
               </div>
             </div>
 
@@ -934,9 +868,9 @@ export const TransactionsManagement = () => {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>Total Amount</span>
-                <span style={{ fontSize: 16, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  ₹ {selectedTransaction.amount}
+                <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>Total Amount Paid</span>
+                <span style={{ fontSize: 18, fontWeight: 900, color: '#00bf62' }}>
+                  ₹ {Number(selectedTransaction.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
               </div>
 
@@ -949,7 +883,7 @@ export const TransactionsManagement = () => {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>Transaction ID (Gateway)</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#4f46e5', fontFamily: 'monospace' }}>
                   {selectedTransaction.gatewayTxnId}
                 </span>
               </div>
@@ -960,33 +894,15 @@ export const TransactionsManagement = () => {
                   {selectedTransaction.transactionDate}
                 </span>
               </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTop: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}` }}>
-                <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>Status</span>
-                <span
-                  style={{
-                    padding: '2px 10px',
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    backgroundColor: selectedTransaction.status === 'Completed'
-                      ? isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#eaf8ef'
-                      : isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed',
-                    color: selectedTransaction.status === 'Completed' ? '#00bf62' : '#e11d48',
-                  }}
-                >
-                  {selectedTransaction.status}
-                </span>
-              </div>
             </div>
 
             {/* Need Help? Action Buttons */}
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', marginBottom: 4 }}>
-                Need Help?
+                Actions & Adjustments
               </div>
               <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 12 }}>
-                You can cancel this booking and initiate a refund if required.
+                Initiate a refund or cancel the associated booking if required.
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -1030,7 +946,7 @@ export const TransactionsManagement = () => {
             >
               <InfoCircleOutlined style={{ color: '#3b82f6', fontSize: 14, marginTop: 2, flexShrink: 0 }} />
               <div style={{ fontSize: 11, color: isDarkMode ? '#93c5fd' : '#1e40af', lineHeight: 1.4 }}>
-                Refund will be processed to the original payment method used by the customer. UPI refunds may take 3–5 working days to reflect.
+                Refunds are processed back to the original source payment method (UPI / Card / Net Banking) within 3–5 working days.
               </div>
             </div>
           </div>
@@ -1049,7 +965,8 @@ export const TransactionsManagement = () => {
       >
         <div style={{ paddingTop: 12 }}>
           <p style={{ color: isDarkMode ? '#cbd5e1' : '#334155' }}>
-            Are you sure you want to refund <strong>₹ {selectedTransaction?.amount}</strong> for transaction <strong>{selectedTransaction?.transactionId}</strong>?
+            Are you sure you want to refund <strong>₹ {selectedTransaction?.amount}</strong> for transaction{' '}
+            <strong>{selectedTransaction?.transactionId}</strong>?
           </p>
           <div style={{ marginTop: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>
@@ -1076,7 +993,8 @@ export const TransactionsManagement = () => {
         centered
       >
         <p style={{ paddingTop: 12, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
-          Are you sure you want to cancel booking <strong>{selectedTransaction?.bookingId}</strong> for customer <strong>{selectedTransaction?.customerName}</strong>?
+          Are you sure you want to cancel booking <strong>{selectedTransaction?.bookingId}</strong> for customer{' '}
+          <strong>{selectedTransaction?.customerName}</strong>?
         </p>
       </Modal>
     </div>

@@ -663,3 +663,288 @@ export const getAdminBookings = asyncHandler(async (req, res) => {
     )
   );
 });
+
+/**
+ * GET /api/v1/admin/transactions
+ * Super Admin Live Transactions & Payments Fleet with Server-Side Pagination & Filters
+ */
+export const getAdminTransactions = asyncHandler(async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+  const skip = (page - 1) * limit;
+
+  const { search, paymentMode, status } = req.query;
+
+  // Build query for Bookings and Memberships
+  const bookingQuery = {};
+  const membershipQuery = {};
+
+  // Status Filter
+  if (status && status !== 'all' && status !== 'All') {
+    const sLower = status.toLowerCase();
+    if (sLower === 'completed') {
+      bookingQuery['payment.status'] = 'Completed';
+      membershipQuery['payment.status'] = 'Completed';
+    } else if (sLower === 'pending') {
+      bookingQuery['payment.status'] = 'Pending';
+      membershipQuery['payment.status'] = 'Pending';
+    } else if (sLower === 'cancelled' || sLower === 'failed') {
+      bookingQuery['payment.status'] = { $in: ['Failed', 'Cancelled'] };
+      membershipQuery['payment.status'] = { $in: ['Failed', 'Cancelled'] };
+    } else if (sLower === 'refunded') {
+      bookingQuery['payment.status'] = 'Refunded';
+      membershipQuery['payment.status'] = 'Refunded';
+    } else {
+      bookingQuery['payment.status'] = status;
+      membershipQuery['payment.status'] = status;
+    }
+  }
+
+  // Payment Mode Filter
+  if (paymentMode && paymentMode !== 'all' && paymentMode !== 'All') {
+    const pLower = paymentMode.toLowerCase();
+    let modeRegex;
+    if (pLower.includes('upi')) {
+      modeRegex = /upi/i;
+    } else if (pLower.includes('card')) {
+      modeRegex = /card/i;
+    } else if (pLower.includes('net') || pLower.includes('banking')) {
+      modeRegex = /net\s*banking/i;
+    } else if (pLower.includes('cash') || pLower.includes('gym')) {
+      modeRegex = /cash/i;
+    } else if (pLower.includes('wallet')) {
+      modeRegex = /wallet/i;
+    } else {
+      modeRegex = new RegExp(paymentMode, 'i');
+    }
+    bookingQuery['payment.method'] = modeRegex;
+    membershipQuery['payment.method'] = modeRegex;
+  }
+
+  // Search filter across customer fields, transactionId, or reference ID
+  if (search && search.trim()) {
+    const s = search.trim();
+    const matchingUsers = await User.find({
+      $or: [
+        { fullName: { $regex: s, $options: 'i' } },
+        { email: { $regex: s, $options: 'i' } },
+        { phone: { $regex: s, $options: 'i' } },
+        { customerId: { $regex: s, $options: 'i' } },
+      ],
+    }).select('_id').lean();
+
+    const userIds = matchingUsers.map((u) => u._id);
+
+    bookingQuery.$or = [
+      { 'payment.transactionId': { $regex: s, $options: 'i' } },
+      { bookingId: { $regex: s, $options: 'i' } },
+      { title: { $regex: s, $options: 'i' } },
+      { userId: { $in: userIds } },
+    ];
+
+    membershipQuery.$or = [
+      { 'payment.transactionId': { $regex: s, $options: 'i' } },
+      { membershipId: { $regex: s, $options: 'i' } },
+      { membershipTier: { $regex: s, $options: 'i' } },
+      { userId: { $in: userIds } },
+    ];
+  }
+
+  // Parallel fetch: Bookings, Memberships, and Platform-wide Stats
+  const [
+    matchingBookings,
+    matchingMemberships,
+    bookingStats,
+    membershipStats,
+  ] = await Promise.all([
+    Booking.find(bookingQuery)
+      .populate('userId', 'fullName email phone customerId avatar profilePicture')
+      .populate('gymId', 'name partnerId city area address')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Membership.find(membershipQuery)
+      .populate('userId', 'fullName email phone customerId avatar profilePicture')
+      .populate('gymId', 'name partnerId city area address')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Booking.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalCount: { $sum: 1 },
+          completedCount: { $sum: { $cond: [{ $eq: ['$payment.status', 'Completed'] }, 1, 0] } },
+          pendingCount: { $sum: { $cond: [{ $eq: ['$payment.status', 'Pending'] }, 1, 0] } },
+          failedCount: { $sum: { $cond: [{ $in: ['$payment.status', ['Failed', 'Cancelled', 'Refunded']] }, 1, 0] } },
+          totalAmount: {
+            $sum: {
+              $cond: [
+                { $eq: ['$payment.status', 'Completed'] },
+                { $ifNull: ['$pricing.totalAmount', { $ifNull: ['$pricing.basePrice', 0] }] },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
+    Membership.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalCount: { $sum: 1 },
+          completedCount: { $sum: { $cond: [{ $eq: ['$payment.status', 'Completed'] }, 1, 0] } },
+          pendingCount: { $sum: { $cond: [{ $eq: ['$payment.status', 'Pending'] }, 1, 0] } },
+          failedCount: { $sum: { $cond: [{ $in: ['$payment.status', ['Failed', 'Cancelled', 'Refunded']] }, 1, 0] } },
+          totalAmount: {
+            $sum: {
+              $cond: [
+                { $eq: ['$payment.status', 'Completed'] },
+                { $ifNull: ['$pricing.totalAmount', { $ifNull: ['$pricing.basePrice', 0] }] },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]),
+  ]);
+
+  // Normalize into standard unified transactions
+  const normalizedBookings = matchingBookings.map((b) => {
+    const u = b.userId || {};
+    const g = b.gymId || {};
+    const rawAvatar = u.avatar || u.profilePicture || '';
+    const avatar = rawAvatar.includes('dicebear.com') ? '' : rawAvatar;
+    const name = u.fullName || 'Member';
+    const initials = name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'M';
+    const txnDate = b.payment?.paidAt || b.createdAt || new Date();
+
+    return {
+      _id: b._id,
+      id: String(b._id),
+      key: `b-${b._id}`,
+      transactionId: b.payment?.transactionId || `TXN-BK-${b.bookingId || String(b._id).slice(-6)}`,
+      gatewayTxnId: b.payment?.transactionId || '—',
+      referenceId: b.bookingId,
+      bookingId: b.bookingId,
+      referenceType: 'BOOKING',
+      title: b.title || 'Gym Session',
+      customerName: name,
+      customerId: u.customerId || `CUST-${String(u._id || '').slice(-6).toUpperCase()}`,
+      customerPhone: u.phone || '—',
+      customerEmail: u.email || '—',
+      customerInitials: initials,
+      avatar,
+      avatarColor: '#f3e8ff',
+      avatarTextColor: '#7e22ce',
+      gymName: g.name || 'Partner Gym',
+      gymPartnerId: g.partnerId || '',
+      gymLocation: [g.area, g.city].filter(Boolean).join(', ') || 'Chennai',
+      dateTime: new Date(txnDate).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+      }),
+      transactionDate: new Date(txnDate).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+      }),
+      rawDate: new Date(txnDate).getTime(),
+      amount: (b.pricing?.totalAmount || b.pricing?.basePrice || 0).toFixed(2),
+      paymentMode: b.payment?.method || 'UPI',
+      status: b.payment?.status || 'Completed',
+      walletAmountApplied: b.payment?.walletAmountApplied || 0,
+      daysBooked: b.durationDays ? `${b.durationDays} Day${b.durationDays > 1 ? 's' : ''}` : '1 Day',
+    };
+  });
+
+  const normalizedMemberships = matchingMemberships.map((m) => {
+    const u = m.userId || {};
+    const g = m.gymId || {};
+    const rawAvatar = u.avatar || u.profilePicture || '';
+    const avatar = rawAvatar.includes('dicebear.com') ? '' : rawAvatar;
+    const name = u.fullName || 'Member';
+    const initials = name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'M';
+    const txnDate = m.payment?.paidAt || m.createdAt || new Date();
+
+    return {
+      _id: m._id,
+      id: String(m._id),
+      key: `m-${m._id}`,
+      transactionId: m.payment?.transactionId || `TXN-MEM-${m.membershipId || String(m._id).slice(-6)}`,
+      gatewayTxnId: m.payment?.transactionId || '—',
+      referenceId: m.membershipId,
+      bookingId: m.membershipId,
+      referenceType: 'MEMBERSHIP',
+      title: `${m.membershipTier || 'Gym'} Membership`,
+      customerName: name,
+      customerId: u.customerId || `CUST-${String(u._id || '').slice(-6).toUpperCase()}`,
+      customerPhone: u.phone || '—',
+      customerEmail: u.email || '—',
+      customerInitials: initials,
+      avatar,
+      avatarColor: '#e0e7ff',
+      avatarTextColor: '#4f46e5',
+      gymName: g.name || 'Partner Gym',
+      gymPartnerId: g.partnerId || '',
+      gymLocation: [g.area, g.city].filter(Boolean).join(', ') || 'Chennai',
+      dateTime: new Date(txnDate).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+      }),
+      transactionDate: new Date(txnDate).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+      }),
+      rawDate: new Date(txnDate).getTime(),
+      amount: (m.pricing?.totalAmount || m.pricing?.basePrice || 0).toFixed(2),
+      paymentMode: m.payment?.method || 'UPI',
+      status: m.payment?.status || 'Completed',
+      walletAmountApplied: m.payment?.walletAmountApplied || 0,
+      daysBooked: m.durationDays ? `${m.durationDays} Days` : `${m.membershipTier || 'Annual'} Plan`,
+    };
+  });
+
+  // Combine and sort by date descending
+  const combined = [...normalizedBookings, ...normalizedMemberships].sort(
+    (a, b) => b.rawDate - a.rawDate
+  );
+
+  const totalRecords = combined.length;
+  const paginatedTransactions = combined.slice(skip, skip + limit);
+  const totalPages = Math.ceil(totalRecords / limit) || 1;
+
+  // Compute platform-wide stats
+  const bStat = bookingStats[0] || { totalCount: 0, completedCount: 0, pendingCount: 0, failedCount: 0, totalAmount: 0 };
+  const mStat = membershipStats[0] || { totalCount: 0, completedCount: 0, pendingCount: 0, failedCount: 0, totalAmount: 0 };
+
+  const totalTxnCount = bStat.totalCount + mStat.totalCount;
+  const totalCompleted = bStat.completedCount + mStat.completedCount;
+  const totalPending = bStat.pendingCount + mStat.pendingCount;
+  const totalFailed = bStat.failedCount + mStat.failedCount;
+  const totalRev = (bStat.totalAmount + mStat.totalAmount).toFixed(2);
+
+  const stats = {
+    totalTransactions: totalTxnCount,
+    successfulTransactions: totalCompleted,
+    successfulPct: totalTxnCount > 0 ? `${((totalCompleted / totalTxnCount) * 100).toFixed(1)}%` : '0%',
+    pendingTransactions: totalPending,
+    pendingPct: totalTxnCount > 0 ? `${((totalPending / totalTxnCount) * 100).toFixed(1)}%` : '0%',
+    failedTransactions: totalFailed,
+    failedPct: totalTxnCount > 0 ? `${((totalFailed / totalTxnCount) * 100).toFixed(1)}%` : '0%',
+    totalAmount: totalRev,
+  };
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        transactions: paginatedTransactions,
+        stats,
+        pagination: {
+          page,
+          limit,
+          totalRecords,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+      'Transactions retrieved successfully'
+    )
+  );
+});

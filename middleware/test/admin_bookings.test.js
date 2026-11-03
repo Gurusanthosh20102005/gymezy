@@ -67,3 +67,4 @@ test('Admin Bookings & Group Classes Architecture Tests', async (t) => {
     assert.strictEqual(typeGroupClassFilter('SECTION'), false);
   });
 });
+
