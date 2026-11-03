@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { BANKS, getBankByName } from '../utils/bankData';
 import {
   Row,
   Col,
@@ -2608,13 +2609,22 @@ export const Register = () => {
                   <label style={labelStyle}>
                     Bank Name <span style={{ color: '#ef4444' }}>*</span>
                   </label>
-                  <Input
-                    placeholder="e.g. HDFC Bank Ltd"
+                  <Select
+                    showSearch
+                    optionFilterProp="children"
+                    placeholder="Select bank"
                     value={formData.bankName}
-                    onChange={(e) => updateField('bankName', e.target.value)}
-                    onBlur={() => markFieldTouched('bankName')}
                     style={getInputStyle('bankName')}
-                  />
+                    onChange={(bankName) => {
+                      updateField('bankName', bankName);
+                      updateField('ifscCode', getBankByName(bankName)?.ifscPrefix || '');
+                      markFieldTouched('bankName');
+                    }}
+                  >
+                    {BANKS.map((bank) => (
+                      <Select.Option key={bank.name} value={bank.name}>{bank.name}</Select.Option>
+                    ))}
+                  </Select>
                   {renderFieldError('bankName')}
                 </Col>
 

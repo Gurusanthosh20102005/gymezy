@@ -10,6 +10,13 @@ import {
   getMySwitchRequests,
   getGymSwitchRequests,
   gymActionReviewSwitchRequest,
+  requestCancellationNegotiation,
+  getMyCancellationNegotiations,
+  getGymCancellationNegotiations,
+  gymOfferCancellationRefund,
+  gymAcceptCancellation,
+  gymRejectCancellation,
+  memberRespondCancellationOffer,
 } from '../controllers/membership.controller.js';
 import { optionalAuthenticate } from '../middlewares/auth.middleware.js';
 
@@ -29,6 +36,15 @@ router.get('/gym/:gymId/switch-requests', optionalAuthenticate, getGymSwitchRequ
 
 // Gym Owner Review Action (ACCEPT / REJECT)
 router.patch('/switch-requests/:requestId/gym-action', optionalAuthenticate, gymActionReviewSwitchRequest);
+
+// Membership cancellation negotiation
+router.get('/my/cancellation-negotiations', optionalAuthenticate, getMyCancellationNegotiations);
+router.get('/gym/:gymId/cancellation-negotiations', optionalAuthenticate, getGymCancellationNegotiations);
+router.post('/cancellation-negotiations/:requestId/gym-offer', optionalAuthenticate, gymOfferCancellationRefund);
+router.patch('/cancellation-negotiations/:requestId/gym-accept', optionalAuthenticate, gymAcceptCancellation);
+router.patch('/cancellation-negotiations/:requestId/gym-reject', optionalAuthenticate, gymRejectCancellation);
+router.patch('/cancellation-negotiations/:requestId/member-response', optionalAuthenticate, memberRespondCancellationOffer);
+router.post('/:id/cancellation-negotiation', optionalAuthenticate, requestCancellationNegotiation);
 
 // Get Memberships for a Gym (Gym Owner Portal & Gym Owner Mobile)
 router.get('/gym/:gymId', optionalAuthenticate, getGymMemberships);

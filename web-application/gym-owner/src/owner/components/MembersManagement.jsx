@@ -294,6 +294,50 @@ export const MembersManagement = ({
     void fetchGymSwitchRequests();
   }, [gymId]);
 
+  const fetchCancellationNegotiations = async () => {
+    if (!gymId) return;
+    try {
+      const res = await apiClient.get(`/memberships/gym/${gymId}/cancellation-negotiations`);
+      const negotiations = res.data?.data?.negotiations;
+      if (!Array.isArray(negotiations)) return;
+      setCancellationRequests(negotiations.map((item) => {
+        const maxRefund = Number(item.maximumRefundAmount || 0);
+        const currentRefund = Number(item.currentOffer?.refundAmount ?? maxRefund);
+        return {
+          key: item._id,
+          requestId: item.requestId,
+          memberId: item.membershipId?.membershipId || item.membershipId?._id || 'Member',
+          memberName: item.userId?.fullName || 'Member',
+          phone: item.userId?.phone || '',
+          avatar: item.userId?.avatar || item.userId?.profilePicture,
+          plan: item.membershipId?.membershipTier || 'Membership',
+          amount: `₹${Number(item.originalAmount || 0).toLocaleString('en-IN')}`,
+          refundableAmount: `₹${currentRefund.toLocaleString('en-IN')}`,
+          maximumRefundAmount: maxRefund,
+          currentRefundAmount: currentRefund,
+          reason: item.reason || 'Cancellation requested',
+          requestDate: item.createdAt ? new Date(item.createdAt).toLocaleString() : '',
+          status: item.status === 'PENDING_GYM_APPROVAL'
+            ? 'Pending Gym Approval'
+            : item.status === 'PENDING_MEMBER_APPROVAL'
+            ? 'Quoted Refund'
+            : item.status === 'COMPLETED'
+            ? 'Approved'
+            : item.status === 'REJECTED_BY_GYM'
+            ? 'Rejected'
+            : item.status,
+          adminStatus: item.status,
+        };
+      }));
+    } catch (err) {
+      console.warn('Failed to fetch cancellation negotiations:', err);
+    }
+  };
+
+  useEffect(() => {
+    void fetchCancellationNegotiations();
+  }, [gymId]);
+
   // Real Dynamic Metrics from DB & Current List
   const dynamicTotal = membershipSummary?.total ?? totalMembersCount;
   const dynamicActive =
@@ -465,7 +509,7 @@ export const MembersManagement = ({
           }));
         }
 
-        // Add to cancellation requests list as Sent to Admin
+        // Add a gym-owner cancellation request
         const newReq = {
           key: `can-${Date.now()}`,
           requestId: `CAN-2025-00${cancellationRequests.length + 1}`,
@@ -478,9 +522,9 @@ export const MembersManagement = ({
           refundableAmount: '₹1,500',
           requestDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           reason: 'Member requested cancellation directly via Gym Console',
-          notes: 'Verified by Gym Owner and dispatched to Super Admin for processing.',
-          status: 'Sent to Admin',
-          adminStatus: 'In Review by Super Admin',
+          notes: 'Awaiting Gym Owner refund quote.',
+          status: 'Pending Gym Approval',
+          adminStatus: 'Pending Gym Approval',
         };
 
         setCancellationRequests((prev) => [newReq, ...prev]);
@@ -492,46 +536,42 @@ export const MembersManagement = ({
 
   const handleAcceptAndSendToAdmin = (req) => {
     if (!req) return;
+    let refundAmount = req.maximumRefundAmount ?? 0;
     Modal.confirm({
-      title: 'Forward Cancellation Request to Admin',
+      title: 'Quote Refund to Member',
       icon: <SendOutlined style={{ color: 'var(--color-primary)' }} />,
       content: (
         <div>
           <p style={{ margin: '8px 0 6px 0', fontSize: 13.5 }}>
-            Accept cancellation for <strong>{req.memberName}</strong> ({req.requestId}) and forward to Super Admin?
+            Quote the refund for <strong>{req.memberName}</strong> ({req.requestId}).
           </p>
-          <p style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', margin: 0 }}>
-            Once forwarded, the platform admin will process the final refund ({req.refundableAmount || '₹1,500'}) and close the subscription.
-          </p>
+          <Input
+            type="number"
+            addonBefore="₹"
+            defaultValue={refundAmount}
+            min={0}
+            max={refundAmount}
+            onChange={(event) => {
+              refundAmount = Number(event.target.value);
+            }}
+          />
         </div>
       ),
-      okText: 'Accept & Send to Admin',
+      okText: 'Send Quote',
       cancelText: 'Cancel',
       centered: true,
-      onOk: () => {
-        setCancellationRequests((prev) =>
-          prev.map((r) =>
-            r.key === req.key
-              ? { ...r, status: 'Sent to Admin', adminStatus: 'In Review by Super Admin' }
-              : r
-          )
-        );
-        setMembersList((prev) =>
-          prev.map((m) =>
-            m.memberId === req.memberId
-              ? { ...m, status: 'Cancellation Requested', daysLeft: 'Cancel Pending' }
-              : m
-          )
-        );
-        if (selectedCancelRequest && selectedCancelRequest.key === req.key) {
-          setSelectedCancelRequest((prev) => ({
-            ...prev,
-            status: 'Sent to Admin',
-            adminStatus: 'In Review by Super Admin',
-          }));
+      onOk: async () => {
+        const maximumRefund = Number(req.maximumRefundAmount || 0);
+        if (!Number.isFinite(refundAmount) || refundAmount < 0 || refundAmount > maximumRefund) {
+          throw new Error(`Refund amount must be between ₹0 and ₹${maximumRefund}`);
         }
+        await apiClient.post(`/memberships/cancellation-negotiations/${req.requestId}/gym-offer`, {
+          deductionAmount: maximumRefund - refundAmount,
+          message: 'Refund quote from gym owner',
+        });
         setIsCancelDetailsModalOpen(false);
-        message.success('Cancel request has send to admin');
+        message.success('Refund quote sent to the member');
+        await fetchCancellationNegotiations();
       },
     });
   };
@@ -555,30 +595,17 @@ export const MembersManagement = ({
       okType: 'danger',
       cancelText: 'Keep',
       centered: true,
-      onOk: () => {
-        setCancellationRequests((prev) =>
-          prev.map((r) =>
-            r.key === req.key
-              ? { ...r, status: 'Rejected', adminStatus: 'Rejected by Gym' }
-              : r
-          )
-        );
-        setMembersList((prev) =>
-          prev.map((m) =>
-            m.memberId === req.memberId
-              ? { ...m, status: 'Active', daysLeft: 'Active' }
-              : m
-          )
-        );
+      onOk: async () => {
+        await apiClient.patch(`/memberships/cancellation-negotiations/${req.requestId}/gym-reject`);
         if (selectedCancelRequest && selectedCancelRequest.key === req.key) {
           setSelectedCancelRequest((prev) => ({
             ...prev,
             status: 'Rejected',
-            adminStatus: 'Rejected by Gym',
           }));
         }
         setIsCancelDetailsModalOpen(false);
         message.info(`Cancellation request for ${req.memberName} was rejected.`);
+        await fetchCancellationNegotiations();
       },
     });
   };
@@ -1150,7 +1177,7 @@ export const MembersManagement = ({
         if (status === 'Pending Gym Approval') {
           color = '#fa8c16';
           icon = <ClockCircleOutlined />;
-        } else if (status === 'Sent to Admin') {
+        } else if (status === 'Pending Gym Approval') {
           color = '#1677ff';
           icon = <SyncOutlined spin />;
         } else if (status === 'Approved by Admin') {
@@ -1219,7 +1246,7 @@ export const MembersManagement = ({
                   padding: '0 10px',
                 }}
               >
-                Accept
+                Quote Refund
               </Button>
               <Button
                 danger
@@ -1265,7 +1292,7 @@ export const MembersManagement = ({
               padding: '0 12px',
             }}
           >
-            View Details
+            Quote Refund
           </Button>
         );
       },
@@ -2231,7 +2258,7 @@ export const MembersManagement = ({
               </Card>
             </Col>
 
-            {/* Sent to Admin */}
+            {/* Pending Gym Approval */}
             <Col xs={24} sm={12} lg={6}>
               <Card
                 style={{
@@ -2261,10 +2288,10 @@ export const MembersManagement = ({
                   </div>
                   <div>
                     <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 500 }}>
-                      Sent to Super Admin
+                      Awaiting Refund Quote
                     </div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: '#1677ff', lineHeight: 1.2, marginTop: 2 }}>
-                      {cancellationRequests.filter((r) => r.status === 'Sent to Admin').length}
+                      {cancellationRequests.filter((r) => r.status === 'Pending Gym Approval').length}
                     </div>
                     <div style={{ fontSize: 12, color: '#1677ff', fontWeight: 600, marginTop: 4 }}>
                       In admin refund review
@@ -2357,7 +2384,7 @@ export const MembersManagement = ({
                 >
                   <Option value="ALL">All Statuses</Option>
                   <Option value="Pending Gym Approval">Pending Gym Approval</Option>
-                  <Option value="Sent to Admin">Sent to Admin</Option>
+                  <Option value="Pending Gym Approval">Pending Gym Approval</Option>
                   <Option value="Approved by Admin">Approved by Admin</Option>
                   <Option value="Rejected">Rejected</Option>
                 </Select>
@@ -2547,9 +2574,9 @@ export const MembersManagement = ({
                       Pending Gym Approval
                     </Tag>
                   )}
-                  {selectedCancelRequest.status === 'Sent to Admin' && (
+                  {selectedCancelRequest.status === 'Quoted Refund' && (
                     <Tag color="processing" icon={<SyncOutlined spin />} style={{ borderRadius: 4, fontWeight: 650 }}>
-                      Sent to Super Admin
+                      Quoted Refund
                     </Tag>
                   )}
                   {selectedCancelRequest.status === 'Approved by Admin' && (
@@ -2604,9 +2631,9 @@ export const MembersManagement = ({
               <InfoCircleOutlined style={{ color: '#1677ff', fontSize: 16, flexShrink: 0 }} />
               <div style={{ fontSize: 12.5, color: isDarkMode ? '#91caff' : '#0958d9', lineHeight: 1.4 }}>
                 {selectedCancelRequest.status === 'Pending Gym Approval'
-                  ? 'Click "Accept & Send to Admin" to forward this cancellation and refund request to the Super Admin.'
-                  : selectedCancelRequest.status === 'Sent to Admin'
-                  ? 'This request has been dispatched to Super Admin. Final refund settlement is in progress.'
+                  ? 'Enter a refund amount to send a quote directly to the member.'
+                  : selectedCancelRequest.status === 'Quoted Refund'
+                  ? 'The refund quote is waiting for the member to accept or re-request negotiation.'
                   : 'This cancellation request has been resolved and closed.'}
               </div>
             </div>
@@ -2664,7 +2691,7 @@ export const MembersManagement = ({
                       gap: 6,
                     }}
                   >
-                    Accept & Send to Admin
+                    Send Refund Quote
                   </Button>
                 </>
               )}
