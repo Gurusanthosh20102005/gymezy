@@ -323,12 +323,13 @@ export const getAdminCustomerDetails = asyncHandler(async (req, res) => {
       .populate('gymId', 'name partnerId city address image')
       .populate('sectionId', 'title category')
       .sort({ createdAt: -1 })
-      .limit(10)
+      .limit(20)
       .lean(),
     Membership.find({ userId: user._id })
       .populate('gymId', 'name partnerId city address')
+      .populate('trainerId', 'fullName name employeeId')
       .sort({ createdAt: -1 })
-      .limit(10)
+      .limit(20)
       .lean(),
   ]);
 
@@ -352,6 +353,24 @@ export const getAdminCustomerDetails = asyncHandler(async (req, res) => {
     timeSlot: formatTimeSlot(b.timeSlot),
     status: b.status || 'Completed',
     amount: (b.pricing?.totalAmount || b.pricing?.basePrice || 0).toFixed(2),
+  }));
+
+  const formattedMemberships = recentMemberships.map((m) => ({
+    key: m._id || m.membershipId,
+    id: String(m._id),
+    membershipId: m.membershipId,
+    membershipTier: m.membershipTier || 'Monthly',
+    gymName: m.gymId?.name || 'Partner Gym',
+    gymPartnerId: m.gymId?.partnerId || '',
+    gymCity: m.gymId?.city || 'Chennai',
+    startDate: m.startDate ? new Date(m.startDate).toLocaleDateString('en-GB') : '—',
+    endDate: m.endDate ? new Date(m.endDate).toLocaleDateString('en-GB') : '—',
+    durationDays: m.durationDays || 30,
+    hasTrainer: Boolean(m.hasTrainer || m.trainerId),
+    trainerName: m.trainerId?.fullName || m.trainerId?.name || (m.hasTrainer ? 'Personal Trainer' : 'None'),
+    trainerSlot: m.trainerSlot || '—',
+    status: m.status || 'Active',
+    amount: (m.pricing?.totalAmount || m.pricing?.basePrice || 0).toFixed(2),
   }));
 
   const name = user.fullName || 'User';
@@ -384,7 +403,7 @@ export const getAdminCustomerDetails = asyncHandler(async (req, res) => {
       totalRevenue,
     },
     recentBookings: formattedBookings,
-    recentMemberships,
+    recentMemberships: formattedMemberships,
   };
 
   return res.status(200).json(

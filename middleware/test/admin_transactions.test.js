@@ -42,3 +42,4 @@ test('Admin Transactions & Payments Architecture Tests', async (t) => {
     assert.strictEqual(page < totalPages, true); // hasNextPage
   });
 });
+

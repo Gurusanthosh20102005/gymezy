@@ -82,6 +82,7 @@ export const CustomersManagement = () => {
   // Modal State for Booking & Gym Details
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedGymInfo, setSelectedGymInfo] = useState(null);
+  const [detailTab, setDetailTab] = useState('bookings'); // 'bookings' | 'memberships'
 
   // Load paginated customers from middleware API (SSOT)
   const fetchCustomers = useCallback(
@@ -408,7 +409,7 @@ export const CustomersManagement = () => {
       title: 'Booking ID',
       dataIndex: 'bookingId',
       key: 'bookingId',
-      width: 140,
+      width: 130,
       render: (text, record) => (
         <span
           onClick={() => setSelectedBooking(record)}
@@ -416,7 +417,7 @@ export const CustomersManagement = () => {
             fontWeight: 700,
             color: '#4f46e5',
             cursor: 'pointer',
-            textDecoration: 'underline',
+            fontFamily: 'monospace',
           }}
         >
           {text}
@@ -424,10 +425,24 @@ export const CustomersManagement = () => {
       ),
     },
     {
+      title: 'Type',
+      dataIndex: 'bookingType',
+      key: 'bookingType',
+      width: 130,
+      render: (type) => {
+        const isGroup = type === 'GROUP_CLASS';
+        return (
+          <Tag color={isGroup ? 'purple' : 'blue'} style={{ fontWeight: 700, borderRadius: 4 }}>
+            {isGroup ? 'Group Class' : 'Gym Session'}
+          </Tag>
+        );
+      },
+    },
+    {
       title: 'Gym Partner',
       dataIndex: 'gymName',
       key: 'gymName',
-      width: 180,
+      width: 170,
       render: (text, record) => (
         <span
           onClick={() => setSelectedGymInfo({ name: text, location: record.gymCity || 'Chennai' })}
@@ -454,20 +469,25 @@ export const CustomersManagement = () => {
       ),
     },
     {
-      title: 'Date & Time',
+      title: 'Date & Time Slot',
       key: 'dateTime',
       width: 190,
-      render: (_, record) => (
-        <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}>
-          {record.date} • {record.timeSlot}
-        </span>
-      ),
+      render: (_, record) => {
+        const slot = record.timeSlot && record.timeSlot !== 'undefined - undefined'
+          ? record.timeSlot
+          : 'General Session';
+        return (
+          <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}>
+            {record.date} • {slot}
+          </span>
+        );
+      },
     },
     {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 130,
+      width: 120,
       render: (status) => {
         let bg = isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#eaf8ef';
         let color = '#00bf62';
@@ -501,7 +521,120 @@ export const CustomersManagement = () => {
       key: 'amount',
       width: 120,
       render: (val) => (
-        <span style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+        <span style={{ fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+          ₹ {val}
+        </span>
+      ),
+    },
+  ];
+
+  // Memberships Columns for Customer Detail View
+  const recentMembershipsColumns = [
+    {
+      title: 'Membership ID',
+      dataIndex: 'membershipId',
+      key: 'membershipId',
+      width: 140,
+      render: (text) => (
+        <span style={{ fontWeight: 750, color: '#4f46e5', fontFamily: 'monospace' }}>
+          {text}
+        </span>
+      ),
+    },
+    {
+      title: 'Plan Tier',
+      dataIndex: 'membershipTier',
+      key: 'membershipTier',
+      width: 130,
+      render: (tier) => (
+        <Tag color="purple" style={{ fontWeight: 700, borderRadius: 4 }}>
+          {tier} Plan
+        </Tag>
+      ),
+    },
+    {
+      title: 'Gym Partner',
+      dataIndex: 'gymName',
+      key: 'gymName',
+      width: 170,
+      render: (text, record) => (
+        <div>
+          <div style={{ fontWeight: 600, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+            {text}
+          </div>
+          <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
+            {record.gymCity}
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Validity Period',
+      key: 'validity',
+      width: 200,
+      render: (_, record) => (
+        <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}>
+          {record.startDate} — {record.endDate}
+        </span>
+      ),
+    },
+    {
+      title: 'Trainer Assigned',
+      key: 'trainer',
+      width: 150,
+      render: (_, record) =>
+        record.hasTrainer ? (
+          <Tag color="green" style={{ fontWeight: 600, borderRadius: 4 }}>
+            {record.trainerName}
+          </Tag>
+        ) : (
+          <span style={{ color: isDarkMode ? '#64748b' : '#94a3b8', fontSize: 12 }}>
+            No Trainer
+          </span>
+        ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 120,
+      render: (status) => {
+        let bg = isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#eaf8ef';
+        let color = '#00bf62';
+        if (status === 'Cancelled' || status === 'Expired') {
+          bg = isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed';
+          color = '#e11d48';
+        } else if (status === 'Upcoming' || status === 'Active') {
+          bg = isDarkMode ? 'rgba(59, 130, 246, 0.15)' : '#edf4fe';
+          color = '#3b82f6';
+        } else if (status === 'Expiring Soon') {
+          bg = isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#fef4e8';
+          color = '#f59e0b';
+        }
+        return (
+          <span
+            style={{
+              display: 'inline-block',
+              padding: '3px 12px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              backgroundColor: bg,
+              color: color,
+            }}
+          >
+            {status}
+          </span>
+        );
+      },
+    },
+    {
+      title: 'Amount',
+      dataIndex: 'amount',
+      key: 'amount',
+      width: 120,
+      render: (val) => (
+        <span style={{ fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
           ₹ {val}
         </span>
       ),
@@ -832,7 +965,7 @@ export const CustomersManagement = () => {
           </div>
         </Card>
 
-        {/* 3. RECENT BOOKINGS TABLE */}
+        {/* 3. RECENT ACTIVITY: GROUP CLASSES, BOOKINGS & MEMBERSHIPS TABS */}
         <Card
           style={{
             backgroundColor: 'var(--bg-surface-elevated)',
@@ -842,20 +975,60 @@ export const CustomersManagement = () => {
           }}
           styles={{ body: { padding: '24px' } }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-              Recent Bookings & Passes
-            </div>
+          {/* Sub-Tabs: Group Classes & Bookings vs. Memberships */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 20,
+              borderBottom: `1px solid ${isDarkMode ? '#1e293b' : '#e2e8f0'}`,
+              paddingBottom: 12,
+            }}
+          >
+            <Button
+              type={detailTab === 'bookings' ? 'primary' : 'text'}
+              onClick={() => setDetailTab('bookings')}
+              style={{
+                borderRadius: 20,
+                fontWeight: 700,
+                backgroundColor: detailTab === 'bookings' ? '#4f46e5' : 'transparent',
+              }}
+            >
+              Group Classes & Bookings ({(selectedCustomer.recentBookings || []).length})
+            </Button>
+            <Button
+              type={detailTab === 'memberships' ? 'primary' : 'text'}
+              onClick={() => setDetailTab('memberships')}
+              style={{
+                borderRadius: 20,
+                fontWeight: 700,
+                backgroundColor: detailTab === 'memberships' ? '#4f46e5' : 'transparent',
+              }}
+            >
+              Memberships ({(selectedCustomer.recentMemberships || []).length})
+            </Button>
           </div>
 
-          <Table
-            columns={recentBookingsColumns}
-            dataSource={selectedCustomer.recentBookings || []}
-            pagination={false}
-            rowKey="key"
-            scroll={{ x: 900 }}
-            locale={{ emptyText: 'No booking or pass records found for this customer.' }}
-          />
+          {detailTab === 'bookings' ? (
+            <Table
+              columns={recentBookingsColumns}
+              dataSource={selectedCustomer.recentBookings || []}
+              pagination={false}
+              rowKey="key"
+              scroll={{ x: 950 }}
+              locale={{ emptyText: 'No booking or pass records found for this customer.' }}
+            />
+          ) : (
+            <Table
+              columns={recentMembershipsColumns}
+              dataSource={selectedCustomer.recentMemberships || []}
+              pagination={false}
+              rowKey="key"
+              scroll={{ x: 950 }}
+              locale={{ emptyText: 'No gym membership records found for this customer.' }}
+            />
+          )}
         </Card>
 
         {/* EDIT CUSTOMER MODAL */}
