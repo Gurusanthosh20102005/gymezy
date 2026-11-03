@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { getDashboardStats } from '../controllers/admin.controller.js';
+import {
+  getDashboardStats,
+  getAdminCustomers,
+  getAdminCustomerDetails,
+  createAdminCustomer,
+  updateAdminCustomer,
+  toggleCustomerStatus,
+} from '../controllers/admin.controller.js';
 import { getAdminGymsFleet, getGymOptions } from '../controllers/gym.controller.js';
 import {
   getAdminSwitchRequests,
@@ -17,6 +24,13 @@ router.use(authenticate, authorizeRoles(USER_ROLES.SUPER_ADMIN));
 
 // Executive Command Center Dashboard Stats
 router.get('/dashboard-stats', getDashboardStats);
+
+// Customers & Users Fleet with Server-Side Pagination
+router.get('/customers', getAdminCustomers);
+router.get('/customers/:id', getAdminCustomerDetails);
+router.post('/customers', createAdminCustomer);
+router.put('/customers/:id', updateAdminCustomer);
+router.patch('/customers/:id/status', toggleCustomerStatus);
 
 // Lightweight Gym Options / Dropdown with Infinite Scroll & Search (must be before /gyms or distinct)
 router.get('/gyms/options', getGymOptions);

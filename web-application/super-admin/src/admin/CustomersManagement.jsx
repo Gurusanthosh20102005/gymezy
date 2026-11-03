@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Row,
@@ -11,11 +11,10 @@ import {
   Modal,
   Form,
   Pagination,
-  Typography,
   Space,
   message,
   Avatar,
-  Tooltip,
+  Spin,
 } from 'antd';
 import {
   SearchOutlined,
@@ -30,450 +29,188 @@ import {
   MinusCircleOutlined,
   PhoneOutlined,
   MailOutlined,
-  UserOutlined,
   TeamOutlined,
-  DollarOutlined,
   ClockCircleOutlined,
   RightOutlined,
   ShopOutlined,
   StarFilled,
+  SyncOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
+import { customerService } from '../services/customerService';
 
 const { Option } = Select;
-
-// Sample Initial Customers Data matching user mockup exactly
-const INITIAL_CUSTOMERS = [
-  {
-    id: '1',
-    name: 'Arun Kumar',
-    customerId: 'CUST100245',
-    phone: '+91 98765 43210',
-    email: 'arun.kumar@email.com',
-    totalBookings: 24,
-    totalRevenue: '5,280.00',
-    status: 'Active',
-    avatarColor: '#f3e8ff',
-    avatarTextColor: '#7e22ce',
-    initials: 'AK',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Arun&backgroundColor=b6e3f4,c0aede,d1d4f9',
-    metrics: {
-      totalBookings: 24,
-      completed: 16,
-      completedPct: '66.67%',
-      cancelled: 5,
-      cancelledPct: '20.83%',
-      noShow: 3,
-      noShowPct: '12.50%',
-      totalRevenue: '5,280.00',
-    },
-    recentBookings: [
-      {
-        key: '1',
-        bookingId: 'BK100121',
-        gymName: 'FitZone Gym',
-        bookingDateTime: '18 May 2026, 07:30 AM',
-        type: 'App Booking',
-        status: 'Completed',
-        amount: '350.00',
-      },
-      {
-        key: '2',
-        bookingId: 'BK100098',
-        gymName: 'Powerhouse Gym',
-        bookingDateTime: '16 May 2026, 06:00 PM',
-        type: 'App Booking',
-        status: 'Completed',
-        amount: '250.00',
-      },
-      {
-        key: '3',
-        bookingId: 'BK100076',
-        gymName: 'Muscle Factory',
-        bookingDateTime: '14 May 2026, 08:00 AM',
-        type: 'App Booking',
-        status: 'Cancelled',
-        amount: '250.00',
-      },
-      {
-        key: '4',
-        bookingId: 'BK100055',
-        gymName: 'Iron Club',
-        bookingDateTime: '12 May 2026, 07:00 PM',
-        type: 'Walk-in',
-        status: 'No Show',
-        amount: '300.00',
-      },
-      {
-        key: '5',
-        bookingId: 'BK100031',
-        gymName: 'Fitness First',
-        bookingDateTime: '10 May 2026, 06:30 AM',
-        type: 'Walk-in',
-        status: 'Completed',
-        amount: '300.00',
-      },
-    ],
-  },
-  {
-    id: '2',
-    name: 'Priya Sharma',
-    customerId: 'CUST100246',
-    phone: '+91 91234 56789',
-    email: 'priya.sharma@email.com',
-    totalBookings: 18,
-    totalRevenue: '3,860.00',
-    status: 'Active',
-    avatarColor: '#fce7f3',
-    avatarTextColor: '#db2777',
-    initials: 'PS',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Priya&backgroundColor=ffd5dc,ffdfbf',
-    metrics: {
-      totalBookings: 18,
-      completed: 14,
-      completedPct: '77.78%',
-      cancelled: 3,
-      cancelledPct: '16.67%',
-      noShow: 1,
-      noShowPct: '5.55%',
-      totalRevenue: '3,860.00',
-    },
-    recentBookings: [
-      {
-        key: '1',
-        bookingId: 'BK100201',
-        gymName: 'Gold Gym',
-        bookingDateTime: '19 May 2026, 08:00 AM',
-        type: 'App Booking',
-        status: 'Completed',
-        amount: '400.00',
-      },
-      {
-        key: '2',
-        bookingId: 'BK100189',
-        gymName: 'Ozone Fitness',
-        bookingDateTime: '15 May 2026, 05:30 PM',
-        type: 'App Booking',
-        status: 'Completed',
-        amount: '350.00',
-      },
-    ],
-  },
-  {
-    id: '3',
-    name: 'Rahul Krishnan',
-    customerId: 'CUST100247',
-    phone: '+91 99887 66554',
-    email: 'rahul.k@email.com',
-    totalBookings: 31,
-    totalRevenue: '6,930.00',
-    status: 'Active',
-    avatarColor: '#dcfce7',
-    avatarTextColor: '#16a34a',
-    initials: 'RK',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Rahul',
-    metrics: {
-      totalBookings: 31,
-      completed: 27,
-      completedPct: '87.10%',
-      cancelled: 2,
-      cancelledPct: '6.45%',
-      noShow: 2,
-      noShowPct: '6.45%',
-      totalRevenue: '6,930.00',
-    },
-    recentBookings: [
-      {
-        key: '1',
-        bookingId: 'BK100310',
-        gymName: 'Slam Fitness',
-        bookingDateTime: '20 May 2026, 06:00 AM',
-        type: 'App Booking',
-        status: 'Completed',
-        amount: '450.00',
-      },
-    ],
-  },
-  {
-    id: '4',
-    name: 'Sneha Nair',
-    customerId: 'CUST100248',
-    phone: '+91 90123 45678',
-    email: 'sneha.nair@email.com',
-    totalBookings: 15,
-    totalRevenue: '2,950.00',
-    status: 'Active',
-    avatarColor: '#ffedd5',
-    avatarTextColor: '#ea580c',
-    initials: 'SN',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sneha',
-    metrics: {
-      totalBookings: 15,
-      completed: 12,
-      completedPct: '80.00%',
-      cancelled: 2,
-      cancelledPct: '13.33%',
-      noShow: 1,
-      noShowPct: '6.67%',
-      totalRevenue: '2,950.00',
-    },
-    recentBookings: [],
-  },
-  {
-    id: '5',
-    name: 'Vijay Joseph',
-    customerId: 'CUST100249',
-    phone: '+91 93456 78901',
-    email: 'vijay.joseph@email.com',
-    totalBookings: 27,
-    totalRevenue: '4,875.00',
-    status: 'Active',
-    avatarColor: '#e0e7ff',
-    avatarTextColor: '#4f46e5',
-    initials: 'VJ',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Vijay',
-    metrics: {
-      totalBookings: 27,
-      completed: 22,
-      completedPct: '81.48%',
-      cancelled: 3,
-      cancelledPct: '11.11%',
-      noShow: 2,
-      noShowPct: '7.41%',
-      totalRevenue: '4,875.00',
-    },
-    recentBookings: [],
-  },
-  {
-    id: '6',
-    name: 'Ananya Singh',
-    customerId: 'CUST100250',
-    phone: '+91 98712 34567',
-    email: 'ananya.singh@email.com',
-    totalBookings: 20,
-    totalRevenue: '3,420.00',
-    status: 'Inactive',
-    avatarColor: '#ccfbf1',
-    avatarTextColor: '#0d9488',
-    initials: 'AS',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ananya',
-    metrics: {
-      totalBookings: 20,
-      completed: 13,
-      completedPct: '65.00%',
-      cancelled: 4,
-      cancelledPct: '20.00%',
-      noShow: 3,
-      noShowPct: '15.00%',
-      totalRevenue: '3,420.00',
-    },
-    recentBookings: [],
-  },
-  {
-    id: '7',
-    name: 'Manoj Gupta',
-    customerId: 'CUST100251',
-    phone: '+91 98123 65432',
-    email: 'manoj.gupta@email.com',
-    totalBookings: 12,
-    totalRevenue: '2,120.00',
-    status: 'Inactive',
-    avatarColor: '#fef3c7',
-    avatarTextColor: '#d97706',
-    initials: 'MG',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Manoj',
-    metrics: {
-      totalBookings: 12,
-      completed: 8,
-      completedPct: '66.67%',
-      cancelled: 3,
-      cancelledPct: '25.00%',
-      noShow: 1,
-      noShowPct: '8.33%',
-      totalRevenue: '2,120.00',
-    },
-    recentBookings: [],
-  },
-  {
-    id: '8',
-    name: 'Deepa Krishnan',
-    customerId: 'CUST100252',
-    phone: '+91 99654 32109',
-    email: 'deepa.k@email.com',
-    totalBookings: 9,
-    totalRevenue: '1,540.00',
-    status: 'Inactive',
-    avatarColor: '#e2e8f0',
-    avatarTextColor: '#475569',
-    initials: 'DK',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Deepa',
-    metrics: {
-      totalBookings: 9,
-      completed: 6,
-      completedPct: '66.67%',
-      cancelled: 2,
-      cancelledPct: '22.22%',
-      noShow: 1,
-      noShowPct: '11.11%',
-      totalRevenue: '1,540.00',
-    },
-    recentBookings: [],
-  },
-  {
-    id: '9',
-    name: 'Harish Babu',
-    customerId: 'CUST100253',
-    phone: '+91 90987 61234',
-    email: 'harish.babu@email.com',
-    totalBookings: 17,
-    totalRevenue: '3,110.00',
-    status: 'Active',
-    avatarColor: '#fce7f3',
-    avatarTextColor: '#be185d',
-    initials: 'HB',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Harish',
-    metrics: {
-      totalBookings: 17,
-      completed: 13,
-      completedPct: '76.47%',
-      cancelled: 2,
-      cancelledPct: '11.76%',
-      noShow: 2,
-      noShowPct: '11.76%',
-      totalRevenue: '3,110.00',
-    },
-    recentBookings: [],
-  },
-  {
-    id: '10',
-    name: 'Nithya Thakur',
-    customerId: 'CUST100254',
-    phone: '+91 94876 54321',
-    email: 'nithya.thakur@email.com',
-    totalBookings: 22,
-    totalRevenue: '4,230.00',
-    status: 'Active',
-    avatarColor: '#dbeafe',
-    avatarTextColor: '#1d4ed8',
-    initials: 'NT',
-    avatarImg: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Nithya',
-    metrics: {
-      totalBookings: 22,
-      completed: 17,
-      completedPct: '77.27%',
-      cancelled: 3,
-      cancelledPct: '13.64%',
-      noShow: 2,
-      noShowPct: '9.09%',
-      totalRevenue: '4,230.00',
-    },
-    recentBookings: [],
-  },
-];
 
 export const CustomersManagement = () => {
   const { isDarkMode } = useTheme();
 
   // Navigation View State: 'list' | 'detail'
   const [currentView, setCurrentView] = useState('list');
-  const [selectedCustomer, setSelectedCustomer] = useState(INITIAL_CUSTOMERS[0]);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
 
-  // Filters & State
-  const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
+  // Live Server Data & Pagination States
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({
+    totalCustomers: 0,
+    activeCustomers: 0,
+    inactiveCustomers: 0,
+  });
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [roleFilter, setRoleFilter] = useState('CUSTOMER');
 
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
-
-  // Filtered Customers
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((item) => {
-      const matchesSearch =
-        searchQuery.trim() === '' ||
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.customerId.toLowerCase().includes(searchQuery.toLowerCase());
-
-      const matchesStatus =
-        statusFilter === 'all' || item.status.toLowerCase() === statusFilter.toLowerCase();
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [customers, searchQuery, statusFilter]);
-
-  // Handle View Customer Detail
-  const handleViewCustomer = (record) => {
-    setSelectedCustomer(record);
-    setCurrentView('detail');
-  };
-
-  // Handle Add Customer Submit
-  const handleAddCustomerSubmit = (values) => {
-    const newCust = {
-      id: String(customers.length + 1),
-      name: values.name,
-      customerId: `CUST100${255 + customers.length}`,
-      phone: values.phone,
-      email: values.email,
-      totalBookings: 0,
-      totalRevenue: '0.00',
-      status: values.status || 'Active',
-      avatarColor: '#f3e8ff',
-      avatarTextColor: '#7e22ce',
-      initials: values.name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase(),
-      avatarImg: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(values.name)}`,
-      metrics: {
-        totalBookings: 0,
-        completed: 0,
-        completedPct: '0.00%',
-        cancelled: 0,
-        cancelledPct: '0.00%',
-        noShow: 0,
-        noShowPct: '0.00%',
-        totalRevenue: '0.00',
-      },
-      recentBookings: [],
-    };
-    setCustomers([newCust, ...customers]);
-    setIsAddModalOpen(false);
-    form.resetFields();
-    message.success(`Customer "${values.name}" created successfully!`);
-  };
-
-  // Handle Edit Customer Submit
-  const handleEditCustomerSubmit = (values) => {
-    setCustomers((prev) =>
-      prev.map((c) =>
-        c.customerId === selectedCustomer.customerId
-          ? { ...c, name: values.name, phone: values.phone, email: values.email, status: values.status }
-          : c
-      )
-    );
-    setSelectedCustomer((prev) => ({
-      ...prev,
-      name: values.name,
-      phone: values.phone,
-      email: values.email,
-      status: values.status,
-    }));
-    setIsEditModalOpen(false);
-    message.success('Customer details updated successfully!');
-  };
 
   // Modal State for Booking & Gym Details
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedGymInfo, setSelectedGymInfo] = useState(null);
+
+  // Load paginated customers from middleware API (SSOT)
+  const fetchCustomers = useCallback(
+    async (page = currentPage, query = searchQuery, status = statusFilter, role = roleFilter) => {
+      setLoading(true);
+      try {
+        const data = await customerService.getCustomers({
+          page,
+          limit: pageSize,
+          search: query.trim() || undefined,
+          status: status !== 'all' ? status : undefined,
+          role: role !== 'all' ? role : undefined,
+        });
+        setCustomers(data.customers || []);
+        setTotalRecords(data.pagination?.totalRecords || 0);
+        if (data.stats) {
+          setStats(data.stats);
+        }
+      } catch (err) {
+        message.error(err.message || 'Failed to fetch customers from server');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [currentPage, pageSize, searchQuery, statusFilter, roleFilter]
+  );
+
+  useEffect(() => {
+    fetchCustomers(currentPage, searchQuery, statusFilter, roleFilter);
+  }, [currentPage, pageSize, statusFilter, roleFilter]);
+
+  // Handle View Customer Detail
+  const handleViewCustomer = async (record) => {
+    setSelectedCustomer(record);
+    setCurrentView('detail');
+    try {
+      const detail = await customerService.getCustomerById(record.id || record._id);
+      if (detail) {
+        setSelectedCustomer(detail);
+      }
+    } catch {
+      // Keep basic customer data loaded from table
+    }
+  };
+
+  // Handle Toggle Active/Inactive Status
+  const handleToggleStatus = async (record) => {
+    try {
+      const res = await customerService.toggleCustomerStatus(record.id || record._id);
+      message.success(res.message || 'Customer status updated successfully');
+      await fetchCustomers(currentPage, searchQuery, statusFilter, roleFilter);
+      if (selectedCustomer && (selectedCustomer.id === record.id || selectedCustomer._id === record._id)) {
+        setSelectedCustomer((prev) => ({
+          ...prev,
+          status: prev.status === 'Active' ? 'Inactive' : 'Active',
+          isActive: !prev.isActive,
+        }));
+      }
+    } catch (err) {
+      message.error(err.message || 'Failed to update customer status');
+    }
+  };
+
+  // Handle Add Customer Submit
+  const handleAddCustomerSubmit = async (values) => {
+    setIsSubmitting(true);
+    try {
+      await customerService.createCustomer({
+        fullName: values.name,
+        name: values.name,
+        email: values.email,
+        phone: values.phone,
+        status: values.status,
+      });
+      message.success(`Customer "${values.name}" created successfully!`);
+      setIsAddModalOpen(false);
+      form.resetFields();
+      await fetchCustomers(1, searchQuery, statusFilter, roleFilter);
+    } catch (err) {
+      message.error(err.message || 'Failed to create customer');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle Edit Customer Submit
+  const handleEditCustomerSubmit = async (values) => {
+    if (!selectedCustomer) return;
+    setIsSubmitting(true);
+    try {
+      const targetId = selectedCustomer.id || selectedCustomer._id;
+      await customerService.updateCustomer(targetId, {
+        fullName: values.name,
+        name: values.name,
+        email: values.email,
+        phone: values.phone,
+        status: values.status,
+      });
+      message.success('Customer details updated successfully!');
+      setIsEditModalOpen(false);
+      await fetchCustomers(currentPage, searchQuery, statusFilter, roleFilter);
+      const updated = await customerService.getCustomerById(targetId);
+      if (updated) setSelectedCustomer(updated);
+    } catch (err) {
+      message.error(err.message || 'Failed to update customer');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Export Customer List as CSV
+  const handleExportCSV = () => {
+    if (customers.length === 0) {
+      message.warning('No customer records available to export.');
+      return;
+    }
+    const headers = ['Customer ID', 'Full Name', 'Phone', 'Email', 'Role', 'Status', 'Total Bookings', 'Total Revenue'];
+    const rows = customers.map((c) => [
+      c.customerId || '',
+      `"${c.name || c.fullName || ''}"`,
+      c.phone || '',
+      c.email || '',
+      c.role || 'CUSTOMER',
+      c.status || 'Active',
+      c.totalBookings || 0,
+      c.totalRevenue || 0,
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `customers_export_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    message.success('Customers exported successfully!');
+  };
 
   // Table Columns for Customer List
   const customerColumns = [
@@ -481,38 +218,40 @@ export const CustomersManagement = () => {
       title: 'Customer Name',
       dataIndex: 'name',
       key: 'name',
-      width: 200,
+      width: 220,
       render: (_, record) => (
         <div
           onClick={() => handleViewCustomer(record)}
           style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
         >
-          <div
+          <Avatar
+            src={record.avatar}
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: '50%',
               backgroundColor: record.avatarColor || '#f3e8ff',
               color: record.avatarTextColor || '#7e22ce',
               fontWeight: 800,
               fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               flexShrink: 0,
             }}
           >
-            {record.initials}
+            {record.initials || 'U'}
+          </Avatar>
+          <div>
+            <div
+              style={{
+                fontWeight: 700,
+                color: isDarkMode ? '#818cf8' : '#4338ca',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {record.name}
+            </div>
+            {record.role && record.role !== 'CUSTOMER' && (
+              <Tag color="purple" style={{ fontSize: 10, lineHeight: '16px', padding: '0 6px', margin: 0, marginTop: 2 }}>
+                {record.role}
+              </Tag>
+            )}
           </div>
-          <span
-            style={{
-              fontWeight: 700,
-              color: isDarkMode ? '#818cf8' : '#4338ca',
-              transition: 'all 0.15s ease',
-            }}
-          >
-            {record.name}
-          </span>
         </div>
       ),
     },
@@ -566,7 +305,7 @@ export const CustomersManagement = () => {
       align: 'center',
       render: (val) => (
         <span style={{ fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-          {val}
+          {val || 0}
         </span>
       ),
     },
@@ -577,7 +316,7 @@ export const CustomersManagement = () => {
       width: 140,
       render: (val) => (
         <span style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-          ₹ {val}
+          ₹ {val || '0.00'}
         </span>
       ),
     },
@@ -610,25 +349,39 @@ export const CustomersManagement = () => {
     {
       title: 'Action',
       key: 'action',
-      width: 90,
+      width: 150,
       fixed: 'right',
       align: 'center',
       render: (_, record) => (
-        <Button
-          icon={<EyeOutlined />}
-          size="small"
-          onClick={() => handleViewCustomer(record)}
-          style={{
-            borderRadius: 'var(--radius-base)',
-            fontWeight: 600,
-            fontSize: 12,
-            color: '#4f46e5',
-            borderColor: isDarkMode ? '#3730a3' : '#c7d2fe',
-            backgroundColor: isDarkMode ? 'rgba(79, 70, 229, 0.1)' : '#f5f3ff',
-          }}
-        >
-          View
-        </Button>
+        <Space size={6}>
+          <Button
+            icon={<EyeOutlined />}
+            size="small"
+            onClick={() => handleViewCustomer(record)}
+            style={{
+              borderRadius: 'var(--radius-base)',
+              fontWeight: 600,
+              fontSize: 12,
+              color: '#4f46e5',
+              borderColor: isDarkMode ? '#3730a3' : '#c7d2fe',
+              backgroundColor: isDarkMode ? 'rgba(79, 70, 229, 0.1)' : '#f5f3ff',
+            }}
+          >
+            View
+          </Button>
+          <Button
+            size="small"
+            danger={record.status === 'Active'}
+            onClick={() => handleToggleStatus(record)}
+            style={{
+              borderRadius: 'var(--radius-base)',
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          >
+            {record.status === 'Active' ? 'Deactivate' : 'Activate'}
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -655,13 +408,13 @@ export const CustomersManagement = () => {
       ),
     },
     {
-      title: 'Gym Name',
+      title: 'Gym Partner',
       dataIndex: 'gymName',
       key: 'gymName',
       width: 180,
-      render: (text) => (
+      render: (text, record) => (
         <span
-          onClick={() => setSelectedGymInfo({ name: text, location: 'Anna Nagar, Chennai' })}
+          onClick={() => setSelectedGymInfo({ name: text, location: record.gymCity || 'Chennai' })}
           style={{
             fontWeight: 600,
             color: isDarkMode ? '#818cf8' : '#4338ca',
@@ -674,41 +427,25 @@ export const CustomersManagement = () => {
       ),
     },
     {
-      title: 'Booking Date & Time',
-      dataIndex: 'bookingDateTime',
-      key: 'bookingDateTime',
-      width: 190,
+      title: 'Section / Session',
+      dataIndex: 'sectionName',
+      key: 'sectionName',
+      width: 160,
       render: (text) => (
-        <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+        <span style={{ color: isDarkMode ? '#cbd5e1' : '#334155', fontWeight: 600 }}>
           {text}
         </span>
       ),
     },
     {
-      title: 'Type',
-      dataIndex: 'type',
-      key: 'type',
-      width: 140,
-      render: (type) => {
-        const isApp = type === 'App Booking';
-        return (
-          <span
-            style={{
-              display: 'inline-block',
-              padding: '3px 10px',
-              borderRadius: 6,
-              fontSize: 12,
-              fontWeight: 600,
-              backgroundColor: isApp
-                ? isDarkMode ? 'rgba(59, 130, 246, 0.15)' : '#edf4fe'
-                : isDarkMode ? 'rgba(249, 115, 22, 0.15)' : '#fef4e8',
-              color: isApp ? '#3b82f6' : '#ea580c',
-            }}
-          >
-            {type}
-          </span>
-        );
-      },
+      title: 'Date & Time',
+      key: 'dateTime',
+      width: 190,
+      render: (_, record) => (
+        <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 12 }}>
+          {record.date} • {record.timeSlot}
+        </span>
+      ),
     },
     {
       title: 'Status',
@@ -721,9 +458,9 @@ export const CustomersManagement = () => {
         if (status === 'Cancelled') {
           bg = isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed';
           color = '#e11d48';
-        } else if (status === 'No Show') {
-          bg = isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#fef4e8';
-          color = '#d97706';
+        } else if (status === 'Upcoming' || status === 'Active') {
+          bg = isDarkMode ? 'rgba(59, 130, 246, 0.15)' : '#edf4fe';
+          color = '#3b82f6';
         }
         return (
           <span
@@ -790,26 +527,20 @@ export const CustomersManagement = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 20 }}>
             {/* Left: Avatar + Details */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-              <div
+              <Avatar
+                size={80}
+                src={selectedCustomer.avatar}
                 style={{
-                  width: 90,
-                  height: 90,
-                  borderRadius: '50%',
                   backgroundColor: '#e0e7ff',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   boxShadow: '0 4px 12px rgba(99, 102, 241, 0.15)',
                   flexShrink: 0,
+                  fontSize: 28,
+                  fontWeight: 800,
+                  color: '#4f46e5',
                 }}
               >
-                <img
-                  src={selectedCustomer.avatarImg}
-                  alt={selectedCustomer.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              </div>
+                {selectedCustomer.initials || 'U'}
+              </Avatar>
 
               <div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a', marginBottom: 6 }}>
@@ -832,6 +563,11 @@ export const CustomersManagement = () => {
                   >
                     {selectedCustomer.customerId}
                   </span>
+                  {selectedCustomer.role && selectedCustomer.role !== 'CUSTOMER' && (
+                    <Tag color="purple" style={{ fontWeight: 700 }}>
+                      {selectedCustomer.role}
+                    </Tag>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
@@ -847,8 +583,8 @@ export const CustomersManagement = () => {
               </div>
             </div>
 
-            {/* Right: Status Pill & Edit Button */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            {/* Right: Status Pill & Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div
                 style={{
                   display: 'flex',
@@ -879,6 +615,15 @@ export const CustomersManagement = () => {
                   {selectedCustomer.status}
                 </span>
               </div>
+
+              <Button
+                icon={selectedCustomer.status === 'Active' ? <StopOutlined /> : <CheckCircleOutlined />}
+                danger={selectedCustomer.status === 'Active'}
+                onClick={() => handleToggleStatus(selectedCustomer)}
+                style={{ borderRadius: 'var(--radius-base)', fontWeight: 600 }}
+              >
+                {selectedCustomer.status === 'Active' ? 'Deactivate' : 'Activate'}
+              </Button>
 
               <Button
                 icon={<EditOutlined />}
@@ -943,7 +688,7 @@ export const CustomersManagement = () => {
                   Total Bookings
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedCustomer.metrics?.totalBookings || selectedCustomer.totalBookings}
+                  {selectedCustomer.metrics?.totalBookings ?? selectedCustomer.totalBookings ?? 0}
                 </div>
               </div>
             </div>
@@ -969,10 +714,10 @@ export const CustomersManagement = () => {
                   Completed
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedCustomer.metrics?.completed || 16}
+                  {selectedCustomer.metrics?.completed ?? 0}
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#00bf62' }}>
-                  {selectedCustomer.metrics?.completedPct || '66.67%'}
+                  {selectedCustomer.metrics?.completedPct || '0%'}
                 </div>
               </div>
             </div>
@@ -998,15 +743,15 @@ export const CustomersManagement = () => {
                   Cancelled
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedCustomer.metrics?.cancelled || 5}
+                  {selectedCustomer.metrics?.cancelled ?? 0}
                 </div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>
-                  {selectedCustomer.metrics?.cancelledPct || '20.83%'}
+                  {selectedCustomer.metrics?.cancelledPct || '0%'}
                 </div>
               </div>
             </div>
 
-            {/* Metric 4: No Show */}
+            {/* Metric 4: Join Date */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <div
                 style={{
@@ -1020,17 +765,14 @@ export const CustomersManagement = () => {
                   flexShrink: 0,
                 }}
               >
-                <MinusCircleOutlined style={{ fontSize: 22, color: '#f59e0b' }} />
+                <ClockCircleOutlined style={{ fontSize: 22, color: '#f59e0b' }} />
               </div>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                  No Show
+                  Member Since
                 </div>
-                <div style={{ fontSize: 24, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedCustomer.metrics?.noShow || 3}
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b' }}>
-                  {selectedCustomer.metrics?.noShowPct || '12.50%'}
+                <div style={{ fontSize: 16, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                  {selectedCustomer.joinDate || 'Recent'}
                 </div>
               </div>
             </div>
@@ -1053,10 +795,10 @@ export const CustomersManagement = () => {
               </div>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                  Total Revenue
+                  Total Spend
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  ₹ {selectedCustomer.metrics?.totalRevenue || selectedCustomer.totalRevenue}
+                  ₹ {selectedCustomer.metrics?.totalRevenue ?? selectedCustomer.totalRevenue ?? '0.00'}
                 </div>
               </div>
             </div>
@@ -1075,23 +817,17 @@ export const CustomersManagement = () => {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-              Recent Bookings
+              Recent Bookings & Passes
             </div>
-            <Button
-              type="link"
-              style={{ fontWeight: 700, color: '#4f46e5', padding: 0 }}
-              onClick={() => message.info('Redirecting to full bookings ledger...')}
-            >
-              View All Bookings <RightOutlined style={{ fontSize: 10 }} />
-            </Button>
           </div>
 
           <Table
             columns={recentBookingsColumns}
-            dataSource={selectedCustomer.recentBookings && selectedCustomer.recentBookings.length > 0 ? selectedCustomer.recentBookings : INITIAL_CUSTOMERS[0].recentBookings}
+            dataSource={selectedCustomer.recentBookings || []}
             pagination={false}
             rowKey="key"
             scroll={{ x: 900 }}
+            locale={{ emptyText: 'No booking or pass records found for this customer.' }}
           />
         </Card>
 
@@ -1121,7 +857,7 @@ export const CustomersManagement = () => {
             </Form.Item>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
               <Button onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={isSubmitting} style={{ backgroundColor: '#4f46e5' }}>
                 Save Changes
               </Button>
             </div>
@@ -1168,10 +904,10 @@ export const CustomersManagement = () => {
                   Total Customers
                 </div>
                 <div style={{ fontSize: 26, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                  1,248
+                  {stats.totalCustomers.toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
-                  All time
+                  Registered on platform
                 </div>
               </div>
             </div>
@@ -1208,17 +944,17 @@ export const CustomersManagement = () => {
                   Active Customers
                 </div>
                 <div style={{ fontSize: 26, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                  986
+                  {stats.activeCustomers.toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#00bf62' }}>
-                  79.01%
+                  {stats.totalCustomers > 0 ? ((stats.activeCustomers / stats.totalCustomers) * 100).toFixed(1) : 0}% Active
                 </div>
               </div>
             </div>
           </Card>
         </Col>
 
-        {/* New This Month */}
+        {/* Inactive Customers */}
         <Col xs={24} sm={12} lg={6}>
           <Card
             style={{
@@ -1234,31 +970,31 @@ export const CustomersManagement = () => {
                   width: 52,
                   height: 52,
                   borderRadius: 14,
-                  backgroundColor: isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#fef4e8',
+                  backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
-                <ClockCircleOutlined style={{ fontSize: 24, color: '#f59e0b' }} />
+                <MinusCircleOutlined style={{ fontSize: 24, color: '#ef4444' }} />
               </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                  New This Month
+                  Inactive Customers
                 </div>
                 <div style={{ fontSize: 26, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                  132
+                  {stats.inactiveCustomers.toLocaleString('en-IN')}
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b' }}>
-                  10.58%
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>
+                  {stats.totalCustomers > 0 ? ((stats.inactiveCustomers / stats.totalCustomers) * 100).toFixed(1) : 0}% Inactive
                 </div>
               </div>
             </div>
           </Card>
         </Col>
 
-        {/* Total Bookings */}
+        {/* Total Filtered Records */}
         <Col xs={24} sm={12} lg={6}>
           <Card
             style={{
@@ -1285,13 +1021,13 @@ export const CustomersManagement = () => {
               </div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                  Total Bookings
+                  Current Query Total
                 </div>
                 <div style={{ fontSize: 26, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                  32,845
+                  {totalRecords.toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
-                  All time
+                  Page {currentPage} of {Math.max(1, Math.ceil(totalRecords / pageSize))}
                 </div>
               </div>
             </div>
@@ -1310,39 +1046,78 @@ export const CustomersManagement = () => {
         styles={{ body: { padding: '16px 20px' } }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          {/* Left: Search + Status Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 280, maxWidth: 640 }}>
+          {/* Left: Search + Status Dropdown + Role Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 280, flexWrap: 'wrap' }}>
             <Input
               placeholder="Search by name, phone, email or customer ID..."
               prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ borderRadius: 'var(--radius-base)' }}
+              onPressEnter={() => {
+                setCurrentPage(1);
+                fetchCustomers(1, searchQuery, statusFilter, roleFilter);
+              }}
               allowClear
+              style={{ width: 280, borderRadius: 'var(--radius-base)' }}
             />
+            <Button
+              type="primary"
+              icon={<SearchOutlined />}
+              onClick={() => {
+                setCurrentPage(1);
+                fetchCustomers(1, searchQuery, statusFilter, roleFilter);
+              }}
+              style={{ backgroundColor: '#4f46e5', borderRadius: 'var(--radius-base)' }}
+            >
+              Search
+            </Button>
+
             <Select
               value={statusFilter}
-              onChange={setStatusFilter}
-              style={{ width: 140 }}
+              onChange={(val) => {
+                setStatusFilter(val);
+                setCurrentPage(1);
+              }}
+              style={{ width: 130 }}
             >
               <Option value="all">All Status</Option>
               <Option value="active">Active</Option>
               <Option value="inactive">Inactive</Option>
             </Select>
+
+            <Select
+              value={roleFilter}
+              onChange={(val) => {
+                setRoleFilter(val);
+                setCurrentPage(1);
+              }}
+              style={{ width: 160 }}
+            >
+              <Option value="CUSTOMER">Customers Only</Option>
+              <Option value="GYM_OWNER">Gym Owners</Option>
+              <Option value="all">All Platform Users</Option>
+            </Select>
+
+            <Button
+              icon={<SyncOutlined spin={loading} />}
+              onClick={() => fetchCustomers(currentPage, searchQuery, statusFilter, roleFilter)}
+              style={{ borderRadius: 'var(--radius-base)' }}
+              title="Refresh customer data"
+            />
           </div>
 
           {/* Right: Export & Add New Customer Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Button
               icon={<DownloadOutlined />}
-              onClick={() => message.success('Exporting customer data as CSV...')}
+              onClick={handleExportCSV}
               style={{
                 borderRadius: 'var(--radius-base)',
                 fontWeight: 600,
                 borderColor: isDarkMode ? '#334155' : '#e2e8f0',
               }}
             >
-              Export
+              Export CSV
             </Button>
 
             <Button
@@ -1374,19 +1149,33 @@ export const CustomersManagement = () => {
       >
         <Table
           columns={customerColumns}
-          dataSource={filteredCustomers}
-          rowKey="id"
+          dataSource={customers}
+          rowKey={(record) => record.id || record._id}
+          loading={loading}
           pagination={false}
           scroll={{ x: 1200 }}
+          locale={{ emptyText: loading ? 'Loading customers...' : 'No customer records found matching your filters.' }}
         />
       </Card>
 
-      {/* 4. PAGINATION */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 24 }}>
+      {/* 4. SERVER-SIDE PAGINATION */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
-          Showing {filteredCustomers.length > 0 ? (currentPage - 1) * 10 + 1 : 0} to {Math.min(currentPage * 10, filteredCustomers.length)} of {filteredCustomers.length} customers
+          Showing {totalRecords > 0 ? (currentPage - 1) * pageSize + 1 : 0} to {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} customers
         </div>
-        <Pagination current={currentPage} total={filteredCustomers.length} pageSize={10} onChange={setCurrentPage} />
+        <Pagination
+          current={currentPage}
+          total={totalRecords}
+          pageSize={pageSize}
+          showSizeChanger
+          pageSizeOptions={['10', '20', '50']}
+          onChange={(page, newPageSize) => {
+            setCurrentPage(page);
+            if (newPageSize !== pageSize) {
+              setPageSize(newPageSize);
+            }
+          }}
+        />
       </div>
 
       {/* ADD NEW CUSTOMER MODAL */}
@@ -1415,7 +1204,7 @@ export const CustomersManagement = () => {
           </Form.Item>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
             <Button onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-            <Button type="primary" htmlType="submit" style={{ backgroundColor: '#4f46e5' }}>
+            <Button type="primary" htmlType="submit" loading={isSubmitting} style={{ backgroundColor: '#4f46e5' }}>
               Create Customer
             </Button>
           </div>
@@ -1444,10 +1233,10 @@ export const CustomersManagement = () => {
             <div style={{ padding: '12px', background: isDarkMode ? '#1e293b' : '#f8fafc', borderRadius: 8 }}>
               <div style={{ fontSize: 12, color: '#888' }}>Gym Partner</div>
               <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedBooking.gymName}</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>Schedule: {selectedBooking.bookingDateTime}</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>Schedule: {selectedBooking.date} • {selectedBooking.timeSlot}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
-              <div><span style={{ color: '#888' }}>Booking Type:</span> <strong>{selectedBooking.type}</strong></div>
+              <div><span style={{ color: '#888' }}>Section / Type:</span> <strong>{selectedBooking.sectionName}</strong></div>
               <div><span style={{ color: '#888' }}>Amount:</span> <strong>₹ {selectedBooking.amount}</strong></div>
               <div><span style={{ color: '#888' }}>Status:</span> <Tag color={selectedBooking.status === 'Completed' ? 'success' : 'orange'}>{selectedBooking.status}</Tag></div>
               <div><span style={{ color: '#888' }}>Access Pass:</span> <Tag color="blue">Dynamic QR Active</Tag></div>
@@ -1478,9 +1267,7 @@ export const CustomersManagement = () => {
             <div style={{ padding: '12px', background: isDarkMode ? '#1e293b' : '#f8fafc', borderRadius: 8 }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>{selectedGymInfo.name}</div>
               <div style={{ fontSize: 12, color: '#64748b' }}>
-                {typeof selectedGymInfo.location === 'string' && selectedGymInfo.location
-                  ? selectedGymInfo.location
-                  : [selectedGymInfo.area, selectedGymInfo.city].filter(Boolean).join(', ') || selectedGymInfo.fullAddress || selectedGymInfo.address || 'Anna Nagar, Chennai'}
+                {selectedGymInfo.location || 'Chennai'}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 13 }}>
