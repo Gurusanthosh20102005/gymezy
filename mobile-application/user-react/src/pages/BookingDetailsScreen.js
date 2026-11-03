@@ -1235,20 +1235,28 @@ const styles = StyleSheet.create({
   },
   detailRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingVertical: 8,
   },
   detailLabel: {
     fontSize: 13,
+    flexShrink: 0,
+    marginRight: 16,
+    lineHeight: 18,
   },
   detailValue: {
     fontSize: 13,
     fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
+    lineHeight: 18,
   },
   copyValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    flex: 1,
   },
   divider: {
     height: 0.8,

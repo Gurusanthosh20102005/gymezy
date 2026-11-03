@@ -931,7 +931,7 @@ export const getGyms = asyncHandler(async (req, res) => {
 
   // Optimized lean projection: fetch only essential card fields (exclude heavy photos, gallery, trainers, reviews, rules, documents)
   const cardProjection =
-    'partnerId slug name location area city state address fullAddress phone email ownerName rating reviewsCount singleSessionPrice pricingPlans.singleSession pricingPlans.monthly monthlyPrice logo coverPhoto image images badgeText tags workouts businessType facilities subscriptionType status approvalStatus createdAt';
+    'partnerId slug name location area city state address fullAddress phone email ownerName rating reviewsCount singleSessionPrice singleSessionBookingEnabled enabledSessionCategories pricingPlans.singleSession pricingPlans.monthly monthlyPrice logo coverPhoto image images badgeText tags workouts businessType facilities subscriptionType status approvalStatus createdAt';
 
   const [totalCount, rawGyms] = await Promise.all([
     Gym.countDocuments(query),
@@ -976,6 +976,8 @@ export const getGyms = asyncHandler(async (req, res) => {
       reviewsCount: g.reviewsCount || 0,
       singleSessionPrice: sessionPrice,
       pricePerSession: sessionPrice,
+      singleSessionBookingEnabled: g.singleSessionBookingEnabled !== false,
+      enabledSessionCategories: Array.isArray(g.enabledSessionCategories) ? g.enabledSessionCategories : null,
       monthlyPrice: monthlyPrice,
       membershipPrice: monthlyPrice,
       logo: g.logo || mediaUrls.logoUrl,
@@ -1483,6 +1485,11 @@ const applyChangesToGymDocument = async (gym, changes) => {
   if (changes.singleSessionBookingEnabled !== undefined) {
     gym.singleSessionBookingEnabled = Boolean(changes.singleSessionBookingEnabled);
   }
+  if (changes.enabledSessionCategories !== undefined) {
+    gym.enabledSessionCategories = Array.isArray(changes.enabledSessionCategories)
+      ? changes.enabledSessionCategories
+      : [];
+  }
   if (changes.singleSessionPrice !== undefined) {
     gym.singleSessionPrice = Number(changes.singleSessionPrice);
     if (!gym.pricingPlans) gym.pricingPlans = {};
@@ -1730,6 +1737,21 @@ export const updateGym = asyncHandler(async (req, res) => {
   };
   gym.approvalStatus = 'Pending Approval';
   gym.changesCount = Object.keys(gym.pendingChanges).length;
+
+  // Operational pass settings can be applied immediately to live gym document
+  if (proposedChanges.enabledSessionCategories !== undefined) {
+    gym.enabledSessionCategories = Array.isArray(proposedChanges.enabledSessionCategories)
+      ? proposedChanges.enabledSessionCategories
+      : [];
+  }
+  if (proposedChanges.singleSessionPrice !== undefined) {
+    gym.singleSessionPrice = Number(proposedChanges.singleSessionPrice) || 0;
+    if (!gym.pricingPlans) gym.pricingPlans = {};
+    gym.pricingPlans.singleSession = gym.singleSessionPrice;
+  }
+  if (proposedChanges.singleSessionBookingEnabled !== undefined) {
+    gym.singleSessionBookingEnabled = Boolean(proposedChanges.singleSessionBookingEnabled);
+  }
 
   const changedByName = req.user.fullName || req.user.name || gym.ownerName || 'Gym Owner';
 

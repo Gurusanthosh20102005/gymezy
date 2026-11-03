@@ -1,3 +1,4 @@
+import { Platform, PermissionsAndroid } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiService from './apiService';
 
@@ -8,6 +9,25 @@ const FCM_TOKEN_STORAGE_KEY = 'gymezy_fcm_token';
  * Manages device registration with GYMEZY backend
  */
 class NotificationService {
+  /**
+   * Request notification permission from the user (Android 13+ runtime permission)
+   * @returns {Promise<boolean>}
+   */
+  async requestNotificationPermission() {
+    if (Platform.OS === 'android' && Platform.Version >= 33) {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn('⚠️ Error requesting POST_NOTIFICATIONS permission:', err.message);
+        return false;
+      }
+    }
+    return true;
+  }
+
   /**
    * Register device token with GYMEZY backend
    * @param {string} token - FCM device token

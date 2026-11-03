@@ -11,8 +11,10 @@ import {
   RefreshControl,
   Dimensions,
   Platform,
+  Image,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons, Ionicons, Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -39,12 +41,17 @@ export const WalletScreen = ({ navigation }) => {
   const authContext = useAuth();
   const user = authContext?.user || null;
 
-  // Wallet Data State
+  const insets = useSafeAreaInsets();
+  const topInset = Platform.OS === 'android'
+    ? Math.max(StatusBar.currentHeight || 0, insets.top, 38)
+    : insets.top;
+  const [failedLogos, setFailedLogos] = useState({});
   const [walletData, setWalletData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [isBalanceHidden, setIsBalanceHidden] = useState(false);
+  const [selectedGymIndex, setSelectedGymIndex] = useState(0);
 
   // Modals
   const [showTopUpModal, setShowTopUpModal] = useState(false);
@@ -86,16 +93,24 @@ export const WalletScreen = ({ navigation }) => {
   const totalBalanceINR = walletData?.totalBalanceINR ?? 0;
   const transactions = walletData?.transactions || [];
   const individualWallets = walletData?.wallets || [];
+  const activeGymWallet = individualWallets[selectedGymIndex] || individualWallets[0] || null;
+  const activeGymBalanceINR = activeGymWallet?.balanceINR ?? 0;
+  const activeGymKey = activeGymWallet?.gymId ? String(activeGymWallet.gymId) : 'active';
+  const activeGymLogoUri = !failedLogos[activeGymKey] && activeGymWallet?.gymLogo ? activeGymWallet.gymLogo : null;
 
   const filteredTransactions = useMemo(() => {
+    let list = transactions;
+    if (activeGymWallet?.gymId) {
+      list = list.filter((t) => String(t.gymId) === String(activeGymWallet.gymId));
+    }
     if (selectedFilter === 'Credits') {
-      return transactions.filter((t) => t.type === 'CREDIT');
+      return list.filter((t) => t.type === 'CREDIT');
     }
     if (selectedFilter === 'Debits') {
-      return transactions.filter((t) => t.type === 'DEBIT');
+      return list.filter((t) => t.type === 'DEBIT');
     }
-    return transactions;
-  }, [transactions, selectedFilter]);
+    return list;
+  }, [transactions, activeGymWallet?.gymId, selectedFilter]);
 
   const copyToClipboard = async (text, label) => {
     if (!text) return;
@@ -112,19 +127,22 @@ export const WalletScreen = ({ navigation }) => {
       showToast({ message: 'Please enter a valid amount', isError: true });
       return;
     }
+    if (!activeGymWallet?.gymId) {
+      showToast({ message: 'Please select a gym wallet to top up', isError: true });
+      return;
+    }
 
     try {
       setIsProcessingTopUp(true);
-      const primaryGymId = individualWallets[0]?.gymId || null;
       await walletService.topUpWallet({
-        gymId: primaryGymId,
+        gymId: activeGymWallet.gymId,
         amount: num,
         paymentMethod: selectedTopUpMethod,
         userId: user?.id || user?._id,
       });
 
       showToast({
-        message: `₹${num.toLocaleString('en-IN')} added to your wallet!`,
+        message: `₹${num.toLocaleString('en-IN')} added to ${activeGymWallet.gymName} wallet!`,
         isSuccess: true,
       });
       setShowTopUpModal(false);
@@ -145,8 +163,15 @@ export const WalletScreen = ({ navigation }) => {
       showToast({ message: 'Please enter a valid withdrawal amount', isError: true });
       return;
     }
-    if (num > totalBalanceINR) {
-      showToast({ message: 'Withdrawal amount exceeds available balance', isError: true });
+    if (!activeGymWallet?.gymId) {
+      showToast({ message: 'Please select a gym wallet to withdraw from', isError: true });
+      return;
+    }
+    if (num > activeGymBalanceINR) {
+      showToast({
+        message: `Withdrawal amount exceeds balance at ${activeGymWallet.gymName}`,
+        isError: true,
+      });
       return;
     }
     if (!withdrawUpiId.trim()) {
@@ -156,9 +181,8 @@ export const WalletScreen = ({ navigation }) => {
 
     try {
       setIsProcessingWithdraw(true);
-      const primaryGymId = individualWallets[0]?.gymId || null;
       await walletService.withdrawWallet({
-        gymId: primaryGymId,
+        gymId: activeGymWallet.gymId,
         amount: num,
         upiId: withdrawUpiId.trim(),
         reason: withdrawReason,
@@ -166,7 +190,7 @@ export const WalletScreen = ({ navigation }) => {
       });
 
       showToast({
-        message: `₹${num.toLocaleString('en-IN')} withdrawal request submitted!`,
+        message: `₹${num.toLocaleString('en-IN')} withdrawal request submitted for ${activeGymWallet.gymName}!`,
         isSuccess: true,
       });
       setShowWithdrawModal(false);
@@ -205,7 +229,13 @@ export const WalletScreen = ({ navigation }) => {
   }, [user?.id, user?._id]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#0B0F17' : '#F9FBFA' }]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: isDark ? '#0B0F17' : '#F9FBFA' }]}
+      edges={['left', 'right', 'bottom']}
+    >
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <View style={{ height: topInset }} />
+
       {/* 1. Minimal Header Bar */}
       <View style={styles.headerBar}>
         <TouchableOpacity
@@ -239,143 +269,474 @@ export const WalletScreen = ({ navigation }) => {
           />
         }
       >
-        {/* 2. Stacked Minimal Card Container (Matching Reference Design) */}
-        <View style={styles.cardStackWrapper}>
-          {/* Subtle Background Stack Layer */}
+        {/* 2. Gym-Specific Wallet Hero Card */}
+        {individualWallets.length === 0 && !isLoading ? (
           <View
             style={[
-              styles.stackedBackLayer,
+              styles.emptyWalletCard,
               {
-                backgroundColor: isDark ? '#1E293B' : '#E7F5ED',
-                borderColor: isDark ? '#334155' : '#D1EAD9',
+                backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                borderColor: isDark ? '#334155' : '#E2E8F0',
               },
             ]}
           >
-            <View style={styles.backLayerHeader}>
-              <View style={[styles.currencyPillMini, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#FFFFFF' }]}>
-                <Text style={[styles.currencyPillTextMini, { color: isDark ? '#E2E8F0' : '#374151' }]}>INR</Text>
-              </View>
+            <View
+              style={[
+                styles.emptyIconCircle,
+                { backgroundColor: isDark ? 'rgba(52, 211, 153, 0.15)' : '#E6F7EF' },
+              ]}
+            >
+              <MaterialIcons
+                name="account-balance-wallet"
+                size={34}
+                color={isDark ? '#34D399' : '#059669'}
+              />
             </View>
-          </View>
-
-          {/* Main Hero Card (Pastel Sage Green Inspired) */}
-          <LinearGradient
-            colors={isDark ? ['#132E27', '#0F2520'] : ['#D4ECD5', '#C2E5CA']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[
-              styles.heroCard,
-              {
-                borderColor: isDark ? 'rgba(52, 211, 153, 0.2)' : 'rgba(255, 255, 255, 0.8)',
-              },
-            ]}
-          >
-            {/* Top Pill Badge */}
-            <View style={styles.cardTopRow}>
-              <View style={[styles.currencyPill, { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF' }]}>
-                <Text style={[styles.currencyPillText, { color: isDark ? '#E2E8F0' : '#1F2937' }]}>
-                  INR • Indian Rupee
-                </Text>
-              </View>
-            </View>
-
-            {/* Balance Details */}
-            <View style={styles.balanceContainer}>
-              <Text style={[styles.yourBalanceLabel, { color: isDark ? '#9CA3AF' : '#4B5563' }]}>
-                Your balance
+            <Text style={[styles.emptyWalletTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+              No Active Gym Wallets
+            </Text>
+            <Text style={[styles.emptyWalletSubtitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+              GYMEZY wallets are maintained per gym. When you book sessions, enroll in memberships, or receive refunds at a partner gym, your gym-specific wallet will appear here.
+            </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('HomeTabs')}
+              style={[styles.exploreGymsBtn, { backgroundColor: isDark ? '#34D399' : '#003882' }]}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.exploreGymsBtnText,
+                  { color: isDark ? '#064E3B' : '#FFFFFF' },
+                ]}
+              >
+                Explore Partner Gyms
               </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {/* Stacked Minimal Card Container */}
+            <View style={styles.cardStackWrapper}>
+              {/* Subtle Background Stack Layer */}
+              <View
+                style={[
+                  styles.stackedBackLayer,
+                  {
+                    backgroundColor: isDark ? '#1E293B' : '#E7F5ED',
+                    borderColor: isDark ? '#334155' : '#D1EAD9',
+                  },
+                ]}
+              >
+                <View style={styles.backLayerHeader}>
+                  <View
+                    style={[
+                      styles.currencyPillMini,
+                      { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#FFFFFF' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.currencyPillTextMini,
+                        { color: isDark ? '#E2E8F0' : '#374151' },
+                      ]}
+                    >
+                      INR • GYMEZY PASS CARD
+                    </Text>
+                  </View>
+                </View>
+              </View>
 
-              <View style={styles.balanceRow}>
-                <Text style={[styles.balanceAmountText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                  {isLoading && !walletData
-                    ? '₹ ••••••'
-                    : isBalanceHidden
-                    ? '₹ ••••••'
-                    : formatCurrency(totalBalanceINR)}
+              {/* Main Hero Card for Active Gym */}
+              <LinearGradient
+                colors={isDark ? ['#132E27', '#0F2520'] : ['#D4ECD5', '#C2E5CA']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[
+                  styles.heroCard,
+                  {
+                    borderColor: isDark
+                      ? 'rgba(52, 211, 153, 0.2)'
+                      : 'rgba(255, 255, 255, 0.8)',
+                  },
+                ]}
+              >
+                {/* Gym Header Row */}
+                <View style={styles.cardGymHeader}>
+                  <View
+                    style={[
+                      styles.cardGymIconBox,
+                      activeGymLogoUri && {
+                        backgroundColor: '#FFFFFF',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(52, 211, 153, 0.3)' : 'rgba(255, 255, 255, 0.9)',
+                      },
+                    ]}
+                  >
+                    {activeGymLogoUri ? (
+                      <Image
+                        source={{ uri: activeGymLogoUri }}
+                        style={styles.cardGymLogoImg}
+                        resizeMode="cover"
+                        onError={() =>
+                          setFailedLogos((prev) => ({
+                            ...prev,
+                            [activeGymKey]: true,
+                          }))
+                        }
+                      />
+                    ) : (
+                      <MaterialIcons
+                        name="fitness-center"
+                        size={18}
+                        color={isDark ? '#34D399' : '#047857'}
+                      />
+                    )}
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text
+                      style={[styles.cardGymName, { color: isDark ? '#FFFFFF' : '#0F172A' }]}
+                      numberOfLines={1}
+                    >
+                      {activeGymWallet?.gymName || 'GYMEZY Partner Gym'}
+                    </Text>
+                    <Text
+                      style={[styles.cardGymLocation, { color: isDark ? '#9CA3AF' : '#4B5563' }]}
+                      numberOfLines={1}
+                    >
+                      {activeGymWallet?.gymLocation || 'Partner Gym Account'}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.currencyPill,
+                      { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.currencyPillText,
+                        { color: isDark ? '#E2E8F0' : '#1F2937' },
+                      ]}
+                    >
+                      INR
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Balance Details */}
+                <View style={styles.balanceContainer}>
+                  <Text style={[styles.yourBalanceLabel, { color: isDark ? '#9CA3AF' : '#4B5563' }]}>
+                    Available Gym Balance
+                  </Text>
+
+                  <View style={styles.balanceRow}>
+                    <Text
+                      style={[
+                        styles.balanceAmountText,
+                        { color: isDark ? '#FFFFFF' : '#0F172A' },
+                      ]}
+                    >
+                      {isLoading && !walletData
+                        ? '₹ ••••••'
+                        : isBalanceHidden
+                        ? '₹ ••••••'
+                        : formatCurrency(activeGymBalanceINR)}
+                    </Text>
+
+                    <TouchableOpacity
+                      onPress={() => setIsBalanceHidden(!isBalanceHidden)}
+                      style={styles.eyeToggleBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Feather
+                        name={isBalanceHidden ? 'eye-off' : 'eye'}
+                        size={20}
+                        color={isDark ? '#A7F3D0' : '#475569'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Gym Isolation Subtext */}
+                <Text
+                  style={[styles.gymIsolationNotice, { color: isDark ? '#A7F3D0' : '#065F46' }]}
+                  numberOfLines={1}
+                >
+                  • Usable exclusively at {activeGymWallet?.gymName || 'this gym'}
                 </Text>
 
+                {/* Bottom Card Row */}
+                <View style={styles.cardBottomInfoRow}>
+                  <View>
+                    <Text style={[styles.accountLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+                      Account number
+                    </Text>
+                    <Text
+                      style={[
+                        styles.accountNumberVal,
+                        { color: isDark ? '#F1F5F9' : '#1E293B' },
+                      ]}
+                    >
+                      •••• {memberIdSuffix}
+                    </Text>
+                  </View>
+
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.accountLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
+                      Status
+                    </Text>
+                    <Text
+                      style={[
+                        styles.accountNumberVal,
+                        { color: isDark ? '#34D399' : '#059669', fontWeight: '700' },
+                      ]}
+                    >
+                      Active
+                    </Text>
+                  </View>
+                </View>
+              </LinearGradient>
+
+              {/* Floating Action Buttons Scoped to Active Gym */}
+              <View style={styles.floatingActionsRow}>
+                {/* Request / Withdraw Pill */}
                 <TouchableOpacity
-                  onPress={() => setIsBalanceHidden(!isBalanceHidden)}
-                  style={styles.eyeToggleBtn}
-                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (activeGymBalanceINR <= 0) {
+                      showToast({
+                        message: `No funds available to withdraw from ${activeGymWallet?.gymName || 'this gym'}`,
+                        isError: true,
+                      });
+                      return;
+                    }
+                    setWithdrawAmount(String(activeGymBalanceINR));
+                    setShowWithdrawModal(true);
+                  }}
+                  style={[
+                    styles.floatingPillBtn,
+                    {
+                      backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                      borderColor: isDark ? '#334155' : '#E2E8F0',
+                    },
+                  ]}
+                  activeOpacity={0.85}
                 >
                   <Feather
-                    name={isBalanceHidden ? 'eye-off' : 'eye'}
-                    size={20}
-                    color={isDark ? '#A7F3D0' : '#475569'}
+                    name="arrow-down-left"
+                    size={18}
+                    color={isDark ? '#FFFFFF' : '#0F172A'}
+                    style={{ marginRight: 6 }}
                   />
+                  <Text
+                    style={[
+                      styles.floatingPillText,
+                      { color: isDark ? '#FFFFFF' : '#0F172A' },
+                    ]}
+                  >
+                    Request Payout
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Add Money Pill */}
+                <TouchableOpacity
+                  onPress={() => setShowTopUpModal(true)}
+                  style={[
+                    styles.floatingPillBtn,
+                    {
+                      backgroundColor: isDark ? '#34D399' : '#0F172A',
+                      borderColor: 'transparent',
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                >
+                  <Feather
+                    name="arrow-up-right"
+                    size={18}
+                    color={isDark ? '#064E3B' : '#FFFFFF'}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text
+                    style={[
+                      styles.floatingPillText,
+                      { color: isDark ? '#064E3B' : '#FFFFFF' },
+                    ]}
+                  >
+                    Add Money
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Bottom Card Row */}
-            <View style={styles.cardBottomInfoRow}>
-              <View>
-                <Text style={[styles.accountLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
-                  Account number
-                </Text>
-                <Text style={[styles.accountNumberVal, { color: isDark ? '#F1F5F9' : '#1E293B' }]}>
-                  •••• {memberIdSuffix}
-                </Text>
+            {/* 3. Option B: Gym Wallets Account Breakdown List */}
+            {individualWallets.length > 0 && (
+              <View style={styles.gymAccountsSection}>
+                <View style={styles.gymAccountsHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={[styles.sectionHeading, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                      Gym Accounts
+                    </Text>
+                    <View
+                      style={[
+                        styles.countBadge,
+                        { backgroundColor: isDark ? 'rgba(52, 211, 153, 0.15)' : '#E6F7EF' },
+                      ]}
+                    >
+                      <Text style={[styles.countBadgeText, { color: isDark ? '#34D399' : '#059669' }]}>
+                        {individualWallets.length}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {individualWallets.length > 1 && (
+                    <Text style={[styles.totalAcrossLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                      Total:{' '}
+                      <Text style={{ fontWeight: '700', color: isDark ? '#34D399' : '#059669' }}>
+                        {formatCurrency(totalBalanceINR)}
+                      </Text>
+                    </Text>
+                  )}
+                </View>
+
+                {individualWallets.map((gymW, idx) => {
+                  const isSelected = selectedGymIndex === idx;
+                  const gymKey = gymW.gymId ? String(gymW.gymId) : String(idx);
+                  const gymLogoUri = !failedLogos[gymKey] && gymW.gymLogo ? gymW.gymLogo : null;
+                  return (
+                    <TouchableOpacity
+                      key={gymW.gymId || idx}
+                      onPress={() => setSelectedGymIndex(idx)}
+                      style={[
+                        styles.gymAccountCard,
+                        {
+                          backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                          borderColor: isSelected
+                            ? (isDark ? '#34D399' : '#059669')
+                            : (isDark ? '#334155' : '#E2E8F0'),
+                          borderWidth: isSelected ? 1.5 : 1,
+                        },
+                      ]}
+                      activeOpacity={0.75}
+                    >
+                      <View
+                        style={[
+                          styles.gymAccountIconCircle,
+                          {
+                            backgroundColor: gymLogoUri
+                              ? '#FFFFFF'
+                              : isSelected
+                              ? (isDark ? 'rgba(52, 211, 153, 0.2)' : '#E6F7EF')
+                              : (isDark ? '#0F172A' : '#F1F5F9'),
+                            borderColor: isDark ? '#334155' : '#E2E8F0',
+                            borderWidth: gymLogoUri ? 1 : 0,
+                          },
+                        ]}
+                      >
+                        {gymLogoUri ? (
+                          <Image
+                            source={{ uri: gymLogoUri }}
+                            style={styles.gymAccountLogoImg}
+                            resizeMode="cover"
+                            onError={() =>
+                              setFailedLogos((prev) => ({ ...prev, [gymKey]: true }))
+                            }
+                          />
+                        ) : (
+                          <MaterialIcons
+                            name="fitness-center"
+                            size={18}
+                            color={
+                              isSelected
+                                ? (isDark ? '#34D399' : '#059669')
+                                : (isDark ? '#94A3B8' : '#64748B')
+                            }
+                          />
+                        )}
+                      </View>
+
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text
+                          style={[
+                            styles.gymAccountName,
+                            {
+                              color: isDark ? '#FFFFFF' : '#0F172A',
+                              fontWeight: isSelected ? '700' : '600',
+                            },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {gymW.gymName}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.gymAccountLocation,
+                            { color: isDark ? '#94A3B8' : '#64748B' },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {isSelected ? 'Active Card • ' : ''}
+                          {gymW.gymLocation || 'Partner Gym Account'}
+                        </Text>
+                      </View>
+
+                      <View style={{ alignItems: 'flex-end', marginLeft: 8 }}>
+                        <Text
+                          style={[
+                            styles.gymAccountBalance,
+                            {
+                              color: isSelected
+                                ? (isDark ? '#34D399' : '#059669')
+                                : (isDark ? '#F1F5F9' : '#1E293B'),
+                            },
+                          ]}
+                        >
+                          {formatCurrency(gymW.balanceINR)}
+                        </Text>
+                        {isSelected ? (
+                          <View
+                            style={[
+                              styles.activeIndicatorBadge,
+                              { backgroundColor: isDark ? '#064E3B' : '#E6F7EF' },
+                            ]}
+                          >
+                            <Feather
+                              name="check"
+                              size={11}
+                              color={isDark ? '#34D399' : '#047857'}
+                            />
+                            <Text
+                              style={[
+                                styles.activeIndicatorText,
+                                { color: isDark ? '#34D399' : '#047857' },
+                              ]}
+                            >
+                              Active
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={styles.switchPromptBadge}>
+                            <Text
+                              style={[
+                                styles.tapToViewText,
+                                { color: isDark ? '#94A3B8' : '#64748B' },
+                              ]}
+                            >
+                              Select
+                            </Text>
+                            <Feather
+                              name="chevron-right"
+                              size={12}
+                              color={isDark ? '#94A3B8' : '#64748B'}
+                            />
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={[styles.accountLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>
-                  Status
-                </Text>
-                <Text style={[styles.accountNumberVal, { color: isDark ? '#34D399' : '#059669', fontWeight: '700' }]}>
-                  Active
-                </Text>
-              </View>
-            </View>
-          </LinearGradient>
-
-          {/* Floating Action Buttons Matching Reference Pill Aesthetic */}
-          <View style={styles.floatingActionsRow}>
-            {/* Request / Withdraw Pill */}
-            <TouchableOpacity
-              onPress={() => {
-                if (totalBalanceINR <= 0) {
-                  showToast({ message: 'No funds available to withdraw', isError: true });
-                  return;
-                }
-                setWithdrawAmount(String(totalBalanceINR));
-                setShowWithdrawModal(true);
-              }}
-              style={[
-                styles.floatingPillBtn,
-                {
-                  backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-                  borderColor: isDark ? '#334155' : '#E2E8F0',
-                },
-              ]}
-              activeOpacity={0.85}
-            >
-              <Feather name="arrow-down-left" size={18} color={isDark ? '#FFFFFF' : '#0F172A'} style={{ marginRight: 6 }} />
-              <Text style={[styles.floatingPillText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                Request
-              </Text>
-            </TouchableOpacity>
-
-            {/* Add Money Pill */}
-            <TouchableOpacity
-              onPress={() => setShowTopUpModal(true)}
-              style={[
-                styles.floatingPillBtn,
-                {
-                  backgroundColor: isDark ? '#34D399' : '#0F172A',
-                  borderColor: 'transparent',
-                },
-              ]}
-              activeOpacity={0.85}
-            >
-              <Feather name="arrow-up-right" size={18} color={isDark ? '#064E3B' : '#FFFFFF'} style={{ marginRight: 6 }} />
-              <Text style={[styles.floatingPillText, { color: isDark ? '#064E3B' : '#FFFFFF' }]}>
-                Add Money
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+            )}
+          </>
+        )}
 
         {/* 3. Minimal Transaction History */}
         <View style={styles.transactionsSection}>
@@ -384,6 +745,11 @@ export const WalletScreen = ({ navigation }) => {
               <Text style={[styles.txnSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 Transactions
               </Text>
+              {activeGymWallet?.gymName && (
+                <Text style={[styles.txnSectionSub, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                  {activeGymWallet.gymName}
+                </Text>
+              )}
             </View>
 
             {/* Filter Pills */}
@@ -551,10 +917,10 @@ export const WalletScreen = ({ navigation }) => {
             <View style={styles.sheetHeaderRow}>
               <View>
                 <Text style={[styles.sheetTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                  Add Money
+                  Add Money to {activeGymWallet?.gymName || 'Gym Wallet'}
                 </Text>
                 <Text style={[styles.sheetSub, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                  Instant wallet deposit via UPI or Card
+                  Instant wallet deposit for {activeGymWallet?.gymName || 'this partner gym'}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowTopUpModal(false)} style={styles.sheetCloseBtn}>
@@ -688,10 +1054,10 @@ export const WalletScreen = ({ navigation }) => {
             <View style={styles.sheetHeaderRow}>
               <View>
                 <Text style={[styles.sheetTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                  Request Payout / Refund
+                  Request Payout from {activeGymWallet?.gymName || 'Gym Wallet'}
                 </Text>
                 <Text style={[styles.sheetSub, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                  Withdraw balance directly to your UPI ID or Bank
+                  Withdraw balance from {activeGymWallet?.gymName || 'this gym'} directly to your UPI ID or Bank
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowWithdrawModal(false)} style={styles.sheetCloseBtn}>
@@ -708,10 +1074,10 @@ export const WalletScreen = ({ navigation }) => {
                 onChangeText={setWithdrawAmount}
                 keyboardType="numeric"
                 style={[styles.inputBoxText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}
-                placeholder={`Max ${totalBalanceINR}`}
+                placeholder={`Max ${activeGymBalanceINR}`}
                 placeholderTextColor={isDark ? '#475569' : '#94A3B8'}
               />
-              <TouchableOpacity onPress={() => setWithdrawAmount(String(totalBalanceINR))} style={styles.maxBtn}>
+              <TouchableOpacity onPress={() => setWithdrawAmount(String(activeGymBalanceINR))} style={styles.maxBtn}>
                 <Text style={styles.maxBtnText}>MAX</Text>
               </TouchableOpacity>
             </View>
@@ -921,6 +1287,171 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     marginLeft: 4,
+  },
+  cardGymHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cardGymIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  cardGymLogoImg: {
+    width: '100%',
+    height: '100%',
+  },
+  cardGymName: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  cardGymLocation: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  gymIsolationNotice: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  gymAccountsSection: {
+    marginTop: 6,
+    marginBottom: 20,
+  },
+  gymAccountsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  countBadge: {
+    marginLeft: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: 10,
+  },
+  countBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  totalAcrossLabel: {
+    fontSize: 12,
+  },
+  gymAccountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  gymAccountIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  gymAccountLogoImg: {
+    width: '100%',
+    height: '100%',
+  },
+  gymAccountName: {
+    fontSize: 14,
+    letterSpacing: -0.2,
+  },
+  gymAccountLocation: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  gymAccountBalance: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  activeIndicatorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 3,
+    gap: 3,
+  },
+  activeIndicatorText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  switchPromptBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+    gap: 2,
+  },
+  tapToViewText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  txnSectionSub: {
+    fontSize: 11.5,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  emptyWalletCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 26,
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyWalletTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  emptyWalletSubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 20,
+    paddingHorizontal: 8,
+  },
+  exploreGymsBtn: {
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  exploreGymsBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   heroCard: {
     borderRadius: 26,

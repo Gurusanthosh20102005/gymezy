@@ -79,6 +79,7 @@ const paymentSchema = new mongoose.Schema(
       default: 'Completed',
     },
     transactionId: { type: String, required: true, trim: true },
+    walletAmountApplied: { type: Number, default: 0, min: 0 },
     paidAt: { type: Date, default: Date.now },
   },
   { _id: false }

@@ -390,6 +390,10 @@ const gymSchema = new mongoose.Schema(
     // Pricing Plans
     singleSessionPrice: { type: Number, default: 199, min: 0 },
     singleSessionBookingEnabled: { type: Boolean, default: true },
+    enabledSessionCategories: {
+      type: [String],
+      default: ['Gym Access', 'Group Classes', 'Yoga Classes', 'Zumba Sessions', 'Other Fitness Classes'],
+    },
     pricingPlans: {
       type: pricingPlansSchema,
       default: () => ({}),
