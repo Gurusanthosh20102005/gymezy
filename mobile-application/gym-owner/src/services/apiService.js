@@ -468,6 +468,51 @@ class ApiService {
     return result.data;
   }
 
+  async getCancellationNegotiations(gymId) {
+    if (!gymId) throw new Error('Gym ID is required.');
+    const response = await this.executeFetch(`/memberships/gym/${gymId}/cancellation-negotiations`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to fetch cancellation requests.');
+    }
+    return result.data;
+  }
+
+  async quoteCancellationRefund(requestId, maximumRefundAmount, refundAmount, message = '') {
+    const response = await this.executeFetch(`/memberships/cancellation-negotiations/${requestId}/gym-offer`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        deductionAmount: Math.max(0, Number(maximumRefundAmount) - Number(refundAmount)),
+        message,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to send refund quote.');
+    }
+    return result.data;
+  }
+
+  async acceptCancellation(requestId, maximumRefundAmount, refundAmount, message = '') {
+    const response = await this.executeFetch(`/memberships/cancellation-negotiations/${requestId}/gym-accept`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        deductionAmount: Math.max(0, Number(maximumRefundAmount) - Number(refundAmount)),
+        message,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to accept cancellation.');
+    }
+    return result.data;
+  }
+
   async updateTrainerPricing(gymId, payload) {
     if (!gymId) throw new Error('Gym ID is required.');
     const response = await this.executeFetch(`/gyms/${gymId}/trainer-pricing`, {

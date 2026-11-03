@@ -38,13 +38,13 @@ router.get('/gym/:gymId/switch-requests', optionalAuthenticate, getGymSwitchRequ
 router.patch('/switch-requests/:requestId/gym-action', optionalAuthenticate, gymActionReviewSwitchRequest);
 
 // Membership cancellation negotiation
-router.post('/:id/cancellation-negotiation', optionalAuthenticate, requestCancellationNegotiation);
 router.get('/my/cancellation-negotiations', optionalAuthenticate, getMyCancellationNegotiations);
 router.get('/gym/:gymId/cancellation-negotiations', optionalAuthenticate, getGymCancellationNegotiations);
 router.post('/cancellation-negotiations/:requestId/gym-offer', optionalAuthenticate, gymOfferCancellationRefund);
 router.patch('/cancellation-negotiations/:requestId/gym-accept', optionalAuthenticate, gymAcceptCancellation);
 router.patch('/cancellation-negotiations/:requestId/gym-reject', optionalAuthenticate, gymRejectCancellation);
 router.patch('/cancellation-negotiations/:requestId/member-response', optionalAuthenticate, memberRespondCancellationOffer);
+router.post('/:id/cancellation-negotiation', optionalAuthenticate, requestCancellationNegotiation);
 
 // Get Memberships for a Gym (Gym Owner Portal & Gym Owner Mobile)
 router.get('/gym/:gymId', optionalAuthenticate, getGymMemberships);

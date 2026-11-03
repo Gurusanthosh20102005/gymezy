@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -32,13 +32,11 @@ export const MyMembershipsScreen = ({ navigation }) => {
   const [selectedTab, setSelectedTab] = useState('Active');
   const [isFetching, setIsFetching] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadMemberships = async () => {
+  const loadMemberships = useCallback(async () => {
       try {
         setIsFetching(true);
         const serverList = await membershipService.fetchMyMemberships(user?.id || user?._id);
-        if (isMounted && Array.isArray(serverList) && serverList.length > 0) {
+        if (Array.isArray(serverList)) {
           const mapped = serverList.map((m, idx) => {
             const startDateStr = m.startDate
               ? new Date(m.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -105,15 +103,20 @@ export const MyMembershipsScreen = ({ navigation }) => {
       } catch (err) {
         console.warn('Could not fetch server memberships:', err.message);
       } finally {
-        if (isMounted) setIsFetching(false);
+        setIsFetching(false);
       }
-    };
+  }, [user?.id, user?._id, setAllMemberships]);
 
+  useEffect(() => {
     void loadMemberships();
-    return () => {
-      isMounted = false;
-    };
-  }, [user?.id, user?._id]);
+  }, [loadMemberships]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      void loadMemberships();
+    });
+    return unsubscribe;
+  }, [navigation, loadMemberships]);
 
   const filteredMemberships = memberships.filter((m) => {
     if (selectedTab === 'Active') {

@@ -4,7 +4,7 @@ import {
   Button,
   Image,
   Switch,
-  message,
+  App as AntdApp,
   Modal,
   Input,
   Row,
@@ -17,6 +17,7 @@ import {
   Tag,
   Divider,
   Radio,
+  Upload,
 } from 'antd';
 import {
   SyncOutlined,
@@ -108,6 +109,7 @@ export const ApplicationStatus = () => {
   const dispatch = useDispatch();
   const { isDarkMode, toggleTheme } = useTheme();
   const { user, isAuthenticated } = useSelector((state) => state.auth);
+  const { message: messageApi } = AntdApp.useApp();
 
   const [refreshing, setRefreshing] = useState(false);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
@@ -130,6 +132,15 @@ export const ApplicationStatus = () => {
   const [isLocating, setIsLocating] = useState(false);
 
   const gym = user?.gym || {};
+  const galleryPhotos = Array.isArray(gym.galleryPhotos)
+    ? gym.galleryPhotos
+        .filter(Boolean)
+        .map((photo) => (
+          typeof photo === 'string'
+            ? { fileName: '', fileData: photo }
+            : photo
+        ))
+    : [];
   const approvalStatus = gym.approvalStatus || 'Pending Approval';
   const isApproved = approvalStatus === 'Approved';
   const isOnHold = approvalStatus === 'On Hold';
@@ -151,13 +162,13 @@ export const ApplicationStatus = () => {
       const result = await dispatch(refreshCurrentUser()).unwrap();
       const updatedStatus = result.gym?.approvalStatus || 'Pending Approval';
       if (updatedStatus === 'Approved') {
-        message.success('Your gym partner account has been approved.');
+        messageApi.success('Your gym partner account has been approved.');
         navigate('/owner/dashboard');
       } else {
-        message.info(`Current status: ${updatedStatus}`);
+        messageApi.info(`Current status: ${updatedStatus}`);
       }
     } catch (err) {
-      message.error(err?.message || err || 'Could not refresh status.');
+      messageApi.error(err?.message || err || 'Could not refresh status.');
     } finally {
       setRefreshing(false);
     }
@@ -166,7 +177,7 @@ export const ApplicationStatus = () => {
   const handleResubmit = async () => {
     const gymId = gym.id || gym._id;
     if (!gymId) {
-      message.error('Gym ID not found. Please log in again.');
+      messageApi.error('Gym ID not found. Please log in again.');
       return;
     }
     setResubmitting(true);
@@ -174,12 +185,12 @@ export const ApplicationStatus = () => {
       await apiClient.post(`/gyms/${gymId}/resubmit`, {
         notes: resubmitNotes,
       });
-      message.success('Application resubmitted successfully. Status updated to Pending Approval.');
+      messageApi.success('Application resubmitted successfully. Status updated to Pending Approval.');
       setResubmitModalOpen(false);
       setResubmitNotes('');
       await dispatch(refreshCurrentUser()).unwrap();
     } catch (err) {
-      message.error(err?.response?.data?.message || err?.message || 'Failed to resubmit application.');
+      messageApi.error(err?.response?.data?.message || err?.message || 'Failed to resubmit application.');
     } finally {
       setResubmitting(false);
     }
@@ -187,7 +198,7 @@ export const ApplicationStatus = () => {
 
   const handleLogout = () => {
     dispatch(logout());
-    message.success('Signed out.');
+    messageApi.success('Signed out.');
     navigate('/login');
   };
 
@@ -205,7 +216,9 @@ export const ApplicationStatus = () => {
     setEditCoverPhoto(existingCover);
 
     const existingGallery = Array.isArray(gym.galleryPhotos)
-      ? gym.galleryPhotos.map((p) => (typeof p === 'string' ? p : p.fileData || ''))
+      ? gym.galleryPhotos
+          .filter(Boolean)
+          .map((p) => (typeof p === 'string' ? p : p.fileData || ''))
       : [];
     setEditGalleryPhotos(existingGallery);
 
@@ -262,7 +275,7 @@ export const ApplicationStatus = () => {
   const handleSaveGymDetails = async (values) => {
     const gymId = gym.id || gym._id;
     if (!gymId) {
-      message.error('Gym record not found. Please log in again.');
+      messageApi.error('Gym record not found. Please log in again.');
       return;
     }
 
@@ -296,7 +309,7 @@ export const ApplicationStatus = () => {
       const res = await apiClient.put(`/gyms/${gymId}`, payload);
       if (res.data?.success) {
         const apiMsg = res.data?.message;
-        message.success(
+        messageApi.success(
           apiMsg || (editResubmitFlag
             ? 'Gym details updated and application resubmitted for Super Admin review!'
             : 'Changes submitted successfully! Pending Super Admin approval.')
@@ -304,10 +317,10 @@ export const ApplicationStatus = () => {
         setIsEditModalOpen(false);
         await dispatch(refreshCurrentUser()).unwrap();
       } else {
-        message.error(res.data?.message || 'Failed to update gym details.');
+        messageApi.error(res.data?.message || 'Failed to update gym details.');
       }
     } catch (err) {
-      message.error(err.response?.data?.message || err.message || 'Error updating gym details.');
+      messageApi.error(err.response?.data?.message || err.message || 'Error updating gym details.');
     } finally {
       setSavingEdit(false);
     }
@@ -317,9 +330,9 @@ export const ApplicationStatus = () => {
     try {
       const b64 = await fileToBase64(file);
       setEditLogo(b64);
-      message.success('Logo selected.');
+      messageApi.success('Logo selected.');
     } catch {
-      message.error('Failed to process image file.');
+      messageApi.error('Failed to process image file.');
     }
     return false;
   };
@@ -328,16 +341,16 @@ export const ApplicationStatus = () => {
     try {
       const b64 = await fileToBase64(file);
       setEditGalleryPhotos((prev) => [...prev, b64]);
-      message.success('Facility photo added.');
+      messageApi.success('Facility photo added.');
     } catch {
-      message.error('Failed to process photo.');
+      messageApi.error('Failed to process photo.');
     }
     return false;
   };
 
   const handleGpsPin = () => {
     if (!navigator.geolocation) {
-      message.error('Geolocation is not supported by your browser.');
+      messageApi.error('Geolocation is not supported by your browser.');
       return;
     }
     setIsLocating(true);
@@ -347,12 +360,12 @@ export const ApplicationStatus = () => {
         editForm.setFieldsValue({
           googleMapsUrl: `https://maps.google.com/?q=${latitude},${longitude}`,
         });
-        message.success(`GPS Location Synced: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+        messageApi.success(`GPS Location Synced: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
         setIsLocating(false);
       },
       (err) => {
         setIsLocating(false);
-        message.error(err.message || 'Unable to retrieve location.');
+        messageApi.error(err.message || 'Unable to retrieve location.');
       },
       { timeout: 8000 }
     );
@@ -397,6 +410,7 @@ export const ApplicationStatus = () => {
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       }}
     >
+
       {/* MINIMAL HEADER */}
       <header
         style={{
@@ -954,8 +968,11 @@ export const ApplicationStatus = () => {
               <div>
                 <div style={{ color: textMuted, fontSize: 11, marginBottom: 2 }}>Coordinates</div>
                 <div style={{ fontSize: 12, fontFamily: 'monospace' }}>
-                  {gym.location?.coordinates
-                    ? `${gym.location.coordinates[1]?.toFixed(4)}, ${gym.location.coordinates[0]?.toFixed(4)}`
+                  {Array.isArray(gym.location?.coordinates) &&
+                  gym.location.coordinates.length >= 2 &&
+                  Number.isFinite(Number(gym.location.coordinates[0])) &&
+                  Number.isFinite(Number(gym.location.coordinates[1]))
+                    ? `${Number(gym.location.coordinates[1]).toFixed(4)}, ${Number(gym.location.coordinates[0]).toFixed(4)}`
                     : 'Pinned via GPS'}
                 </div>
               </div>
@@ -1244,7 +1261,7 @@ export const ApplicationStatus = () => {
 
               <Image.PreviewGroup>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                  {gym.galleryPhotos.map((photo, index) => {
+                  {galleryPhotos.map((photo, index) => {
                     const src = typeof photo === 'string' ? photo : photo.fileData;
                     return (
                       <div

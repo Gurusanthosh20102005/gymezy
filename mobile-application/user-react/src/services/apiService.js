@@ -2,7 +2,7 @@ import { NativeModules } from 'react-native';
 import { getCloudApiUrl } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
-const CURRENT_MAC_IP = '192.168.0.111';
+const CURRENT_MAC_IP = '192.168.0.107';
 
 const getMetroHost = () => {
   try {

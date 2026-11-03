@@ -26,7 +26,7 @@ import { getSafeImageUri } from '../../utils/mediaUtils';
 const MEMBER_FILTER_TABS = ['All', 'Active', 'Expiring Soon', 'Expired', 'Cancelled'];
 const SWITCH_FILTER_TABS = ['All', 'Pending Review', 'Sent to Admin', 'Approved', 'Rejected'];
 const BOOKING_FILTER_TABS = ['All', 'Upcoming', 'Checked-in', 'Completed'];
-const CANCEL_FILTER_TABS = ['All', 'Sent to Admin', 'In Review', 'Approved', 'Rejected'];
+const CANCEL_FILTER_TABS = ['All', 'Pending Gym Approval', 'Quoted Refund', 'Approved', 'Rejected'];
 const PAYMENT_METHODS = ['UPI', 'Cash', 'Credit / Debit Card', 'Net Banking'];
 
 const DEFAULT_PLANS = [
@@ -110,6 +110,7 @@ export const MembersTab = ({ topInset, navigation }) => {
   const [membershipSummary, setMembershipSummary] = useState(null);
   const [bookings, setBookings] = useState([]);
   const [cancellations, setCancellations] = useState([]);
+  const [cancelQuoteAmount, setCancelQuoteAmount] = useState('');
   const [trainersList, setTrainersList] = useState([]);
 
   // Modals
@@ -201,9 +202,10 @@ export const MembersTab = ({ topInset, navigation }) => {
 
       const targetGymId = gym?._id || gym?.id || gym?.partnerId;
 
-      const [employees, switchRes] = await Promise.all([
+      const [employees, switchRes, cancellationRes] = await Promise.all([
         apiService.getEmployees().catch(() => []),
         targetGymId ? apiService.getSwitchRequests(targetGymId).catch(() => null) : null,
+        targetGymId ? apiService.getCancellationNegotiations(targetGymId).catch(() => null) : null,
       ]);
 
       if (Array.isArray(employees)) {
@@ -215,6 +217,34 @@ export const MembersTab = ({ topInset, navigation }) => {
 
       if (Array.isArray(switchRes?.requests)) {
         setSwitchRequests(switchRes.requests);
+      }
+      if (Array.isArray(cancellationRes?.negotiations)) {
+        setCancellations(cancellationRes.negotiations.map((item) => ({
+          key: item._id,
+          requestId: item.requestId,
+          memberId: item.membershipId?.membershipId || item.membershipId?._id,
+          memberName: item.userId?.fullName || 'Member',
+          phone: item.userId?.phone || '',
+          avatar: item.userId?.avatar || item.userId?.profilePicture,
+          plan: item.membershipId?.membershipTier || 'Membership',
+          amount: `₹${Number(item.originalAmount || 0).toLocaleString('en-IN')}`,
+          refundableAmount: item.currentOffer
+            ? `₹${Number(item.currentOffer.refundAmount || 0).toLocaleString('en-IN')}`
+            : `₹${Number(item.maximumRefundAmount || 0).toLocaleString('en-IN')}`,
+          maximumRefundAmount: Number(item.maximumRefundAmount || 0),
+          refundAmount: Number(item.currentOffer?.refundAmount ?? item.maximumRefundAmount ?? 0),
+          reason: item.reason,
+          status: item.status === 'PENDING_GYM_APPROVAL'
+            ? 'Pending Gym Approval'
+            : item.status === 'PENDING_MEMBER_APPROVAL'
+            ? 'Quoted Refund'
+            : item.status === 'COMPLETED'
+            ? 'Approved'
+            : item.status === 'REJECTED_BY_GYM'
+            ? 'Rejected'
+            : item.status,
+          adminStatus: item.status,
+        })));
       }
     } catch (err) {
       console.warn('Error fetching gym support data:', err.message);
@@ -336,13 +366,13 @@ export const MembersTab = ({ topInset, navigation }) => {
     });
   };
 
-  // Request Membership Cancellation (Dispatches to Super Admin)
+  // Legacy gym-side cancellation entry (member requests now originate from the user app)
   const handleRequestCancellation = (member) => {
     if (!member) return;
 
     Alert.alert(
       'Request Membership Cancellation',
-      `Are you sure you want to request cancellation for ${member.name} (${member.memberId || member.id})?\n\nA formal cancellation request will be dispatched to Super Admin for verification and refund processing.`,
+      `Cancellation requests must originate from the member's Membership Details screen for ${member.name}.`,
       [
         { text: 'Keep Membership', style: 'cancel' },
         {
@@ -387,14 +417,14 @@ export const MembersTab = ({ topInset, navigation }) => {
                 ', ' +
                 new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               reason: 'Member requested early cancellation via Gym Owner Console',
-              notes: 'Verified by Gym Owner and dispatched to Super Admin for processing.',
-              status: 'Sent to Admin',
-              adminStatus: 'In Review by Super Admin',
+              notes: 'Awaiting refund quote from Gym Owner.',
+              status: 'Pending Gym Approval',
+              adminStatus: 'Pending Gym Approval',
             };
 
             setCancellations((prev) => [newReq, ...prev]);
             showToast({
-              message: `Cancellation request for ${member.name} sent to Super Admin!`,
+              message: `Cancellation request for ${member.name} is pending review.`,
               isSuccess: true,
             });
           },
@@ -403,29 +433,36 @@ export const MembersTab = ({ topInset, navigation }) => {
     );
   };
 
-  // Accept & Forward Cancellation to Admin
+  // Send a refund quote to the member
   const handleForwardCancelToAdmin = (req) => {
-    Alert.alert(
-      'Forward to Super Admin',
-      `Accept cancellation for ${req.memberName} (${req.requestId}) and forward to Super Admin?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Accept & Send',
-          onPress: () => {
-            setCancellations((prev) =>
-              prev.map((r) =>
-                r.key === req.key
-                  ? { ...r, status: 'Sent to Admin', adminStatus: 'In Review by Super Admin' }
-                  : r
-              )
-            );
-            setSelectedCancelRequest(null);
-            showToast({ message: 'Cancellation request forwarded to Super Admin!', isSuccess: true });
-          },
-        },
-      ]
-    );
+    setCancelQuoteAmount(String(Number(req.maximumRefundAmount || 0)));
+    setSelectedCancelRequest(req);
+  };
+
+  const handleSendCancelQuote = async (req) => {
+    const maximumRefund = Number(req.maximumRefundAmount || 0);
+    const refundAmount = Number(cancelQuoteAmount);
+    if (!Number.isFinite(refundAmount) || refundAmount < 0 || refundAmount > maximumRefund) {
+      showToast({
+        message: `Refund amount must be between ₹0 and ₹${maximumRefund}.`,
+        isSuccess: false,
+      });
+      return;
+    }
+    try {
+      await apiService.quoteCancellationRefund(
+        req.requestId,
+        maximumRefund,
+        refundAmount,
+        'Refund quote from gym owner.'
+      );
+      setSelectedCancelRequest(null);
+      setCancelQuoteAmount('');
+      showToast({ message: `Refund quote of ₹${refundAmount} sent to member.`, isSuccess: true });
+      fetchAllData();
+    } catch (error) {
+      showToast({ message: error.message || 'Unable to send refund quote.', isSuccess: false });
+    }
   };
 
   // Reject Cancellation Request
@@ -525,8 +562,10 @@ export const MembersTab = ({ topInset, navigation }) => {
       const matchesFilter =
         cancelFilter === 'All'
           ? true
-          : cancelFilter === 'Sent to Admin'
-          ? c.status === 'Sent to Admin'
+          : cancelFilter === 'Pending Gym Approval'
+          ? c.status === 'Pending Gym Approval'
+          : cancelFilter === 'Quoted Refund'
+          ? c.status === 'Quoted Refund'
           : cancelFilter === 'In Review'
           ? (c.adminStatus || '').includes('Review')
           : c.status === cancelFilter;
@@ -1756,18 +1795,18 @@ export const MembersTab = ({ topInset, navigation }) => {
                     { color: isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8' },
                   ]}
                 >
-                  Member cancellation requests dispatched for Super Admin refund review will appear here.
+                  Member cancellation requests and their refund negotiations will appear here.
                 </Text>
               </View>
             ) : (
               filteredCancellations.map((req) => {
-                const isSentToAdmin = req.status === 'Sent to Admin';
+                const isQuotedRefund = req.status === 'Quoted Refund';
                 const isRejected = req.status === 'Rejected';
 
 
                 const statusColor = isRejected
                   ? AppColors.dangerRed
-                  : isSentToAdmin
+                  : isQuotedRefund
                   ? '#3B82F6'
                   : AppColors.secondaryColor;
 
@@ -1851,7 +1890,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                           ]}
                           numberOfLines={1}
                         >
-                          {req.adminStatus || 'In Review by Super Admin'}
+                          {req.adminStatus || req.status}
                         </Text>
                       </View>
 
@@ -1862,7 +1901,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                         ]}
                         onPress={() => setSelectedCancelRequest(req)}
                       >
-                        <Text style={styles.smallActionBtnText}>View Details</Text>
+                        <Text style={styles.smallActionBtnText}>Quote Refund</Text>
                       </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
@@ -2585,20 +2624,41 @@ export const MembersTab = ({ topInset, navigation }) => {
 
                   <View style={styles.detailRow}>
                     <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                      Super Admin Status
+                      Negotiation Status
                     </Text>
                     <Text style={[styles.detailVal, { color: AppColors.primaryColor, fontWeight: '700' }]}>
-                      {selectedCancelRequest.adminStatus}
+                      {selectedCancelRequest.status}
                     </Text>
+                  </View>
+
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                      Refund Quote (₹)
+                    </Text>
+                    <TextInput
+                      value={cancelQuoteAmount}
+                      onChangeText={setCancelQuoteAmount}
+                      keyboardType="decimal-pad"
+                      placeholder={`Maximum ₹${Number(selectedCancelRequest.maximumRefundAmount || 0)}`}
+                      placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                      style={[
+                        styles.input,
+                        {
+                          color: isDark ? '#FFFFFF' : '#0F172A',
+                          width: 150,
+                          textAlign: 'right',
+                        },
+                      ]}
+                    />
                   </View>
 
                   <View style={styles.sheetBottomActionRow}>
                     <TouchableOpacity
                       style={[styles.sheetMainBtn, { backgroundColor: AppColors.primaryColor }]}
-                      onPress={() => handleForwardCancelToAdmin(selectedCancelRequest)}
+                      onPress={() => handleSendCancelQuote(selectedCancelRequest)}
                     >
                       <MaterialIcons name="send" size={18} color="#FFFFFF" />
-                      <Text style={styles.sheetMainBtnText}>Accept & Send to Admin</Text>
+                      <Text style={styles.sheetMainBtnText}>Send Refund Quote</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
