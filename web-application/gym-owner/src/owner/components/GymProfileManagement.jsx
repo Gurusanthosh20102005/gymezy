@@ -513,6 +513,17 @@ export const GymProfileManagement = () => {
   const [gymTrainersPricing, setGymTrainersPricing] = useState([]);
   const [isSavingTrainerPricing, setIsSavingTrainerPricing] = useState(false);
   const [singleSessionPrice, setSingleSessionPrice] = useState(199);
+  const [enabledSessionCategories, setEnabledSessionCategories] = useState([
+    'Gym Access',
+    'Group Classes',
+    'Yoga Classes',
+    'Zumba Sessions',
+    'HIIT',
+    'CrossFit',
+    'Pilates',
+    'Kickboxing',
+    'Dance Fitness',
+  ]);
   const [isSavingSessionConfig, setIsSavingSessionConfig] = useState(false);
   const [operatingHours, setOperatingHours] = useState(DEFAULT_DAYS);
   const [holidayExceptions, setHolidayExceptions] = useState([]);
@@ -716,6 +727,25 @@ export const GymProfileManagement = () => {
         ? Number(pending.singleSessionPrice)
         : Number(data.singleSessionPrice || data.pricingPlans?.singleSession || 199)
     );
+
+    const defaultCats = [
+      'Gym Access',
+      'Group Classes',
+      'Yoga Classes',
+      'Zumba Sessions',
+      'HIIT',
+      'CrossFit',
+      'Pilates',
+      'Kickboxing',
+      'Dance Fitness',
+    ];
+    if (Array.isArray(pending.enabledSessionCategories)) {
+      setEnabledSessionCategories(pending.enabledSessionCategories);
+    } else if (Array.isArray(data.enabledSessionCategories)) {
+      setEnabledSessionCategories(data.enabledSessionCategories);
+    } else {
+      setEnabledSessionCategories(defaultCats);
+    }
 
     // Active Trainers Tier Pricing Mapping
     if (Array.isArray(data.trainers) && data.trainers.length > 0) {
@@ -1281,8 +1311,9 @@ export const GymProfileManagement = () => {
         {
           singleSessionBookingEnabled: true,
           singleSessionPrice: Number(singleSessionPrice) || 199,
+          enabledSessionCategories,
         },
-        'Day pass price updated successfully!'
+        'Day pass settings updated successfully!'
       );
     } finally {
       setIsSavingSessionConfig(false);
@@ -2578,7 +2609,7 @@ export const GymProfileManagement = () => {
                     onClick={handleSaveSessionPricing}
                     style={{ borderRadius: 'var(--radius-base)', fontWeight: 600 }}
                   >
-                    Save Day Pass Price
+                    Save Day Pass Settings
                   </Button>
                 </div>
 
@@ -2607,6 +2638,68 @@ export const GymProfileManagement = () => {
                     </div>
                   </Col>
                 </Row>
+
+                {/* Checkbox Group: Enable/Disable Specific Day Pass Categories */}
+                <div style={{ marginTop: 20, padding: '16px 18px', background: isDarkMode ? '#141414' : '#f8fafc', borderRadius: 8, border: `1px solid ${isDarkMode ? '#222222' : '#e2e8f0'}` }}>
+                  <div style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13.5, marginBottom: 4 }}>
+                    Active Day Pass Booking Categories
+                  </div>
+                  <Text style={{ fontSize: 12.5, color: isDarkMode ? '#888888' : '#64748b', display: 'block', marginBottom: 16 }}>
+                    Select which session types members can book for a single-day pass at your facility. Unchecked categories or classes will be hidden from the app.
+                  </Text>
+
+                  {/* Single Unified Checkbox.Group across both sections */}
+                  <Checkbox.Group
+                    value={enabledSessionCategories}
+                    onChange={(checkedVals) => setEnabledSessionCategories(checkedVals)}
+                    style={{ display: 'block', width: '100%' }}
+                  >
+                    {/* Primary Pass Types Section */}
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--color-primary)', marginBottom: 12 }}>
+                        Primary Pass Types
+                      </div>
+                      <Row gutter={[20, 12]}>
+                        {[
+                          { label: 'Gym Access (Weight room, cardio floor, open gym)', value: 'Gym Access' },
+                          { label: 'Group Classes (Trainer-led batches & scheduled workout sections)', value: 'Group Classes' },
+                          { label: 'Yoga Classes (Certified yoga instructor sessions)', value: 'Yoga Classes' },
+                          { label: 'Zumba Sessions (High-energy dance workout)', value: 'Zumba Sessions' },
+                        ].map((cat) => (
+                          <Col xs={24} sm={12} key={cat.value}>
+                            <Checkbox value={cat.value} style={{ fontSize: 13, color: isDarkMode ? '#e2e8f0' : '#334155', display: 'flex', alignItems: 'flex-start' }}>
+                              {cat.label}
+                            </Checkbox>
+                          </Col>
+                        ))}
+                      </Row>
+                    </div>
+
+                    <Divider style={{ margin: '16px 0', borderColor: isDarkMode ? '#262626' : '#e2e8f0' }} />
+
+                    {/* Specialized Fitness Classes Section */}
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: '#00bf62', marginBottom: 12 }}>
+                        Specialized / Other Fitness Classes
+                      </div>
+                      <Row gutter={[20, 12]}>
+                        {[
+                          { label: 'HIIT (High Intensity Interval Training)', value: 'HIIT' },
+                          { label: 'CrossFit Training (WOD & Functional Conditioning)', value: 'CrossFit' },
+                          { label: 'Pilates Core (Strength, Posture & Mat Work)', value: 'Pilates' },
+                          { label: 'Kickboxing Cardio (Bag & Pad Work)', value: 'Kickboxing' },
+                          { label: 'Dance Fitness (Aerobic Dance Routine)', value: 'Dance Fitness' },
+                        ].map((cat) => (
+                          <Col xs={24} sm={12} md={8} key={cat.value}>
+                            <Checkbox value={cat.value} style={{ fontSize: 13, color: isDarkMode ? '#e2e8f0' : '#334155', display: 'flex', alignItems: 'flex-start' }}>
+                              {cat.label}
+                            </Checkbox>
+                          </Col>
+                        ))}
+                      </Row>
+                    </div>
+                  </Checkbox.Group>
+                </div>
               </Card>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>

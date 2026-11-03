@@ -208,7 +208,7 @@ export const sendPassExpiryAlerts = async () => {
       const user = mem.userId;
       if (!user) continue;
 
-      const isAlertEnabled = user.preferences?.passExpiryAlerts !== false;
+      const isAlertEnabled = Boolean(user.preferences?.passExpiryAlerts);
       if (!isAlertEnabled || !user.fcmTokens || user.fcmTokens.length === 0) continue;
 
       const daysLeft = Math.max(1, Math.ceil((new Date(mem.endDate) - now) / (1000 * 60 * 60 * 24)));
@@ -244,10 +244,7 @@ export const sendWorkoutReminders = async () => {
     const activeUsers = await User.find({
       isActive: true,
       role: 'CUSTOMER',
-      $or: [
-        { 'preferences.workoutReminders': true },
-        { 'preferences.workoutReminders': { $exists: false } },
-      ],
+      'preferences.workoutReminders': true,
       'fcmTokens.0': { $exists: true },
     }).select('fcmTokens fullName preferences');
 
@@ -274,21 +271,26 @@ export const sendWorkoutReminders = async () => {
 };
 
 /**
- * Initialize nightly cron job at 2:00 AM
+ * Initialize scheduled cron jobs
  */
 export const initAttendanceCron = () => {
-  // Run daily at 02:00 AM: nightly stale check-out, staff deactivation & pass expiry alerts
+  // Run daily at 02:00 AM: nightly stale check-out and staff deactivation
   cron.schedule('0 2 * * *', async () => {
     console.log('[ATTENDANCE CRON] Running 02:00 AM nightly tasks...');
     await autoCheckoutStaleRecords();
     await autoDeactivateExpiredTemporaryStaff();
-    await sendPassExpiryAlerts();
   });
 
   // Daily morning workout reminder at 07:00 AM
   cron.schedule('0 7 * * *', async () => {
     console.log('[ATTENDANCE CRON] Running 07:00 AM daily workout reminders...');
     await sendWorkoutReminders();
+  });
+
+  // Daily pass expiration alerts at 10:00 AM
+  cron.schedule('0 10 * * *', async () => {
+    console.log('[ATTENDANCE CRON] Running 10:00 AM pass expiry alerts...');
+    await sendPassExpiryAlerts();
   });
 
   // Also run every hour to activate memberships as soon as their start date arrives

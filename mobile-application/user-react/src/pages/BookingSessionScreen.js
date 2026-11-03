@@ -10,6 +10,7 @@ import {
   Dimensions,
   Platform,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,6 +19,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useBookingRepository } from '../data/BookingContext';
 import { MonthlyGridCalendar } from '../widgets/CustomCalendar';
 import { TrainerReviewsPopup } from '../widgets/DetailsPopups';
+import { SessionBookingFlow, SESSION_CONFIGS } from '../widgets/SessionBookingFlow';
 import apiService from '../services/apiService';
 import { generateAvailableSlots, generateTrainerAvailableSlots } from '../utils/gymTimingHelper';
 
@@ -88,52 +90,73 @@ const OTHER_CLASSES = [
     name: 'HIIT',
     title: 'HIIT (High Intensity)',
     desc: 'Intense interval cardio & calorie burn',
-    price: 249.0,
-    defaultType: 'Standard HIIT',
     icon: 'bolt',
   },
   {
     name: 'CrossFit',
     title: 'CrossFit Training',
     desc: 'Functional strength & conditioning',
-    price: 299.0,
-    defaultType: 'WOD Session',
     icon: 'fitness-center',
   },
   {
     name: 'Pilates',
     title: 'Pilates Core',
     desc: 'Core strength, posture & flexibility',
-    price: 249.0,
-    defaultType: 'Mat Pilates',
     icon: 'self-improvement',
   },
   {
     name: 'Dance Fitness',
     title: 'Dance Fitness',
     desc: 'Fun energetic dance workout',
-    price: 249.0,
-    defaultType: 'BollyHop Workout',
     icon: 'music-note',
   },
   {
     name: 'Kickboxing',
     title: 'Kickboxing Cardio',
     desc: 'Strength, agility & martial arts cardio',
-    price: 299.0,
-    defaultType: 'Bag & Pad Work',
     icon: 'sports-mma',
   },
 ];
 
 export const BookingSessionScreen = ({ route, navigation }) => {
-  const { gym, initialCategory } = route.params;
+  const { gym: initialGym, initialCategory } = route.params;
   const { isDark, colors } = useTheme();
   const { bookings, refreshBookings } = useBookingRepository();
+
+  const [activeGym, setActiveGym] = useState(initialGym || {});
+  const gym = activeGym;
+
+  useEffect(() => {
+    if (initialGym && typeof initialGym === 'object') {
+      setActiveGym((prev) => ({ ...prev, ...initialGym }));
+    }
+  }, [initialGym]);
 
   useEffect(() => {
     refreshBookings?.();
   }, [refreshBookings]);
+
+  // Fetch full and latest gym details (to get updated enabledSessionCategories)
+  useEffect(() => {
+    const gymLookupId = initialGym?._id || initialGym?.id || initialGym?.partnerId;
+    if (!gymLookupId) return;
+
+    let isMounted = true;
+    apiService
+      .getGymDetails(gymLookupId)
+      .then((freshGym) => {
+        if (isMounted && freshGym && typeof freshGym === 'object') {
+          setActiveGym((prev) => ({ ...prev, ...freshGym }));
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not refresh gym details for booking:', err?.message);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialGym?._id, initialGym?.id, initialGym?.partnerId]);
 
   const getSectionBooking = (sec) => {
     if (!sec || !bookings || bookings.length === 0) return null;
@@ -152,16 +175,29 @@ export const BookingSessionScreen = ({ route, navigation }) => {
 
   const gymId = gym?._id || gym?.id;
 
-  // Navigation views: 'categories', 'gym_booking', 'weekly_plan', 'custom_dates', 'class_booking', 'other_classes', 'group_classes'
+  // Resolve initial session key from route params
+  const resolveInitialSessionKey = (cat) => {
+    if (!cat) return null;
+    if (cat === 'Gym') return 'Gym Access';
+    if (cat === 'Group Classes') return 'Group Classes';
+    if (cat === 'Yoga') return 'Yoga Classes';
+    if (cat === 'Zumba') return 'Zumba Sessions';
+    if (SESSION_CONFIGS[cat]) return cat;
+    return null;
+  };
+
+  const initialSessionKey = resolveInitialSessionKey(initialCategory);
+
+  // Navigation views: 'categories', 'session_booking', 'other_classes', 'group_classes', 'group_class_detail'
   const [currentView, setCurrentView] = useState(
-    initialCategory
-      ? initialCategory === 'Gym'
-        ? 'gym_booking'
-        : initialCategory === 'Group Classes'
-        ? 'group_classes'
-        : 'class_booking'
+    initialSessionKey
+      ? 'session_booking'
+      : initialCategory === 'Other Classes'
+      ? 'other_classes'
       : 'categories'
   );
+  const [activeSessionKey, setActiveSessionKey] = useState(initialSessionKey || 'Gym Access');
+  const [sessionSubView, setSessionSubView] = useState('plan_select'); // 'plan_select' | 'weekly_plan' | 'custom_dates'
   const [selectedCategory, setSelectedCategory] = useState(initialCategory || null);
 
   // Group Classes State (Owner-created sections/batches)
@@ -177,6 +213,44 @@ export const BookingSessionScreen = ({ route, navigation }) => {
   // Gym Booking State
   const isSingleSessionEnabled = gym?.singleSessionBookingEnabled !== false;
   const sessionBasePrice = Number(gym?.singleSessionPrice ?? gym?.pricePerSession ?? 199);
+
+  // Enabled Categories configured by Gym Owner / Super Admin
+  const enabledCategories = useMemo(() => {
+    if (Array.isArray(gym?.enabledSessionCategories)) {
+      return new Set(gym.enabledSessionCategories);
+    }
+    // Default: all categories enabled
+    return new Set([
+      'Gym Access',
+      'Group Classes',
+      'Yoga Classes',
+      'Zumba Sessions',
+      'HIIT',
+      'CrossFit',
+      'Pilates',
+      'Kickboxing',
+      'Dance Fitness',
+    ]);
+  }, [gym?.enabledSessionCategories]);
+
+  // Filter OTHER_CLASSES based on admin-enabled categories
+  const filteredOtherClasses = useMemo(() => {
+    // If specific sub-classes are present in enabledCategories, strictly obey them!
+    const hasSpecificSubClass = OTHER_CLASSES.some((c) => enabledCategories.has(c.name));
+    if (hasSpecificSubClass) {
+      return OTHER_CLASSES.filter((c) => enabledCategories.has(c.name));
+    }
+    // Fallback only if legacy 'Other Fitness Classes' / 'Other Classes' was saved
+    if (enabledCategories.has('Other Fitness Classes') || enabledCategories.has('Other Classes')) {
+      return OTHER_CLASSES;
+    }
+    return [];
+  }, [enabledCategories]);
+
+  // Check if any sub-class within Other Fitness Classes is enabled
+  const hasOtherClassesEnabled = useMemo(() => {
+    return filteredOtherClasses.length > 0;
+  }, [filteredOtherClasses]);
 
   const [gymBookingType, setGymBookingType] = useState(
     isSingleSessionEnabled ? 'Per Session' : 'Weekly Plan'
@@ -307,32 +381,33 @@ export const BookingSessionScreen = ({ route, navigation }) => {
   const selectCategory = (cat) => {
     setSelectedCategory(cat);
     if (cat === 'Gym') {
-      setCurrentView('gym_booking');
+      setActiveSessionKey('Gym Access');
+      setSessionSubView('plan_select');
+      setCurrentView('session_booking');
     } else if (cat === 'Group Classes') {
-      setCurrentView('group_classes');
+      setActiveSessionKey('Group Classes');
+      setSessionSubView('plan_select');
+      setCurrentView('session_booking');
       if (sections.length === 0) {
         loadSections();
       }
     } else if (cat === 'Yoga') {
-      setSelectedClassName('Yoga Classes');
-      setSelectedClassType('Hatha Yoga');
-      setSelectedClassPrice(249.0);
-      setCurrentView('class_booking');
+      setActiveSessionKey('Yoga Classes');
+      setSessionSubView('plan_select');
+      setCurrentView('session_booking');
     } else if (cat === 'Zumba') {
-      setSelectedClassName('Zumba Classes');
-      setSelectedClassType('Zumba Fitness');
-      setSelectedClassPrice(249.0);
-      setCurrentView('class_booking');
+      setActiveSessionKey('Zumba Sessions');
+      setSessionSubView('plan_select');
+      setCurrentView('session_booking');
     } else if (cat === 'Other Classes') {
       setCurrentView('other_classes');
     }
   };
 
-  const selectOtherClass = (name, price, defaultType) => {
-    setSelectedClassName(name);
-    setSelectedClassType(defaultType);
-    setSelectedClassPrice(price);
-    setCurrentView('class_booking');
+  const selectOtherClass = (name) => {
+    setActiveSessionKey(name);
+    setSessionSubView('plan_select');
+    setCurrentView('session_booking');
   };
 
   const handleOpenTrainerProfile = (specificTrainer = null) => {
@@ -541,38 +616,140 @@ export const BookingSessionScreen = ({ route, navigation }) => {
     });
   };
 
+  const handleUnifiedSessionCheckout = (bookingDetails) => {
+    navigation.navigate('PaymentSummary', {
+      type: 'booking',
+      gym,
+      bookingTitle: bookingDetails.title,
+      datesSummary: bookingDetails.datesSummary,
+      timeSlot: 'Full Day Access',
+      sessionsCount: bookingDetails.sessions,
+      subtotal: bookingDetails.subtotal,
+      discount: 0.0,
+      amount: bookingDetails.subtotal,
+      sectionId: null,
+      bookingType: 'GYM_SESSION',
+      startDate: bookingDetails.startDate,
+      endDate: bookingDetails.endDate,
+      durationDays: bookingDetails.sessions,
+      customDates: bookingDetails.customDates,
+      category: bookingDetails.category || 'general',
+      trainerId: bookingDetails.trainerId,
+    });
+  };
+
   const getAppBarTitle = () => {
+    if (currentView === 'session_booking') {
+      const activeConfig = SESSION_CONFIGS[activeSessionKey] || SESSION_CONFIGS['Gym Access'];
+      if (sessionSubView === 'trainer_select') return 'Select Personal Coach';
+      if (sessionSubView === 'single_session') return 'Select Date & Slot';
+      if (sessionSubView === 'weekly_plan') return 'Select Start Date';
+      if (sessionSubView === 'custom_dates') return 'Select Custom Dates';
+      return `Book ${activeConfig?.title || 'Session'}`;
+    }
     switch (currentView) {
-      case 'gym_booking':
-        return 'Book Gym Session';
       case 'group_classes':
         return 'Group Classes & Batches';
       case 'group_class_detail':
         return 'Batch Details';
-      case 'weekly_plan':
-        return 'Weekly Plan';
-      case 'custom_dates':
-        return 'Custom Dates';
-      case 'class_booking':
-        return `Book ${selectedClassName}`;
       case 'other_classes':
-        return 'Other Classes';
+        return 'Other Fitness Classes';
       default:
         return 'Book Session';
     }
   };
 
   const handleBackPress = () => {
+    if (currentView === 'session_booking') {
+      if (
+        sessionSubView === 'single_session' ||
+        sessionSubView === 'weekly_plan' ||
+        sessionSubView === 'custom_dates'
+      ) {
+        if (gymTrainers && gymTrainers.some((t) => Number(t.trainerPricing?.singleSession || 0) > 0)) {
+          setSessionSubView('trainer_select');
+        } else {
+          setSessionSubView('plan_select');
+        }
+        return;
+      }
+      if (sessionSubView === 'trainer_select') {
+        setSessionSubView('plan_select');
+        return;
+      }
+      if (
+        activeSessionKey === 'HIIT' ||
+        activeSessionKey === 'CrossFit' ||
+        activeSessionKey === 'Pilates' ||
+        activeSessionKey === 'Kickboxing' ||
+        activeSessionKey === 'Dance Fitness'
+      ) {
+        setCurrentView('other_classes');
+        return;
+      }
+      setCurrentView('categories');
+      return;
+    }
     if (currentView === 'group_class_detail') {
       setCurrentView('group_classes');
-    } else if (currentView === 'weekly_plan' || currentView === 'custom_dates') {
-      setCurrentView('gym_booking');
-    } else if (currentView !== 'categories') {
-      setCurrentView('categories');
-    } else {
-      navigation.goBack();
+      return;
     }
+    if (currentView === 'group_classes') {
+      setCurrentView('session_booking');
+      setActiveSessionKey('Group Classes');
+      setSessionSubView('plan_select');
+      return;
+    }
+    if (currentView === 'other_classes') {
+      setCurrentView('categories');
+      return;
+    }
+    navigation.goBack();
   };
+
+  // Hardware Back Handler for Android devices
+  useEffect(() => {
+    const onHardwareBack = () => {
+      if (currentView === 'session_booking') {
+        if (
+          sessionSubView === 'single_session' ||
+          sessionSubView === 'weekly_plan' ||
+          sessionSubView === 'custom_dates'
+        ) {
+          if (gymTrainers && gymTrainers.some((t) => Number(t.trainerPricing?.singleSession || 0) > 0)) {
+            setSessionSubView('trainer_select');
+          } else {
+            setSessionSubView('plan_select');
+          }
+          return true;
+        }
+        if (sessionSubView === 'trainer_select') {
+          setSessionSubView('plan_select');
+          return true;
+        }
+      }
+      if (currentView === 'session_booking' || currentView === 'group_classes' || currentView === 'other_classes') {
+        if (
+          activeSessionKey === 'HIIT' ||
+          activeSessionKey === 'CrossFit' ||
+          activeSessionKey === 'Pilates' ||
+          activeSessionKey === 'Kickboxing' ||
+          activeSessionKey === 'Dance Fitness'
+        ) {
+          setCurrentView('other_classes');
+          return true;
+        }
+        if (currentView !== 'categories') {
+          setCurrentView('categories');
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+    return () => sub.remove();
+  }, [currentView, sessionSubView, activeSessionKey]);
 
   const filteredSections =
     selectedGroupCategory === 'all'
@@ -787,103 +964,113 @@ export const BookingSessionScreen = ({ route, navigation }) => {
           </Text>
 
           {/* 1. Gym Access */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => selectCategory('Gym')}
-            style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
-          >
-            <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(96,165,250,0.2)' : 'rgba(0,56,130,0.1)' }]}>
-              <MaterialIcons name="fitness-center" size={26} color={isDark ? '#60A5FA' : '#003882'} />
-            </View>
-            <View style={styles.categoryContent}>
-              <Text style={[styles.categoryTitle, { color: textColor }]}>Gym Access</Text>
-              <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
-                Book gym access by session, weekly or custom dates
-              </Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
-          </TouchableOpacity>
+          {enabledCategories.has('Gym Access') && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => selectCategory('Gym')}
+              style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
+            >
+              <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(96,165,250,0.2)' : 'rgba(0,56,130,0.1)' }]}>
+                <MaterialIcons name="fitness-center" size={26} color={isDark ? '#60A5FA' : '#003882'} />
+              </View>
+              <View style={styles.categoryContent}>
+                <Text style={[styles.categoryTitle, { color: textColor }]}>Gym Access</Text>
+                <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
+                  Book gym access by session, weekly or custom dates
+                </Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
+            </TouchableOpacity>
+          )}
 
           {/* 2. Group Classes (Owner Created Sections/Batches) */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => selectCategory('Group Classes')}
-            style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
-          >
-            <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(99,102,241,0.2)' : 'rgba(79,70,229,0.12)' }]}>
-              <MaterialIcons name="groups" size={26} color={isDark ? '#818CF8' : '#4F46E5'} />
-            </View>
-            <View style={styles.categoryContent}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={[styles.categoryTitle, { color: textColor }]}>Group Classes</Text>
-                {sections.length > 0 && (
-                  <View style={[styles.batchCountBadge, { backgroundColor: isDark ? 'rgba(99,102,241,0.25)' : 'rgba(79,70,229,0.12)' }]}>
-                    <Text style={[styles.batchCountBadgeText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]}>
-                      {sections.length} {sections.length === 1 ? 'Batch' : 'Batches'}
-                    </Text>
-                  </View>
-                )}
+          {enabledCategories.has('Group Classes') && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => selectCategory('Group Classes')}
+              style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
+            >
+              <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(99,102,241,0.2)' : 'rgba(79,70,229,0.12)' }]}>
+                <MaterialIcons name="groups" size={26} color={isDark ? '#818CF8' : '#4F46E5'} />
               </View>
-              <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
-                Book trainer-led batches & scheduled workout sections
-              </Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
-          </TouchableOpacity>
+              <View style={styles.categoryContent}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={[styles.categoryTitle, { color: textColor }]}>Group Classes</Text>
+                  {sections.length > 0 && (
+                    <View style={[styles.batchCountBadge, { backgroundColor: isDark ? 'rgba(99,102,241,0.25)' : 'rgba(79,70,229,0.12)' }]}>
+                      <Text style={[styles.batchCountBadgeText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]}>
+                        {sections.length} {sections.length === 1 ? 'Batch' : 'Batches'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
+                  Book trainer-led batches & scheduled workout sections
+                </Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
+            </TouchableOpacity>
+          )}
 
           {/* 3. Yoga Classes */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => selectCategory('Yoga')}
-            style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
-          >
-            <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(167,139,250,0.2)' : 'rgba(124,58,237,0.12)' }]}>
-              <MaterialIcons name="self-improvement" size={26} color={isDark ? '#A78BFA' : '#7C3AED'} />
-            </View>
-            <View style={styles.categoryContent}>
-              <Text style={[styles.categoryTitle, { color: textColor }]}>Yoga Classes</Text>
-              <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
-                Book yoga classes with certified expert trainers
-              </Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
-          </TouchableOpacity>
+          {enabledCategories.has('Yoga Classes') && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => selectCategory('Yoga')}
+              style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
+            >
+              <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(167,139,250,0.2)' : 'rgba(124,58,237,0.12)' }]}>
+                <MaterialIcons name="self-improvement" size={26} color={isDark ? '#A78BFA' : '#7C3AED'} />
+              </View>
+              <View style={styles.categoryContent}>
+                <Text style={[styles.categoryTitle, { color: textColor }]}>Yoga Classes</Text>
+                <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
+                  Book yoga classes with certified expert trainers
+                </Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
+            </TouchableOpacity>
+          )}
 
-          {/* 3. Zumba Sessions */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => selectCategory('Zumba')}
-            style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
-          >
-            <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(244,114,182,0.2)' : 'rgba(219,39,119,0.12)' }]}>
-              <MaterialIcons name="music-note" size={26} color={isDark ? '#F472B6' : '#DB2777'} />
-            </View>
-            <View style={styles.categoryContent}>
-              <Text style={[styles.categoryTitle, { color: textColor }]}>Zumba Sessions</Text>
-              <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
-                Book fun, high-energy dance workout sessions
-              </Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
-          </TouchableOpacity>
+          {/* 4. Zumba Sessions */}
+          {enabledCategories.has('Zumba Sessions') && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => selectCategory('Zumba')}
+              style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
+            >
+              <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(244,114,182,0.2)' : 'rgba(219,39,119,0.12)' }]}>
+                <MaterialIcons name="music-note" size={26} color={isDark ? '#F472B6' : '#DB2777'} />
+              </View>
+              <View style={styles.categoryContent}>
+                <Text style={[styles.categoryTitle, { color: textColor }]}>Zumba Sessions</Text>
+                <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
+                  Book fun, high-energy dance workout sessions
+                </Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
+            </TouchableOpacity>
+          )}
 
-          {/* 4. Other Classes */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => selectCategory('Other Classes')}
-            style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
-          >
-            <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(52,211,153,0.2)' : 'rgba(0,191,98,0.12)' }]}>
-              <MaterialIcons name="grid-view" size={26} color={isDark ? '#34D399' : '#00BF62'} />
-            </View>
-            <View style={styles.categoryContent}>
-              <Text style={[styles.categoryTitle, { color: textColor }]}>Other Fitness Classes</Text>
-              <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
-                Explore HIIT, CrossFit, Pilates, Kickboxing & more
-              </Text>
-            </View>
-            <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
-          </TouchableOpacity>
+          {/* 5. Other Classes */}
+          {hasOtherClassesEnabled ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => selectCategory('Other Classes')}
+              style={[styles.categoryCard, { backgroundColor: cardColor, borderColor: borderColor }]}
+            >
+              <View style={[styles.categoryIconBox, { backgroundColor: isDark ? 'rgba(52,211,153,0.2)' : 'rgba(0,191,98,0.12)' }]}>
+                <MaterialIcons name="grid-view" size={26} color={isDark ? '#34D399' : '#00BF62'} />
+              </View>
+              <View style={styles.categoryContent}>
+                <Text style={[styles.categoryTitle, { color: textColor }]}>Other Fitness Classes</Text>
+                <Text style={[styles.categoryDesc, { color: subtitleColor }]}>
+                  Explore HIIT, CrossFit, Pilates, Kickboxing & more
+                </Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
+            </TouchableOpacity>
+          ) : null}
 
           {/* Info notice */}
           <View style={styles.infoNoticeRow}>
@@ -895,627 +1082,45 @@ export const BookingSessionScreen = ({ route, navigation }) => {
         </ScrollView>
       )}
 
-      {/* VIEW 2: GYM BOOKING (Per Session / Weekly / Custom) */}
-      {currentView === 'gym_booking' && (
-        <View style={{ flex: 1 }}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {/* Gym Access Hero Banner */}
-            <ImageBackground
-              source={{ uri: gym.imageUrl || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800&auto=format&fit=crop' }}
-              style={styles.heroBanner}
-              imageStyle={{ borderRadius: 20 }}
-              resizeMode="cover"
-            >
-              <LinearGradient
-                colors={['rgba(0,0,0,0.82)', 'rgba(0,0,0,0.35)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.heroBannerGradient}
+      {/* UNIFIED SESSION BOOKING FLOW (Gym Access, Group Classes, Yoga, Zumba, HIIT, CrossFit, Pilates, Kickboxing, Dance Fitness) */}
+      {currentView === 'session_booking' && (
+        <SessionBookingFlow
+          sessionConfig={SESSION_CONFIGS[activeSessionKey] || SESSION_CONFIGS['Gym Access']}
+          gym={gym}
+          gymTrainers={gymTrainers}
+          isDark={isDark}
+          subView={sessionSubView}
+          onSubViewChange={setSessionSubView}
+          onContinueToCheckout={handleUnifiedSessionCheckout}
+          extraTopBanner={
+            activeSessionKey === 'Group Classes' && sections.length > 0 ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setCurrentView('group_classes')}
+                style={[
+                  styles.batchesBannerPill,
+                  {
+                    backgroundColor: isDark ? 'rgba(99,102,241,0.18)' : '#EEF2FF',
+                    borderColor: isDark ? 'rgba(99,102,241,0.35)' : '#C7D2FE',
+                  },
+                ]}
               >
-                <Text style={styles.heroBannerTitle}>Gym Access</Text>
-                <Text style={styles.heroBannerSubtitle}>
-                  Train at your convenience • {gym.name}
-                </Text>
-              </LinearGradient>
-            </ImageBackground>
-
-            <Text style={[styles.chooseTypeHeading, { color: textColor }]}>
-              Choose Booking Type
-            </Text>
-
-            {/* Option 1: Per Session */}
-            <TouchableOpacity
-              activeOpacity={isSingleSessionEnabled ? 0.85 : 1}
-              onPress={() => {
-                if (isSingleSessionEnabled) {
-                  setGymBookingType('Per Session');
-                }
-              }}
-              style={[
-                styles.typeOptionCard,
-                {
-                  backgroundColor: !isSingleSessionEnabled
-                    ? (isDark ? '#1C1C1E' : '#F8FAFC')
-                    : gymBookingType === 'Per Session'
-                    ? (isDark ? '#262626' : '#F1F5F9')
-                    : cardColor,
-                  borderColor: !isSingleSessionEnabled
-                    ? (isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0')
-                    : gymBookingType === 'Per Session' ? (isDark ? '#60A5FA' : '#003882') : borderColor,
-                  borderWidth: gymBookingType === 'Per Session' && isSingleSessionEnabled ? 1.5 : 1,
-                  opacity: isSingleSessionEnabled ? 1 : 0.65,
-                },
-              ]}
-            >
-              <View style={[styles.typeIconBox, { backgroundColor: isDark ? 'rgba(59,130,246,0.2)' : 'rgba(0,56,130,0.1)' }]}>
-                <MaterialIcons name="calendar-today" size={22} color={isDark ? '#93C5FD' : '#003882'} />
-              </View>
-              <View style={styles.typeContent}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[styles.typeTitle, { color: textColor }]}>Per Session</Text>
-                  {!isSingleSessionEnabled && (
-                    <View style={styles.disabledBadge}>
-                      <Text style={styles.disabledBadgeText}>Disabled by Gym</Text>
-                    </View>
-                  )}
+                <View style={[styles.batchesBannerIcon, { backgroundColor: isDark ? '#4338CA' : '#4F46E5' }]}>
+                  <MaterialIcons name="groups" size={18} color="#FFFFFF" />
                 </View>
-                <Text style={[styles.typeSubtitle, { color: subtitleColor }]}>
-                  {isSingleSessionEnabled ? 'Book for a single visit' : 'Single session bookings are currently disabled'}
-                </Text>
-                <Text style={[styles.typePrice, !isSingleSessionEnabled && { color: subtitleColor }]}>
-                  ₹{Math.round(sessionBasePrice)} / Session
-                </Text>
-              </View>
-              {isSingleSessionEnabled ? (
-                <MaterialIcons
-                  name={gymBookingType === 'Per Session' ? 'radio-button-checked' : 'radio-button-unchecked'}
-                  size={20}
-                  color={gymBookingType === 'Per Session' ? (isDark ? '#60A5FA' : '#003882') : subtitleColor}
-                />
-              ) : (
-                <MaterialIcons name="block" size={18} color={subtitleColor} />
-              )}
-            </TouchableOpacity>
-
-            {/* Option 2: Weekly Plan */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => {
-                setGymBookingType('Weekly Plan');
-                setCurrentView('weekly_plan');
-              }}
-              style={[
-                styles.typeOptionCard,
-                {
-                  backgroundColor: gymBookingType === 'Weekly Plan'
-                    ? (isDark ? '#262626' : '#F1F5F9')
-                    : cardColor,
-                  borderColor: gymBookingType === 'Weekly Plan' ? (isDark ? '#60A5FA' : '#003882') : borderColor,
-                  borderWidth: gymBookingType === 'Weekly Plan' ? 1.5 : 1,
-                },
-              ]}
-            >
-              <View style={[styles.typeIconBox, { backgroundColor: isDark ? 'rgba(59,130,246,0.2)' : 'rgba(0,56,130,0.1)' }]}>
-                <MaterialIcons name="date-range" size={22} color={isDark ? '#93C5FD' : '#003882'} />
-              </View>
-              <View style={styles.typeContent}>
-                <Text style={[styles.typeTitle, { color: textColor }]}>Weekly Plan</Text>
-                <Text style={[styles.typeSubtitle, { color: subtitleColor }]}>Unlimited access for 7 days</Text>
-                <Text style={styles.typePrice}>₹999 / Week</Text>
-              </View>
-              <MaterialIcons
-                name={gymBookingType === 'Weekly Plan' ? 'radio-button-checked' : 'radio-button-unchecked'}
-                size={20}
-                color={gymBookingType === 'Weekly Plan' ? (isDark ? '#60A5FA' : '#003882') : subtitleColor}
-              />
-            </TouchableOpacity>
-
-            {/* Option 3: Custom Dates */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => {
-                setGymBookingType('Custom Dates');
-                setCurrentView('custom_dates');
-              }}
-              style={[
-                styles.typeOptionCard,
-                {
-                  backgroundColor: gymBookingType === 'Custom Dates'
-                    ? (isDark ? '#262626' : '#F1F5F9')
-                    : cardColor,
-                  borderColor: gymBookingType === 'Custom Dates' ? (isDark ? '#60A5FA' : '#003882') : borderColor,
-                  borderWidth: gymBookingType === 'Custom Dates' ? 1.5 : 1,
-                },
-              ]}
-            >
-              <View style={[styles.typeIconBox, { backgroundColor: isDark ? 'rgba(59,130,246,0.2)' : 'rgba(0,56,130,0.1)' }]}>
-                <MaterialIcons name="event-note" size={22} color={isDark ? '#93C5FD' : '#003882'} />
-              </View>
-              <View style={styles.typeContent}>
-                <Text style={[styles.typeTitle, { color: textColor }]}>Custom Dates</Text>
-                <Text style={[styles.typeSubtitle, { color: subtitleColor }]}>Select multiple dates that suit you</Text>
-                <Text style={styles.typePrice}>Custom Pricing</Text>
-              </View>
-              <MaterialIcons
-                name={gymBookingType === 'Custom Dates' ? 'radio-button-checked' : 'radio-button-unchecked'}
-                size={20}
-                color={gymBookingType === 'Custom Dates' ? (isDark ? '#60A5FA' : '#003882') : subtitleColor}
-              />
-            </TouchableOpacity>
-
-            {/* Trainer Selector for Per Session */}
-            {gymBookingType === 'Per Session' && isSingleSessionEnabled && renderTrainerSelector()}
-          </ScrollView>
-
-          {/* Bottom Bar */}
-          <View
-            style={[
-              styles.bottomBar,
-              {
-                backgroundColor: isDark
-                  ? 'rgba(18, 18, 18, 0.88)'
-                  : 'rgba(255, 255, 255, 0.88)',
-                borderTopColor: isDark
-                  ? 'rgba(255, 255, 255, 0.08)'
-                  : 'rgba(226, 232, 240, 0.8)',
-              },
-            ]}
-          >
-            <View>
-              <Text style={[styles.bottomPriceLabel, { color: subtitleColor }]}>Price</Text>
-              <Text style={[styles.bottomPriceValue, { color: textColor }]}>
-                {gymBookingType === 'Per Session'
-                  ? `₹${Math.round(singleSessionTotalPerDay)}`
-                  : gymBookingType === 'Weekly Plan'
-                  ? '₹999'
-                  : 'Custom'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => {
-                if (gymBookingType === 'Per Session') {
-                  goToCheckout();
-                } else if (gymBookingType === 'Weekly Plan') {
-                  setCurrentView('weekly_plan');
-                } else {
-                  setCurrentView('custom_dates');
-                }
-              }}
-              style={styles.continueBtn}
-            >
-              <Text style={styles.continueBtnText}>
-                {gymBookingType === 'Per Session' ? 'Continue to Payment' : 'Configure Plan'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* VIEW 3: WEEKLY PLAN */}
-      {currentView === 'weekly_plan' && (
-        <View style={{ flex: 1 }}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {/* Plan Banner */}
-            <View style={[styles.planBanner, { backgroundColor: cardColor, borderColor: borderColor }]}>
-              <View style={[styles.planIconBox, { backgroundColor: 'rgba(0,191,98,0.12)' }]}>
-                <MaterialIcons name="date-range" size={24} color="#00BF62" />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={[styles.planBannerTitle, { color: textColor }]}>
-                  Weekly Unlimited Pass
-                </Text>
-                <Text style={[styles.planBannerSub, { color: subtitleColor }]}>
-                  7 days full gym access
-                </Text>
-              </View>
-              <Text style={styles.planPriceText}>₹999</Text>
-            </View>
-
-            <Text style={[styles.planIncludesTitle, { color: textColor }]}>Plan Includes</Text>
-            {[
-              'Unlimited access for 7 consecutive days',
-              'All gym equipment & workout areas',
-              'Locker & shower facility access',
-              'Trainer floor support during gym hours',
-            ].map((inc, i) => (
-              <View key={i} style={styles.inclusionRow}>
-                <MaterialIcons name="check-circle" size={16} color="#00BF62" style={{ marginRight: 8 }} />
-                <Text style={[styles.inclusionText, { color: textColor }]}>{inc}</Text>
-              </View>
-            ))}
-
-            <View style={{ marginTop: 20 }}>
-              <MonthlyGridCalendar
-                selectedDate={selectedStartDate}
-                minDate={new Date()}
-                maxMonthsAhead={3}
-                wrapInCard={true}
-                showMonthHeader={true}
-                onDateSelected={setSelectedStartDate}
-              />
-            </View>
-
-            {/* Validity notice banner */}
-            <View style={styles.validityNoticeBanner}>
-              <MaterialIcons name="info-outline" size={16} color="#00BF62" style={{ marginRight: 8 }} />
-              <Text style={styles.validityNoticeText}>
-                Valid from {formatDate(selectedStartDate)} to{' '}
-                {formatDate(new Date(selectedStartDate.getTime() + 6 * 24 * 60 * 60 * 1000))}
-              </Text>
-            </View>
-
-            {/* Trainer Selector for Weekly Plan */}
-            {renderTrainerSelector('weekly')}
-          </ScrollView>
-
-          {/* Bottom Bar */}
-          <View
-            style={[
-              styles.bottomBar,
-              {
-                backgroundColor: isDark
-                  ? 'rgba(18, 18, 18, 0.88)'
-                  : 'rgba(255, 255, 255, 0.88)',
-                borderTopColor: isDark
-                  ? 'rgba(255, 255, 255, 0.08)'
-                  : 'rgba(226, 232, 240, 0.8)',
-              },
-            ]}
-          >
-            <View>
-              <Text style={[styles.bottomPriceLabel, { color: subtitleColor }]}>Price</Text>
-              <Text style={[styles.bottomPriceValue, { color: textColor }]}>
-                ₹{Math.round(999.0 + (selectedSessionTrainer ? trainerDailyFee * 7 : 0))}
-              </Text>
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={goToCheckout}
-              style={styles.continueBtn}
-            >
-              <Text style={styles.continueBtnText}>Continue to Payment</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* VIEW 4: CUSTOM DATES */}
-      {currentView === 'custom_dates' && (
-        <View style={{ flex: 1 }}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {/* Top Header Card */}
-            <View style={[styles.planBanner, { backgroundColor: cardColor, borderColor: borderColor }]}>
-              <View style={[styles.planIconBox, { backgroundColor: 'rgba(0,56,130,0.1)' }]}>
-                <MaterialIcons name="event-available" size={24} color={isDark ? '#93C5FD' : '#003882'} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={[styles.planBannerTitle, { color: textColor }]}>
-                  Custom Dates Booking
-                </Text>
-                <Text style={[styles.planBannerSub, { color: subtitleColor }]}>
-                  Pick any dates that fit your routine
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.customDatesHeaderRow}>
-              <Text style={[styles.planIncludesTitle, { color: textColor }]}>
-                Select Dates ({customSelectedDates.length})
-              </Text>
-              {customSelectedDates.length > 0 && (
-                <TouchableOpacity onPress={() => setCustomSelectedDates([])}>
-                  <Text style={styles.clearAllText}>Clear All</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Monthly grid calendar */}
-            <MonthlyGridCalendar
-              multiSelectedDates={customSelectedDates}
-              maxMonthsAhead={3}
-              onDateToggled={(date) => {
-                const isSel = customSelectedDates.some(
-                  (d) => d.getDate() === date.getDate() && d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear()
-                );
-                if (isSel) {
-                  setCustomSelectedDates(
-                    customSelectedDates.filter(
-                      (d) => !(d.getDate() === date.getDate() && d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear())
-                    )
-                  );
-                } else {
-                  setCustomSelectedDates([...customSelectedDates, date]);
-                }
-              }}
-            />
-
-            {/* Selected Count Pill */}
-            <View style={styles.selectedCountPill}>
-              <Text style={styles.selectedCountText}>
-                {customSelectedDates.length} Dates Selected
-              </Text>
-              <Text style={[styles.selectedCalcText, { color: textColor }]}>
-                ₹{Math.round(singleSessionTotalPerDay)} × {customSelectedDates.length} Sessions
-              </Text>
-            </View>
-
-            {/* Optional Personal Trainer Selector for Custom Dates */}
-            {renderTrainerSelector()}
-          </ScrollView>
-
-          {/* Bottom Bar */}
-          <View
-            style={[
-              styles.bottomBar,
-              {
-                backgroundColor: isDark
-                  ? 'rgba(18, 18, 18, 0.88)'
-                  : 'rgba(255, 255, 255, 0.88)',
-                borderTopColor: isDark
-                  ? 'rgba(255, 255, 255, 0.08)'
-                  : 'rgba(226, 232, 240, 0.8)',
-              },
-            ]}
-          >
-            <View>
-              <Text style={[styles.bottomPriceLabel, { color: subtitleColor }]}>Price</Text>
-              <Text style={[styles.bottomPriceValue, { color: textColor }]}>
-                ₹{Math.round(singleSessionTotalPerDay * customSelectedDates.length)}
-              </Text>
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              disabled={customSelectedDates.length === 0}
-              onPress={goToCheckout}
-              style={[styles.continueBtn, { opacity: customSelectedDates.length === 0 ? 0.5 : 1 }]}
-            >
-              <Text style={styles.continueBtnText}>Continue to Payment</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* VIEW 5: CLASS BOOKING (Yoga / Zumba / Other) */}
-      {currentView === 'class_booking' && (
-        <View style={{ flex: 1 }}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {/* Class Hero Banner */}
-            <ImageBackground
-              source={{
-                uri: selectedClassName.toLowerCase().includes('yoga')
-                  ? 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800&auto=format&fit=crop'
-                  : selectedClassName.toLowerCase().includes('zumba')
-                  ? 'https://images.unsplash.com/photo-1518611012118-696072aa579a?q=80&w=800&auto=format&fit=crop'
-                  : 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800&auto=format&fit=crop',
-              }}
-              style={styles.heroBanner}
-              imageStyle={{ borderRadius: 20 }}
-              resizeMode="cover"
-            >
-              <LinearGradient
-                colors={['rgba(0,0,0,0.82)', 'rgba(0,0,0,0.35)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.heroBannerGradient}
-              >
-                <Text style={styles.heroBannerTitle}>{selectedClassName}</Text>
-                <Text style={styles.heroBannerSubtitle}>
-                  {selectedClassName.toLowerCase().includes('yoga')
-                    ? 'Mind. Body. Balance.'
-                    : selectedClassName.toLowerCase().includes('zumba')
-                    ? 'Dance. Sweat. Repeat.'
-                    : 'Train Hard. Stay Consistent.'}
-                </Text>
-              </LinearGradient>
-            </ImageBackground>
-
-            <Text style={[styles.chooseTypeHeading, { color: textColor }]}>Select Class Type</Text>
-
-            {(selectedClassName.includes('Yoga')
-              ? [
-                  { type: 'Hatha Yoga', price: 249.0 },
-                  { type: 'Power Yoga', price: 249.0 },
-                  { type: 'Yoga for Beginners', price: 249.0 },
-                ]
-              : selectedClassName.includes('Zumba')
-              ? [
-                  { type: 'Zumba Fitness', price: 249.0 },
-                  { type: 'Zumba Toning', price: 249.0 },
-                ]
-              : [
-                  { type: 'Standard Session', price: selectedClassPrice },
-                  { type: 'Advanced Masterclass', price: selectedClassPrice + 50 },
-                ]
-            ).map((ct, idx) => {
-              const isSel = selectedClassType === ct.type;
-              return (
-                <TouchableOpacity
-                  key={idx}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    setSelectedClassType(ct.type);
-                    setSelectedClassPrice(ct.price);
-                  }}
-                  style={[
-                    styles.classTypeCard,
-                    {
-                      backgroundColor: isSel ? (isDark ? '#262626' : '#F1F5F9') : cardColor,
-                      borderColor: isSel ? '#003882' : borderColor,
-                      borderWidth: isSel ? 1.5 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.classTypeName, { color: textColor }]}>{ct.type}</Text>
-                  <View style={styles.classTypeRight}>
-                    <Text style={styles.classTypePrice}>₹{Math.round(ct.price)} / Session</Text>
-                    <MaterialIcons
-                      name={isSel ? 'radio-button-checked' : 'radio-button-unchecked'}
-                      size={18}
-                      color={isSel ? '#003882' : subtitleColor}
-                      style={{ marginLeft: 8 }}
-                    />
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-
-            <View style={{ marginTop: 18 }}>
-              <MonthlyGridCalendar
-                selectedDate={selectedClassDate}
-                minDate={new Date()}
-                maxMonthsAhead={3}
-                wrapInCard={true}
-                showMonthHeader={true}
-                onDateSelected={setSelectedClassDate}
-              />
-            </View>
-
-            <Text style={[styles.chooseTypeHeading, { color: textColor, marginTop: 20 }]}>
-              Select Time Slot
-            </Text>
-
-            {!isGymOpenOnSelectedDate ? (
-              <View style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                borderColor: 'rgba(239, 68, 68, 0.3)',
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 14,
-                marginTop: 10,
-              }}>
-                <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 13, marginBottom: 2 }}>
-                  {selectedSessionTrainer ? 'Trainer Unavailable on this Day' : 'Gym Closed on this Day'}
-                </Text>
-                <Text style={{ color: textColor, fontSize: 12 }}>
-                  {classSlotsData.reason || `${gym?.name || 'This gym'} is closed on ${targetClassDateObj.toLocaleDateString('en-US', { weekday: 'long' })}. Please select another date on the calendar above.`}
-                </Text>
-              </View>
-            ) : (
-              <View>
-                {/* Morning */}
-                {dynamicMorningSlots.length > 0 && (
-                  <View>
-                    <Text style={[styles.slotCategoryLabel, { color: subtitleColor }]}>Morning Slots</Text>
-                    <View style={styles.slotsRow}>
-                      {dynamicMorningSlots.map((slot) => {
-                        const isSel = selectedTimeSlot === slot;
-                        return (
-                          <TouchableOpacity
-                            key={slot}
-                            activeOpacity={0.8}
-                            onPress={() => setSelectedTimeSlot(slot)}
-                            style={[
-                              styles.slotPill,
-                              {
-                                backgroundColor: isSel ? '#003882' : isDark ? '#262626' : '#F1F5F9',
-                                borderColor: isSel ? 'transparent' : borderColor,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.slotPillText,
-                                { color: isSel ? '#FFFFFF' : textColor, fontWeight: isSel ? 'bold' : '500' },
-                              ]}
-                            >
-                              {slot}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-                )}
-
-                {/* Evening */}
-                {dynamicEveningSlots.length > 0 && (
-                  <View>
-                    <Text style={[styles.slotCategoryLabel, { color: subtitleColor, marginTop: 12 }]}>Evening Slots</Text>
-                    <View style={styles.slotsRow}>
-                      {dynamicEveningSlots.map((slot) => {
-                        const isSel = selectedTimeSlot === slot;
-                        return (
-                          <TouchableOpacity
-                            key={slot}
-                            activeOpacity={0.8}
-                            onPress={() => setSelectedTimeSlot(slot)}
-                            style={[
-                              styles.slotPill,
-                              {
-                                backgroundColor: isSel ? '#003882' : isDark ? '#262626' : '#F1F5F9',
-                                borderColor: isSel ? 'transparent' : borderColor,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.slotPillText,
-                                { color: isSel ? '#FFFFFF' : textColor, fontWeight: isSel ? 'bold' : '500' },
-                              ]}
-                            >
-                              {slot}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-                )}
-              </View>
-            )}
-          </ScrollView>
-
-          {/* Bottom Bar */}
-          <View
-            style={[
-              styles.bottomBar,
-              {
-                backgroundColor: isDark
-                  ? 'rgba(18, 18, 18, 0.88)'
-                  : 'rgba(255, 255, 255, 0.88)',
-                borderTopColor: isDark
-                  ? 'rgba(255, 255, 255, 0.08)'
-                  : 'rgba(226, 232, 240, 0.8)',
-              },
-            ]}
-          >
-            <View>
-              <Text style={[styles.bottomPriceLabel, { color: subtitleColor }]}>Price</Text>
-              <Text style={[styles.bottomPriceValue, { color: textColor }]}>
-                ₹{Math.round(selectedClassPrice)}
-              </Text>
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => {
-                if (!isGymOpenOnSelectedDate) return;
-                goToCheckout();
-              }}
-              disabled={!isGymOpenOnSelectedDate || !selectedTimeSlot}
-              style={[
-                styles.continueBtn,
-                (!isGymOpenOnSelectedDate || !selectedTimeSlot) && { opacity: 0.5 },
-              ]}
-            >
-              <Text style={styles.continueBtnText}>
-                {!isGymOpenOnSelectedDate ? 'Facility Closed' : 'Continue to Payment'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.batchesBannerTitle, { color: isDark ? '#C7D2FE' : '#312E81' }]}>
+                    {sections.length} Scheduled Batches Available
+                  </Text>
+                  <Text style={[styles.batchesBannerSub, { color: isDark ? '#A5B4FC' : '#4338CA' }]}>
+                    Prefer scheduled trainer-led batches? Tap to view
+                  </Text>
+                </View>
+                <MaterialIcons name="arrow-forward" size={18} color={isDark ? '#C7D2FE' : '#4F46E5'} />
+              </TouchableOpacity>
+            ) : null
+          }
+        />
       )}
 
       {/* VIEW: GROUP CLASSES / OWNER CREATED SECTIONS */}
@@ -2147,11 +1752,11 @@ export const BookingSessionScreen = ({ route, navigation }) => {
           </Text>
 
           <View style={{ marginTop: 16 }}>
-            {OTHER_CLASSES.map((c) => (
+            {filteredOtherClasses.map((c) => (
               <TouchableOpacity
                 key={c.name}
                 activeOpacity={0.85}
-                onPress={() => selectOtherClass(c.name, c.price, c.defaultType)}
+                onPress={() => selectOtherClass(c.name)}
                 style={[styles.otherClassCard, { backgroundColor: cardColor, borderColor: borderColor }]}
               >
                 <View style={[styles.otherClassIconBox, { backgroundColor: 'rgba(0,56,130,0.08)' }]}>
@@ -2161,7 +1766,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                   <Text style={[styles.categoryTitle, { color: textColor }]}>{c.title}</Text>
                   <Text style={[styles.categoryDesc, { color: subtitleColor }]}>{c.desc}</Text>
                 </View>
-                <Text style={styles.otherClassPrice}>₹{Math.round(c.price)}</Text>
+                <Text style={styles.otherClassPrice}>₹{Math.round(sessionBasePrice)}</Text>
                 <MaterialIcons name="chevron-right" size={20} color={subtitleColor} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
             ))}
@@ -2247,6 +1852,30 @@ const styles = StyleSheet.create({
   },
   infoNoticeText: {
     fontSize: 11,
+  },
+
+  batchesBannerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  batchesBannerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  batchesBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  batchesBannerSub: {
+    fontSize: 11,
+    marginTop: 1,
   },
 
   /* Hero Banner */

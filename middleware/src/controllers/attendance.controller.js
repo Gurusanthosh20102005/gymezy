@@ -241,8 +241,8 @@ export const checkInMember = async (req, res, next) => {
       const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
       let recordedArea = booking.title || area;
 
-      // 3.1. SECTION BOOKING SPECIFIC VALIDATION & ATTENDANCE
-      if (booking.bookingType === 'SECTION') {
+      // 3.1. SECTION & GROUP CLASS SPECIFIC VALIDATION & ATTENDANCE
+      if (booking.bookingType === 'SECTION' || booking.bookingType === 'GROUP_CLASS') {
         const section = booking.sectionId;
 
         // Date window validation
@@ -305,7 +305,9 @@ export const checkInMember = async (req, res, next) => {
         }
         await booking.save();
 
-        recordedArea = `Section - ${section?.title || booking.title}`;
+        recordedArea = booking.bookingType === 'GROUP_CLASS'
+          ? `Group Class - ${section?.title || booking.title}`
+          : `Section - ${section?.title || booking.title}`;
       }
 
       // 3.2. CUSTOM DATES BOOKING VALIDATION & ATTENDANCE

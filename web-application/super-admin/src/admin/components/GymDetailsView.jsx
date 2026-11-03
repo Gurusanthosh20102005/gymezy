@@ -1819,6 +1819,48 @@ export const GymDetailsView = ({
                       </Col>
                     </Row>
                     <Row gutter={16}>
+                      <Col xs={24}>
+                        <Form.Item
+                          name="enabledSessionCategories"
+                          label="Active Day Pass Booking Categories (Checked categories are enabled for members)"
+                        >
+                          <Checkbox.Group style={{ width: '100%' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#1677ff', marginBottom: 6 }}>
+                              PRIMARY CATEGORIES
+                            </div>
+                            <Row gutter={[16, 8]} style={{ marginBottom: 12 }}>
+                              {[
+                                { label: 'Gym Access', value: 'Gym Access' },
+                                { label: 'Group Classes', value: 'Group Classes' },
+                                { label: 'Yoga Classes', value: 'Yoga Classes' },
+                                { label: 'Zumba Sessions', value: 'Zumba Sessions' },
+                              ].map((cat) => (
+                                <Col xs={24} sm={6} key={cat.value}>
+                                  <Checkbox value={cat.value}>{cat.label}</Checkbox>
+                                </Col>
+                              ))}
+                            </Row>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#00bf62', marginBottom: 6 }}>
+                              OTHER FITNESS CLASSES GROUP
+                            </div>
+                            <Row gutter={[16, 8]}>
+                              {[
+                                { label: 'HIIT', value: 'HIIT' },
+                                { label: 'CrossFit', value: 'CrossFit' },
+                                { label: 'Pilates', value: 'Pilates' },
+                                { label: 'Kickboxing', value: 'Kickboxing' },
+                                { label: 'Dance Fitness', value: 'Dance Fitness' },
+                              ].map((cat) => (
+                                <Col xs={24} sm={6} md={4} key={cat.value}>
+                                  <Checkbox value={cat.value}>{cat.label}</Checkbox>
+                                </Col>
+                              ))}
+                            </Row>
+                          </Checkbox.Group>
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    <Row gutter={16}>
                       <Col xs={24} sm={8}>
                         <Form.Item name="monthlyPrice" label="Monthly Pass (₹)">
                           <InputNumber min={0} style={{ width: '100%' }} />

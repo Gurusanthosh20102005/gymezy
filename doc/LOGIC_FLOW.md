@@ -42,7 +42,7 @@ flowchart TB
         SAW["Super Admin Web Portal (Port 5174 / React)"]
         GOW["Gym Owner Web Portal (Port 5173 / React)"]
         GOM["Gym Owner Mobile App (React Native / iOS and Android)"]
-        CUM["User Mobile App (React Native / Flutter)"]
+        CUM["User Mobile App (React Native / Expo)"]
     end
 
     subgraph Gateway ["Gateway and Network Tier"]

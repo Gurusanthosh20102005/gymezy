@@ -18,6 +18,11 @@
     "android": {
       "package": "com.gymezy.user",
       "googleServicesFile": "./android/app/google-services.json",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#003882",
         "foregroundImage": "./assets/logo/gymezy.jpeg",

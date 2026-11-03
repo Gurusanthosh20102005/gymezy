@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - dev
-      - main
+      - prod
   workflow_dispatch:
     inputs:
       target_env:
@@ -35,7 +35,7 @@ jobs:
 
   deploy-prod:
     name: Deploy to Production Environment
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.target_env == 'prod')
+    if: github.ref == 'refs/heads/prod' || (github.event_name == 'workflow_dispatch' && inputs.target_env == 'prod')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Production Deployment Script via SSH

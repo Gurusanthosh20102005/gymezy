@@ -188,6 +188,50 @@ export const createMembership = async (req, res, next) => {
     // 6. Generate sequential Membership ID
     const membershipId = await generateGymMembershipId(gym);
 
+    const totalAmountPaise = Math.round(totalAmount * 100);
+    const { applyWallet, useWallet, appliedWalletAmount } = req.body;
+    const isWalletMethod = (paymentMethod || '').toLowerCase() === 'wallet';
+    const isWalletRequested = Boolean(applyWallet || useWallet || isWalletMethod);
+
+    let appliedWalletPaise = 0;
+    let debitedWallet = null;
+
+    // Gym-specific wallet payment & partial split debit handling
+    if (isWalletRequested && totalAmountPaise > 0) {
+      const userWallet = await Wallet.findOne({ userId: resolvedUserId, gymId: gym._id });
+      const currentWalletBalancePaise = userWallet?.balancePaise || 0;
+
+      if (isWalletMethod && currentWalletBalancePaise < totalAmountPaise) {
+        const availINR = (currentWalletBalancePaise / 100).toFixed(2);
+        throw ApiError.badRequest(
+          `Insufficient wallet balance at ${gym.name} to cover full payment. Required: ₹${totalAmount}, Available: ₹${availINR}. Please select a secondary payment method for the remainder.`
+        );
+      }
+
+      const requestedPaise = appliedWalletAmount !== undefined && appliedWalletAmount !== null
+        ? Math.round(Number(appliedWalletAmount) * 100)
+        : currentWalletBalancePaise;
+
+      appliedWalletPaise = Math.min(currentWalletBalancePaise, totalAmountPaise, Math.max(0, requestedPaise));
+
+      if (appliedWalletPaise > 0 && userWallet) {
+        const newBalancePaise = userWallet.balancePaise - appliedWalletPaise;
+        userWallet.balancePaise = newBalancePaise;
+        const walletTxnId = `WAL_MEM_${Date.now()}_${crypto.randomInt(100, 999)}`;
+        userWallet.history.push({
+          transactionId: walletTxnId,
+          type: 'DEBIT',
+          source: 'MEMBERSHIP_PURCHASE',
+          amountPaise: appliedWalletPaise,
+          balanceAfterPaise: newBalancePaise,
+          description: `Payment towards ${membershipTier} Membership at ${gym.name}${appliedWalletPaise < totalAmountPaise ? ' (Partial Wallet Split)' : ''}`,
+          createdAt: new Date(),
+        });
+        await userWallet.save();
+        debitedWallet = userWallet;
+      }
+    }
+
     // 7. Create Membership Record
     const membership = new Membership({
       membershipId,
@@ -208,15 +252,25 @@ export const createMembership = async (req, res, next) => {
         currency: 'INR',
       },
       payment: {
-        method: paymentMethod,
+        method: appliedWalletPaise >= totalAmountPaise ? 'Wallet' : (paymentMethod || 'UPI'),
         status: 'Completed',
-        transactionId: transactionId || `TXN${Date.now()}${Math.floor(100 + Math.random() * 900)}`,
+        walletAmountApplied: appliedWalletPaise / 100,
+        transactionId: transactionId || (debitedWallet ? debitedWallet.history[debitedWallet.history.length - 1].transactionId : `TXN${Date.now()}${Math.floor(100 + Math.random() * 900)}`),
         paidAt: new Date(),
       },
       status,
     });
 
-    await membership.save();
+    try {
+      await membership.save();
+    } catch (saveErr) {
+      if (debitedWallet && appliedWalletPaise > 0) {
+        debitedWallet.balancePaise += appliedWalletPaise;
+        debitedWallet.history.pop();
+        await debitedWallet.save();
+      }
+      throw saveErr;
+    }
 
     const populatedMembership = await Membership.findById(membership._id)
       .populate('gymId', 'name partnerId address location images phone email')

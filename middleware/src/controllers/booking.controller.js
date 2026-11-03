@@ -6,6 +6,7 @@ import Gym from '../models/gym.model.js';
 import Employee from '../models/employee.model.js';
 import User from '../models/user.model.js';
 import Counter from '../models/counter.model.js';
+import { Wallet } from '../models/wallet.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -376,6 +377,59 @@ export const createBooking = asyncHandler(async (req, res) => {
     initialStatus = 'Completed';
   }
 
+  const resolvedPaymentMethod = payment?.method || paymentMode || 'UPI';
+  const totalAmountPaise = Math.round(Math.max(0, totalVal) * 100);
+  const { useWallet, applyWallet, appliedWalletAmount } = req.body;
+  const isWalletMethod = (resolvedPaymentMethod || '').toLowerCase() === 'wallet';
+  const isWalletRequested = Boolean(
+    useWallet ||
+    applyWallet ||
+    payment?.useWallet ||
+    payment?.applyWallet ||
+    (payment?.walletAmountApplied && Number(payment.walletAmountApplied) > 0) ||
+    isWalletMethod
+  );
+
+  let debitedWallet = null;
+  let appliedWalletPaise = 0;
+
+  // Gym-specific wallet payment & partial split debit handling
+  if (isWalletRequested && totalAmountPaise > 0) {
+    const userWallet = await Wallet.findOne({ userId: resolvedUser, gymId: gym._id });
+    const currentWalletBalancePaise = userWallet?.balancePaise || 0;
+
+    if (isWalletMethod && currentWalletBalancePaise < totalAmountPaise) {
+      const availINR = (currentWalletBalancePaise / 100).toFixed(2);
+      throw ApiError.badRequest(
+        `Insufficient wallet balance at ${gym.name} to cover full payment. Required: ₹${Math.max(0, totalVal)}, Available: ₹${availINR}. Please select a secondary payment method for the remainder.`
+      );
+    }
+
+    const requestedPaise = appliedWalletAmount !== undefined && appliedWalletAmount !== null
+      ? Math.round(Number(appliedWalletAmount) * 100)
+      : payment?.walletAmountApplied
+      ? Math.round(Number(payment.walletAmountApplied) * 100)
+      : currentWalletBalancePaise;
+
+    appliedWalletPaise = Math.min(currentWalletBalancePaise, totalAmountPaise, Math.max(0, requestedPaise));
+
+    if (appliedWalletPaise > 0 && userWallet) {
+      const newBalancePaise = userWallet.balancePaise - appliedWalletPaise;
+      userWallet.balancePaise = newBalancePaise;
+      userWallet.history.push({
+        transactionId: `WAL_BOOK_${Date.now()}_${crypto.randomInt(100, 999)}`,
+        type: 'DEBIT',
+        source: 'BOOKING_PAYMENT',
+        amountPaise: appliedWalletPaise,
+        balanceAfterPaise: newBalancePaise,
+        description: `Payment towards booking (${resolvedTitle}) at ${gym.name}${appliedWalletPaise < totalAmountPaise ? ' (Partial Wallet Split)' : ''}`,
+        createdAt: new Date(),
+      });
+      await userWallet.save();
+      debitedWallet = userWallet;
+    }
+  }
+
   const newBooking = new Booking({
     bookingId,
     userId: resolvedUser,
@@ -399,9 +453,10 @@ export const createBooking = asyncHandler(async (req, res) => {
       currency: pricing?.currency || 'INR',
     },
     payment: {
-      method: payment?.method || paymentMode || 'UPI',
+      method: appliedWalletPaise >= totalAmountPaise ? 'Wallet' : resolvedPaymentMethod,
       status: payment?.status || 'Completed',
-      transactionId: payment?.transactionId || `TXN-${Date.now()}-${crypto.randomInt(1000, 9999)}`,
+      walletAmountApplied: appliedWalletPaise / 100,
+      transactionId: payment?.transactionId || (debitedWallet ? debitedWallet.history[debitedWallet.history.length - 1].transactionId : `TXN-${Date.now()}-${crypto.randomInt(1000, 9999)}`),
       paidAt: payment?.paidAt ? new Date(payment.paidAt) : new Date(),
     },
     entryOtp,
@@ -411,9 +466,14 @@ export const createBooking = asyncHandler(async (req, res) => {
   try {
     await newBooking.save();
   } catch (error) {
-    // If saving the booking document fails, roll back the section capacity increment
+    // If saving the booking document fails, roll back section count and wallet deduction
     if (section) {
       await Section.findByIdAndUpdate(section._id, { $inc: { enrolledCount: -1 } });
+    }
+    if (debitedWallet && appliedWalletPaise > 0) {
+      debitedWallet.balancePaise += appliedWalletPaise;
+      debitedWallet.history.pop();
+      await debitedWallet.save();
     }
     throw error;
   }

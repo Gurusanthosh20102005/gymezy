@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { AppColors, AppTheme } from '../theme/appTheme';
 import { useBookingRepository, mapBackendBookingToClient } from '../data/BookingContext';
 import { apiService } from '../services/apiService';
+import { walletService } from '../services/walletService';
 
 export const PaymentSummaryScreen = ({ route, navigation }) => {
   const {
@@ -32,11 +33,43 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
   const { addBooking } = useBookingRepository();
 
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('UPI');
+  const [useWalletBalance, setUseWalletBalance] = useState(true);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [createdBooking, setCreatedBooking] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [gymWallet, setGymWallet] = useState(null);
+  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
 
   const totalAmount = Math.max(0, subtotal - discount);
+  const gymWalletBalance = gymWallet?.balanceINR ?? 0;
+  const applicableWalletDiscount = useWalletBalance && gymWalletBalance > 0
+    ? Math.min(gymWalletBalance, totalAmount)
+    : 0;
+  const netPayableAmount = Math.max(0, totalAmount - applicableWalletDiscount);
+  const isFullWalletPayment = applicableWalletDiscount >= totalAmount && totalAmount > 0;
+
+  const targetGymId = gym?._id || gym?.id || gym?.partnerId;
+
+  useEffect(() => {
+    let isMounted = true;
+    if (targetGymId) {
+      setIsLoadingWallet(true);
+      walletService
+        .fetchGymWallet(targetGymId)
+        .then((data) => {
+          if (isMounted && data) {
+            setGymWallet(data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (isMounted) setIsLoadingWallet(false);
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [targetGymId]);
 
   const primaryNavy = isDark ? '#93C5FD' : '#003882';
   const cardColor = isDark ? '#1E1E1E' : '#FFFFFF';
@@ -46,6 +79,7 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
 
   const handleProcessPayment = async () => {
     if (isProcessing) return;
+
     setIsProcessing(true);
 
     try {
@@ -69,11 +103,14 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
           currency: 'INR',
         },
         payment: {
-          method: selectedPaymentMethod,
+          method: isFullWalletPayment ? 'Wallet' : selectedPaymentMethod,
           status: 'Completed',
+          walletAmountApplied: applicableWalletDiscount,
           transactionId: `TXN-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
           paidAt: new Date().toISOString(),
         },
+        useWallet: useWalletBalance && applicableWalletDiscount > 0,
+        appliedWalletAmount: applicableWalletDiscount,
       };
 
       const serverBooking = await apiService.createBooking(payload);
@@ -174,6 +211,27 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
             <Text style={[styles.totalLabel, { color: textColor }]}>Total Amount</Text>
             <Text style={[styles.totalValue, { color: textColor }]}>₹{Math.round(totalAmount)}</Text>
           </View>
+
+          {applicableWalletDiscount > 0 && (
+            <>
+              <View style={[styles.divider, { backgroundColor: borderColor }]} />
+              <View style={styles.priceRow}>
+                <Text style={[styles.priceLabel, { color: '#059669', fontWeight: '600' }]}>
+                  Wallet Applied ({gym?.name || 'Gym'})
+                </Text>
+                <Text style={[styles.priceValue, { color: '#059669', fontWeight: 'bold' }]}>
+                  -₹{Math.round(applicableWalletDiscount)}
+                </Text>
+              </View>
+              <View style={[styles.divider, { backgroundColor: borderColor }]} />
+              <View style={styles.priceRow}>
+                <Text style={[styles.totalLabel, { color: textColor, fontWeight: '700' }]}>Net Payable</Text>
+                <Text style={[styles.totalValue, { color: '#00BF62', fontWeight: 'bold', fontSize: 18 }]}>
+                  ₹{Math.round(netPayableAmount)}
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* 3. Payment Method Section */}
@@ -182,44 +240,126 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
             Select Payment Method
           </Text>
 
-          {[
-            { id: 'UPI', title: 'UPI', subtitle: 'Google Pay, PhonePe, Paytm', icon: 'account-balance-wallet' },
-            { id: 'Card', title: 'Card', subtitle: 'Debit / Credit Card', icon: 'credit-card' },
-            { id: 'NetBanking', title: 'Net Banking', subtitle: 'All major banks', icon: 'account-balance' },
-            { id: 'Wallet', title: 'Wallet', subtitle: 'Pay using wallet', icon: 'wallet' },
-          ].map((m) => {
-            const isSel = selectedPaymentMethod === m.id;
-            return (
-              <TouchableOpacity
-                key={m.id}
-                activeOpacity={0.85}
-                onPress={() => setSelectedPaymentMethod(m.id)}
+          {/* Wallet Offset Toggle Card */}
+          {gymWalletBalance > 0 && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setUseWalletBalance(!useWalletBalance)}
+              style={[
+                styles.walletOffsetCard,
+                {
+                  backgroundColor: useWalletBalance
+                    ? (isDark ? '#064E3B' : '#E6F7EF')
+                    : (isDark ? '#1E293B' : '#F8FAFC'),
+                  borderColor: useWalletBalance
+                    ? (isDark ? '#34D399' : '#059669')
+                    : (isDark ? '#334155' : '#E2E8F0'),
+                },
+              ]}
+            >
+              <View
                 style={[
-                  styles.paymentOptionRow,
-                  {
-                    backgroundColor: isSel ? (isDark ? '#1E293B' : '#F0F4FF') : isDark ? '#262626' : '#F8FAFC',
-                    borderColor: isSel ? '#003882' : borderColor,
-                    borderWidth: isSel ? 1.5 : 1,
-                  },
+                  styles.walletOffsetIconBox,
+                  { backgroundColor: useWalletBalance ? (isDark ? '#059669' : '#FFFFFF') : (isDark ? '#0F172A' : '#F1F5F9') },
                 ]}
               >
                 <MaterialIcons
-                  name={m.icon}
+                  name="account-balance-wallet"
                   size={22}
-                  color={isSel ? (isDark ? '#93C5FD' : '#003882') : subtitleColor}
+                  color={useWalletBalance ? (isDark ? '#FFFFFF' : '#059669') : (isDark ? '#94A3B8' : '#64748B')}
                 />
-                <View style={{ flex: 1, marginLeft: 14 }}>
-                  <Text style={[styles.paymentOptionTitle, { color: textColor }]}>{m.title}</Text>
-                  <Text style={[styles.paymentOptionSub, { color: subtitleColor }]}>{m.subtitle}</Text>
-                </View>
-                <MaterialIcons
-                  name={isSel ? 'radio-button-checked' : 'radio-button-unchecked'}
-                  size={20}
-                  color={isSel ? '#003882' : subtitleColor}
-                />
-              </TouchableOpacity>
-            );
-          })}
+              </View>
+
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.walletOffsetTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                  Use {gym?.name || 'Gym'} Wallet Balance
+                </Text>
+                <Text style={[styles.walletOffsetSubtitle, { color: isDark ? '#A7F3D0' : '#047857' }]}>
+                  Available: ₹{gymWalletBalance.toLocaleString('en-IN')}
+                  {useWalletBalance && ` • Applying: -₹${Math.round(applicableWalletDiscount).toLocaleString('en-IN')}`}
+                </Text>
+              </View>
+
+              <View
+                style={[
+                  styles.checkboxCircle,
+                  {
+                    backgroundColor: useWalletBalance ? (isDark ? '#34D399' : '#059669') : 'transparent',
+                    borderColor: useWalletBalance ? (isDark ? '#34D399' : '#059669') : (isDark ? '#475569' : '#CBD5E1'),
+                  },
+                ]}
+              >
+                {useWalletBalance && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {isFullWalletPayment ? (
+            <View
+              style={[
+                styles.fullWalletCoveredBanner,
+                {
+                  backgroundColor: isDark ? '#064E3B' : '#E6F7EF',
+                  borderColor: isDark ? '#34D399' : '#059669',
+                },
+              ]}
+            >
+              <MaterialIcons name="check-circle" size={24} color={isDark ? '#34D399' : '#059669'} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={[styles.fullWalletTitle, { color: isDark ? '#FFFFFF' : '#064E3B' }]}>
+                  100% Covered by Wallet Balance
+                </Text>
+                <Text style={[styles.fullWalletSub, { color: isDark ? '#A7F3D0' : '#047857' }]}>
+                  Your {gym?.name || 'gym'} wallet covers the entire purchase. No external gateway payment needed!
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <>
+              {useWalletBalance && applicableWalletDiscount > 0 && (
+                <Text style={[styles.remainingSubheading, { color: subtitleColor, marginBottom: 10 }]}>
+                  Select payment method for remaining balance (₹{Math.round(netPayableAmount).toLocaleString('en-IN')})
+                </Text>
+              )}
+              {[
+                { id: 'UPI', title: 'UPI', subtitle: 'Google Pay, PhonePe, Paytm', icon: 'account-balance-wallet' },
+                { id: 'Card', title: 'Card', subtitle: 'Debit / Credit Card', icon: 'credit-card' },
+                { id: 'NetBanking', title: 'Net Banking', subtitle: 'All major banks', icon: 'account-balance' },
+              ].map((m) => {
+                const isSel = selectedPaymentMethod === m.id;
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedPaymentMethod(m.id)}
+                    style={[
+                      styles.paymentOptionRow,
+                      {
+                        backgroundColor: isSel ? (isDark ? '#1E293B' : '#F0F4FF') : isDark ? '#262626' : '#F8FAFC',
+                        borderColor: isSel ? '#003882' : borderColor,
+                        borderWidth: isSel ? 1.5 : 1,
+                      },
+                    ]}
+                  >
+                    <MaterialIcons
+                      name={m.icon}
+                      size={22}
+                      color={isSel ? (isDark ? '#93C5FD' : '#003882') : subtitleColor}
+                    />
+                    <View style={{ flex: 1, marginLeft: 14 }}>
+                      <Text style={[styles.paymentOptionTitle, { color: textColor }]}>{m.title}</Text>
+                      <Text style={[styles.paymentOptionSub, { color: subtitleColor }]}>{m.subtitle}</Text>
+                    </View>
+                    <MaterialIcons
+                      name={isSel ? 'radio-button-checked' : 'radio-button-unchecked'}
+                      size={20}
+                      color={isSel ? '#003882' : subtitleColor}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </>
+          )}
         </View>
       </ScrollView>
 
@@ -236,7 +376,11 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
           ) : (
             <>
               <MaterialIcons name="lock-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={styles.payBtnText}>Pay ₹{Math.round(totalAmount)}</Text>
+              <Text style={styles.payBtnText}>
+                {netPayableAmount === 0
+                  ? 'Pay ₹0 with Wallet'
+                  : `Pay ₹${Math.round(netPayableAmount)}${applicableWalletDiscount > 0 ? ` (₹${Math.round(applicableWalletDiscount)} from Wallet)` : ''}`}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -482,5 +626,65 @@ const styles = StyleSheet.create({
   },
   dialogBackHomeText: {
     fontSize: 13,
+  },
+  walletOffsetCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  walletOffsetIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletOffsetTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  walletOffsetSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  checkboxCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullWalletCoveredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    marginBottom: 8,
+  },
+  fullWalletTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  fullWalletSub: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  remainingSubheading: {
+    fontSize: 12.5,
+    fontWeight: '600',
   },
 });

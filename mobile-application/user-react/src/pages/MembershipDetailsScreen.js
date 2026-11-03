@@ -2344,25 +2344,33 @@ const styles = StyleSheet.create({
   },
   detailRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingVertical: 8,
   },
   labelRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
+    marginRight: 12,
   },
   detailLabel: {
     fontSize: 13.5,
     fontWeight: '500',
+    lineHeight: 18,
   },
   detailValue: {
     fontSize: 14,
     fontWeight: '700',
+    flex: 1,
+    textAlign: 'right',
+    lineHeight: 18,
   },
   copyIdRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    flex: 1,
   },
   idValueText: {
     fontSize: 14,
