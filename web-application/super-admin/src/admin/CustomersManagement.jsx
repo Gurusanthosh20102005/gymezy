@@ -34,7 +34,6 @@ import {
   RightOutlined,
   ShopOutlined,
   StarFilled,
-  SyncOutlined,
   StopOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
@@ -1124,13 +1123,6 @@ export const CustomersManagement = () => {
               <Option value="GYM_OWNER">Gym Owners</Option>
               <Option value="all">All Platform Users</Option>
             </Select>
-
-            <Button
-              icon={<SyncOutlined spin={loading} />}
-              onClick={() => fetchCustomers(currentPage, searchQuery, statusFilter, roleFilter)}
-              style={{ borderRadius: 'var(--radius-base)' }}
-              title="Refresh customer data"
-            />
           </div>
 
           {/* Right: Export & Add New Customer Buttons */}
