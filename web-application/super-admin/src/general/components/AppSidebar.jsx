@@ -256,6 +256,21 @@ export const AppSidebar = ({
       ],
     },
     {
+      key: 'bookings-sub',
+      icon: <CalendarOutlined />,
+      label: 'Bookings',
+      children: [
+        {
+          key: '/admin/bookings?type=session',
+          label: 'Session Bookings',
+        },
+        {
+          key: '/admin/bookings?type=group_class',
+          label: 'Group Classes',
+        },
+      ],
+    },
+    {
       key: '/admin/payments',
       icon: <CreditCardOutlined />,
       label: 'Payments',
@@ -275,11 +290,14 @@ export const AppSidebar = ({
     }
     if (
       location.pathname === '/admin/memberships' ||
-      location.pathname === '/admin/membership' ||
-      location.pathname === '/admin/bookings'
+      location.pathname === '/admin/membership'
     ) {
       const search = location.search || '?tab=all';
       return `/admin/memberships${search}`;
+    }
+    if (location.pathname === '/admin/bookings') {
+      const search = location.search || '?type=session';
+      return `/admin/bookings${search}`;
     }
     return location.pathname;
   };

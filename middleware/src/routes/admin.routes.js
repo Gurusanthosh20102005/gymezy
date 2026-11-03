@@ -6,6 +6,7 @@ import {
   createAdminCustomer,
   updateAdminCustomer,
   toggleCustomerStatus,
+  getAdminBookings,
 } from '../controllers/admin.controller.js';
 import { getAdminGymsFleet, getGymOptions } from '../controllers/gym.controller.js';
 import {
@@ -37,6 +38,9 @@ router.get('/gyms/options', getGymOptions);
 
 // Super Admin Gyms Fleet
 router.get('/gyms', getAdminGymsFleet);
+
+// All Gym Bookings & Group Classes Fleet (Super Admin)
+router.get('/bookings', getAdminBookings);
 
 // All Gym Memberships Fleet (Super Admin)
 router.get('/memberships', getAdminAllGymMemberships);

@@ -6,6 +6,7 @@ import Dashboard from './admin/Dashboard';
 import GymsManagement from './admin/GymsManagement';
 import CustomersManagement from './admin/CustomersManagement';
 import MembershipsManagement from './admin/MembershipsManagement';
+import BookingsManagement from './admin/BookingsManagement';
 import TransactionsManagement from './admin/TransactionsManagement';
 import SubscriptionsManagement from './admin/SubscriptionsManagement';
 import GymOnboarding from './admin/GymOnboarding';
@@ -32,7 +33,7 @@ export function App() {
         <Route path="users" element={<CustomersManagement />} />
         <Route path="memberships" element={<MembershipsManagement />} />
         <Route path="membership" element={<MembershipsManagement />} />
-        <Route path="bookings" element={<MembershipsManagement />} />
+        <Route path="bookings" element={<BookingsManagement />} />
         <Route path="payments" element={<TransactionsManagement />} />
         <Route path="transactions" element={<TransactionsManagement />} />
         <Route path="subscriptions" element={<SubscriptionsManagement />} />
@@ -51,7 +52,7 @@ export function App() {
       <Route path="/customers" element={<Navigate to="/admin/customers" replace />} />
       <Route path="/users" element={<Navigate to="/admin/customers" replace />} />
       <Route path="/memberships" element={<Navigate to="/admin/memberships" replace />} />
-      <Route path="/bookings" element={<Navigate to="/admin/memberships" replace />} />
+      <Route path="/bookings" element={<Navigate to="/admin/bookings" replace />} />
       <Route path="/payments" element={<Navigate to="/admin/payments" replace />} />
       <Route path="/transactions" element={<Navigate to="/admin/payments" replace />} />
       <Route path="/subscriptions" element={<Navigate to="/admin/subscriptions" replace />} />

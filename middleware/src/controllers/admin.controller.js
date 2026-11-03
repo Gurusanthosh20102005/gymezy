@@ -1,12 +1,25 @@
+import mongoose from 'mongoose';
 import Gym from '../models/gym.model.js';
 import User, { USER_ROLES } from '../models/user.model.js';
-import Booking from '../models/booking.model.js';
+import Booking, { BOOKING_TYPES, BOOKING_STATUS } from '../models/booking.model.js';
 import Membership from '../models/membership.model.js';
 import Counter from '../models/counter.model.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/apiError.js';
 import { transformListWithIndex } from '../utils/responseTransformer.js';
+
+const formatTimeSlot = (slot) => {
+  if (!slot) return 'General Session';
+  if (typeof slot === 'string') {
+    const trimmed = slot.trim();
+    return trimmed || 'General Session';
+  }
+  if (typeof slot === 'object' && (slot.startTime || slot.endTime)) {
+    return `${slot.startTime || ''} - ${slot.endTime || ''}`.trim() || 'General Session';
+  }
+  return 'General Session';
+};
 
 // Calculate monthly labels for the past 6 months
 const getLast6MonthsLabels = () => {
@@ -330,12 +343,13 @@ export const getAdminCustomerDetails = asyncHandler(async (req, res) => {
     key: b._id || b.bookingId,
     id: b._id,
     bookingId: b.bookingId,
+    bookingType: b.bookingType || 'SECTION',
     gymName: b.gymId?.name || 'Partner Gym',
     gymPartnerId: b.gymId?.partnerId || '',
     gymCity: b.gymId?.city || 'Chennai',
     sectionName: b.sectionId?.title || b.title || 'Gym Session',
     date: b.date || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-GB') : 'Recent'),
-    timeSlot: b.timeSlot ? `${b.timeSlot.startTime} - ${b.timeSlot.endTime}` : '09:00 AM - 10:00 AM',
+    timeSlot: formatTimeSlot(b.timeSlot),
     status: b.status || 'Completed',
     amount: (b.pricing?.totalAmount || b.pricing?.basePrice || 0).toFixed(2),
   }));
@@ -464,6 +478,188 @@ export const toggleCustomerStatus = asyncHandler(async (req, res) => {
     ApiResponse.success(
       { _id: user._id, isActive: user.isActive, status: user.isActive ? 'Active' : 'Inactive' },
       `Customer marked as ${user.isActive ? 'Active' : 'Inactive'}`
+    )
+  );
+});
+
+/**
+ * GET /api/v1/admin/bookings
+ * Super Admin Live Bookings Fleet (Session Bookings & Group Classes) with Server-Side Pagination & Filters
+ */
+export const getAdminBookings = asyncHandler(async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+  const skip = (page - 1) * limit;
+
+  const { type, status, gymId, search } = req.query;
+  const query = {};
+
+  // Filter by Booking Type: SESSION (SECTION / GYM_SESSION) vs GROUP_CLASS
+  if (type) {
+    const upperType = String(type).trim().toUpperCase();
+    if (upperType === 'SESSION' || upperType === 'SECTION') {
+      query.bookingType = { $in: ['SECTION', 'GYM_SESSION'] };
+    } else if (upperType === 'GROUP_CLASS') {
+      query.bookingType = 'GROUP_CLASS';
+    }
+  }
+
+  // Filter by Status
+  if (status && status !== 'all' && status !== 'All') {
+    query.status = status;
+  }
+
+  // Filter by Gym
+  if (gymId && gymId !== 'all' && gymId !== 'All') {
+    if (mongoose.Types.ObjectId.isValid(gymId)) {
+      query.gymId = gymId;
+    } else {
+      const matchedGym = await Gym.findOne({ partnerId: gymId }).select('_id').lean();
+      if (matchedGym) {
+        query.gymId = matchedGym._id;
+      }
+    }
+  }
+
+  // Search filter across bookingId, title, or customer fields
+  if (search && search.trim()) {
+    const s = search.trim();
+    const matchingUsers = await User.find({
+      $or: [
+        { fullName: { $regex: s, $options: 'i' } },
+        { email: { $regex: s, $options: 'i' } },
+        { phone: { $regex: s, $options: 'i' } },
+        { customerId: { $regex: s, $options: 'i' } },
+      ],
+    }).select('_id').lean();
+
+    const userIds = matchingUsers.map((u) => u._id);
+    query.$or = [
+      { bookingId: { $regex: s, $options: 'i' } },
+      { title: { $regex: s, $options: 'i' } },
+      { userId: { $in: userIds } },
+    ];
+  }
+
+  const [totalRecords, bookings, statsAgg] = await Promise.all([
+    Booking.countDocuments(query),
+    Booking.find(query)
+      .populate('userId', 'fullName email phone customerId avatar profilePicture')
+      .populate('gymId', 'name partnerId city area address image')
+      .populate('trainerId', 'fullName name employeeId email phone')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Booking.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalCount: { $sum: 1 },
+          sessionCount: {
+            $sum: {
+              $cond: [{ $in: ['$bookingType', ['SECTION', 'GYM_SESSION']] }, 1, 0],
+            },
+          },
+          groupClassCount: {
+            $sum: {
+              $cond: [{ $eq: ['$bookingType', 'GROUP_CLASS'] }, 1, 0],
+            },
+          },
+          upcomingCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'Upcoming'] }, 1, 0] },
+          },
+          completedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'Completed'] }, 1, 0] },
+          },
+          cancelledCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'Cancelled'] }, 1, 0] },
+          },
+          totalRevenue: {
+            $sum: { $ifNull: ['$pricing.totalAmount', 0] },
+          },
+        },
+      },
+    ]),
+  ]);
+
+  const summary = statsAgg[0] || {
+    totalCount: 0,
+    sessionCount: 0,
+    groupClassCount: 0,
+    upcomingCount: 0,
+    completedCount: 0,
+    cancelledCount: 0,
+    totalRevenue: 0,
+  };
+
+  const formattedBookings = bookings.map((b) => {
+    const u = b.userId || {};
+    const g = b.gymId || {};
+    const t = b.trainerId || {};
+    const rawAvatar = u.avatar || u.profilePicture || '';
+    const avatar = rawAvatar.includes('dicebear.com') ? '' : rawAvatar;
+
+    return {
+      _id: b._id,
+      id: String(b._id),
+      bookingId: b.bookingId,
+      bookingType: b.bookingType || 'SECTION',
+      isGroupClass: b.bookingType === 'GROUP_CLASS',
+      title: b.title,
+      category: b.category || 'General',
+      status: b.status || 'Active',
+      startDate: b.startDate,
+      endDate: b.endDate,
+      durationDays: b.durationDays || 1,
+      sessionsCount: b.sessionsCount || 1,
+      timeSlot: formatTimeSlot(b.timeSlot),
+      pricing: b.pricing || { totalAmount: 0, subtotal: 0, discount: 0, currency: 'INR' },
+      payment: b.payment || {},
+      entryOtp: b.entryOtp || null,
+      createdAt: b.createdAt,
+      user: {
+        _id: u._id,
+        name: u.fullName || 'Member',
+        fullName: u.fullName || 'Member',
+        email: u.email || '—',
+        phone: u.phone || '—',
+        customerId: u.customerId || '—',
+        avatar,
+      },
+      gym: {
+        _id: g._id,
+        name: g.name || 'Partner Gym',
+        partnerId: g.partnerId || '—',
+        city: g.city || '',
+        area: g.area || '',
+        address: g.address || '',
+      },
+      trainer: t._id ? {
+        _id: t._id,
+        name: t.fullName || t.name || 'Trainer',
+        employeeId: t.employeeId || '',
+      } : null,
+    };
+  });
+
+  const totalPages = Math.ceil(totalRecords / limit) || 1;
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        bookings: formattedBookings,
+        summary,
+        pagination: {
+          page,
+          limit,
+          totalRecords,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+      'Bookings retrieved successfully'
     )
   );
 });
