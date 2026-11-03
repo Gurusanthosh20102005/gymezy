@@ -754,7 +754,12 @@ export const requestCancellationNegotiation = async (req, res, next) => {
 
 export const getMyCancellationNegotiations = async (req, res, next) => {
   try {
-    const userId = req.user?.userId || req.user?.id || req.query.userId;
+    const userId =
+      req.user?.userId ||
+      req.user?.id ||
+      req.user?._id ||
+      req.query.userId ||
+      req.query.user;
     if (!userId) return res.status(200).json(ApiResponse.success([], 'Cancellation negotiations retrieved.'));
     const filter = mongoose.Types.ObjectId.isValid(userId)
       ? { userId: new mongoose.Types.ObjectId(userId) }
