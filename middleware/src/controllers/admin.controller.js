@@ -244,7 +244,7 @@ export const getAdminCustomers = asyncHandler(async (req, res) => {
       status: u.isActive !== false ? 'Active' : 'Inactive',
       isActive: u.isActive !== false,
       role: u.role || 'CUSTOMER',
-      avatar: u.avatar || u.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
+      avatar: u.avatar || u.profilePicture || '',
       initials,
       avatarColor: '#f3e8ff',
       avatarTextColor: '#7e22ce',
@@ -352,7 +352,7 @@ export const getAdminCustomerDetails = asyncHandler(async (req, res) => {
     status: user.isActive !== false ? 'Active' : 'Inactive',
     isActive: user.isActive !== false,
     role: user.role,
-    avatar: user.avatar || user.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
+    avatar: user.avatar || user.profilePicture || '',
     address: user.address || '—',
     emergencyContact: user.emergencyContact || '—',
     customerProfile: user.customerProfile || {},
@@ -413,7 +413,7 @@ export const createAdminCustomer = asyncHandler(async (req, res) => {
     role: USER_ROLES.CUSTOMER,
     customerId,
     isActive: status !== 'Inactive',
-    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(userFullName)}`,
+    avatar: '',
   });
 
   return res.status(201).json(

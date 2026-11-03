@@ -40,3 +40,4 @@ test('Admin Customers & Users Architecture Tests', async (t) => {
     assert.strictEqual(page > 1, true); // hasPrevPage
   });
 });
+

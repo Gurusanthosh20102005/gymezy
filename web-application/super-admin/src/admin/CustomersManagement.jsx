@@ -42,6 +42,14 @@ import { customerService } from '../services/customerService';
 
 const { Option } = Select;
 
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
+
 export const CustomersManagement = () => {
   const { isDarkMode } = useTheme();
 
@@ -224,18 +232,26 @@ export const CustomersManagement = () => {
           onClick={() => handleViewCustomer(record)}
           style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
         >
-          <Avatar
-            src={record.avatar}
-            style={{
-              backgroundColor: record.avatarColor || '#f3e8ff',
-              color: record.avatarTextColor || '#7e22ce',
-              fontWeight: 800,
-              fontSize: 13,
-              flexShrink: 0,
-            }}
-          >
-            {record.initials || 'U'}
-          </Avatar>
+          {hasValidProfilePic(record.avatar) ? (
+            <Avatar
+              src={record.avatar}
+              size={36}
+              style={{ flexShrink: 0 }}
+            />
+          ) : (
+            <Avatar
+              icon={<UserOutlined style={{ fontSize: 18 }} />}
+              size={36}
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            />
+          )}
           <div>
             <div
               style={{
@@ -527,20 +543,31 @@ export const CustomersManagement = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 20 }}>
             {/* Left: Avatar + Details */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-              <Avatar
-                size={80}
-                src={selectedCustomer.avatar}
-                style={{
-                  backgroundColor: '#e0e7ff',
-                  boxShadow: '0 4px 12px rgba(99, 102, 241, 0.15)',
-                  flexShrink: 0,
-                  fontSize: 28,
-                  fontWeight: 800,
-                  color: '#4f46e5',
-                }}
-              >
-                {selectedCustomer.initials || 'U'}
-              </Avatar>
+              {hasValidProfilePic(selectedCustomer.avatar) ? (
+                <Avatar
+                  size={80}
+                  src={selectedCustomer.avatar}
+                  style={{
+                    backgroundColor: '#e0e7ff',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.15)',
+                    flexShrink: 0,
+                  }}
+                />
+              ) : (
+                <Avatar
+                  size={80}
+                  icon={<UserOutlined style={{ fontSize: 38 }} />}
+                  style={{
+                    backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+                    color: '#4f46e5',
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.15)',
+                    flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                />
+              )}
 
               <div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a', marginBottom: 6 }}>
