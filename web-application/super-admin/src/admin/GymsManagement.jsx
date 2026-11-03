@@ -1556,79 +1556,23 @@ export const GymsManagement = () => {
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: 'full-wizard',
-                  icon: <RocketOutlined style={{ color: '#4338ca' }} />,
-                  label: (
-                    <div style={{ padding: '4px 0' }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: isDarkMode ? '#fff' : '#0f172a' }}>
-                        Full Onboarding Wizard (8 Steps)
-                      </div>
-                      <div style={{ fontSize: 11, color: '#888' }}>
-                        Configure facilities, trainers, pricing, rules & bank setup
-                      </div>
-                    </div>
-                  ),
-                  onClick: () => navigate('/admin/onboarding'),
-                },
-                {
-                  type: 'divider',
-                },
-                {
-                  key: 'quick-add',
-                  icon: <ThunderboltOutlined style={{ color: '#16a34a' }} />,
-                  label: (
-                    <div style={{ padding: '4px 0' }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: isDarkMode ? '#fff' : '#0f172a' }}>
-                        Quick Onboard Partner (1 Min)
-                      </div>
-                      <div style={{ fontSize: 11, color: '#888' }}>
-                        Instant registration modal popup
-                      </div>
-                    </div>
-                  ),
-                  onClick: () => setIsQuickAddModalOpen(true),
-                },
-                {
-                  key: 'bulk-import',
-                  icon: <UploadOutlined style={{ color: '#ea580c' }} />,
-                  label: (
-                    <div style={{ padding: '4px 0' }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: isDarkMode ? '#fff' : '#0f172a' }}>
-                        Bulk Import Gyms (CSV)
-                      </div>
-                      <div style={{ fontSize: 11, color: '#888' }}>
-                        Upload multi-branch gym spreadsheet
-                      </div>
-                    </div>
-                  ),
-                  onClick: () => message.info('Batch CSV Import template ready for upload.'),
-                },
-              ],
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => navigate('/admin/onboarding')}
+            style={{
+              height: 40,
+              padding: '0 18px',
+              borderRadius: 'var(--radius-base)',
+              backgroundColor: '#4338ca',
+              borderColor: '#4338ca',
+              fontWeight: 700,
+              fontSize: 14,
+              boxShadow: '0 4px 14px rgba(67, 56, 202, 0.35)',
             }}
-            trigger={['click']}
-            placement="bottomRight"
           >
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              style={{
-                height: 40,
-                padding: '0 18px',
-                borderRadius: 'var(--radius-base)',
-                backgroundColor: '#4338ca',
-                borderColor: '#4338ca',
-                fontWeight: 700,
-                fontSize: 14,
-                boxShadow: '0 4px 14px rgba(67, 56, 202, 0.35)',
-              }}
-            >
-              Add New Gym <DownOutlined style={{ fontSize: 10, marginLeft: 6 }} />
-            </Button>
-          </Dropdown>
+            Add New Gym
+          </Button>
         </div>
       </div>
 
