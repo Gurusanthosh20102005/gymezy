@@ -41,8 +41,9 @@ The GYMEZY authentication subsystem is designed to meet enterprise multi-tenant 
 
 | Role Constant | Value | Target Client App | Access Permissions |
 |---|---|---|---|
-| `SUPER_ADMIN` | `SUPER_ADMIN` | Super Admin Web (`/admin/*`) | Global platform access, verify gym registrations, inspect audit logs, override plans, financial settlement. |
-| `GYM_OWNER` | `GYM_OWNER` | Gym Owner Web & Mobile (`/owner/*`) | Manage own gym facility, trainers, section batches, review plan switch requests, day pass pricing. |
+| `SUPER_ADMIN` | `SUPER_ADMIN` | Super Admin Web (`/admin/*`) | Platform fleet governance strictly reserved for **Gym Partner Onboarding / KYC verification**, financial settlement audits, and fleet metrics. Zero operational controls over live gym staff, switches, or daily schedules. |
+| `GYM_OWNER` | `GYM_OWNER` | Gym Owner Web & Mobile (`/owner/*`) | **Full Autonomous Gym Admin Authority**: Direct immediate execution of staff/trainer creations/edits, membership switches, proration settlements, cancellations, and facility profile updates without Super Admin approval. |
+| `MANAGER` (Staff Role) | `Manager` | Gym Owner Web & Mobile / Staff Console | Appointed operational manager with customizable delegation permissions (`requireStaffApproval`, `requirePlanSwitchApproval`, `requireCancellationApproval`, `requireProfileEditApproval`). Actions without direct permission are staged as `Pending Approval` for Gym Admin review. |
 | `EMPLOYEE` / `TRAINER` | `EMPLOYEE` / `TRAINER` | Gym Owner Mobile / Staff Console | Manage assigned section schedules, track member QR attendance, log workouts. |
 | `CUSTOMER` | `CUSTOMER` | User Mobile App (`user-react`) | Discover verified gyms, buy memberships, request plan switches, book day passes, biometric QR check-in. |
 

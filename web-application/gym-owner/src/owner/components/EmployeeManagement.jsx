@@ -164,6 +164,9 @@ export const EmployeeManagement = ({
   const [tempStaffForm] = Form.useForm();
   const [attachDocForm] = Form.useForm();
 
+  const addRoleWatch = Form.useWatch('role', addEmployeeForm);
+  const editRoleWatch = Form.useWatch('role', editEmployeeForm);
+
   // Map live gym trainers & staff from database fallback
   const mappedGymStaff = useMemo(() => {
     const list = [];
@@ -522,6 +525,10 @@ export const EmployeeManagement = ({
       experience: record.experience || (record.experienceYears ? `${record.experienceYears}+ Years` : ''),
       certifications: Array.isArray(record.certifications) ? record.certifications : [],
       languages: Array.isArray(record.languages) ? record.languages : [],
+      requireStaffApproval: record.managerPermissions?.requireStaffApproval ?? true,
+      requirePlanSwitchApproval: record.managerPermissions?.requirePlanSwitchApproval ?? true,
+      requireCancellationApproval: record.managerPermissions?.requireCancellationApproval ?? true,
+      requireProfileEditApproval: record.managerPermissions?.requireProfileEditApproval ?? true,
     });
 
     const empType = (record.type || '').toLowerCase();
@@ -623,28 +630,42 @@ export const EmployeeManagement = ({
       },
       documents: editEmpDocs && editEmpDocs.length > 0 ? editEmpDocs : (selectedEmployee.documents || []),
       notes: values.notes !== undefined ? values.notes : (selectedEmployee.notes || ''),
+      managerPermissions: {
+        requireStaffApproval: values.requireStaffApproval !== undefined ? values.requireStaffApproval : (selectedEmployee.managerPermissions?.requireStaffApproval ?? true),
+        requirePlanSwitchApproval: values.requirePlanSwitchApproval !== undefined ? values.requirePlanSwitchApproval : (selectedEmployee.managerPermissions?.requirePlanSwitchApproval ?? true),
+        requireCancellationApproval: values.requireCancellationApproval !== undefined ? values.requireCancellationApproval : (selectedEmployee.managerPermissions?.requireCancellationApproval ?? true),
+        requireProfileEditApproval: values.requireProfileEditApproval !== undefined ? values.requireProfileEditApproval : (selectedEmployee.managerPermissions?.requireProfileEditApproval ?? true),
+      },
     };
 
     try {
+      let finalStatus = 'Approved';
       if (targetId && !targetId.startsWith('tr-') && !targetId.startsWith('staff-')) {
-        await apiClient.put(`/employees/${targetId}`, updatePayload);
+        const res = await apiClient.put(`/employees/${targetId}`, updatePayload);
+        if (res.data?.approvalStatus) {
+          finalStatus = res.data.approvalStatus;
+        }
       }
       const updated = employeesList.map((emp) => {
         if (emp.key === selectedEmployee.key || emp.id === targetId || emp._id === targetId) {
           return {
             ...emp,
             ...updatePayload,
-            approvalStatus: 'Pending Approval',
+            approvalStatus: finalStatus,
           };
         }
         return emp;
       });
       setEmployeesList(updated);
       setIsDetailsModalOpen(false);
-      message.success(`All updates submitted for ${updatePayload.name}. Pending Super Admin approval.`);
+      message.success(
+        finalStatus === 'Approved'
+          ? `All updates applied directly for ${updatePayload.name}.`
+          : `All updates submitted for ${updatePayload.name}. Pending Gym Admin approval.`
+      );
       await loadEmployees(currentPage, pageSize);
     } catch {
-      message.success(`Changes saved locally and sent to Super Admin for approval.`);
+      message.success(`Changes saved locally.`);
       setIsDetailsModalOpen(false);
     } finally {
       setIsSavingDetails(false);
@@ -672,6 +693,19 @@ export const EmployeeManagement = ({
       setIsDetailsModalOpen(false);
     } finally {
       setIsDeactivating(false);
+    }
+  };
+
+  const handleReviewApproval = async (employeeId, action, reason = '') => {
+    try {
+      await apiClient.put(`/employees/${employeeId}/approval`, {
+        action,
+        rejectionReason: reason,
+      });
+      message.success(action === 'approve' ? 'Employee approved successfully!' : 'Employee approval rejected.');
+      await loadEmployees(currentPage, pageSize);
+    } catch (err) {
+      message.error(err.response?.data?.message || `Failed to ${action} employee.`);
     }
   };
 
@@ -723,7 +757,12 @@ export const EmployeeManagement = ({
       status: 'Active',
       attendance: 'Present',
       accessType: allFormValues.accessLevel || 'Admin',
-      approvalStatus: 'Pending Approval',
+      managerPermissions: {
+        requireStaffApproval: allFormValues.requireStaffApproval ?? true,
+        requirePlanSwitchApproval: allFormValues.requirePlanSwitchApproval ?? true,
+        requireCancellationApproval: allFormValues.requireCancellationApproval ?? true,
+        requireProfileEditApproval: allFormValues.requireProfileEditApproval ?? true,
+      },
       previousEmployments: addPrevEmployments
         .filter((pe) => pe.companyName?.trim() || pe.designation?.trim())
         .map((pe) => ({
@@ -755,7 +794,11 @@ export const EmployeeManagement = ({
       const updated = [savedEmp, ...employeesList.filter((e) => (e.id || e._id) !== (savedEmp.id || savedEmp._id))];
       setEmployeesList(updated);
       setAddedEmployeeData(savedEmp);
-      message.success(`Employee "${savedEmp.name}" submitted for Super Admin approval!`);
+      if (savedEmp.approvalStatus === 'Approved') {
+        message.success(`Employee "${savedEmp.name}" added successfully!`);
+      } else {
+        message.success(`Employee "${savedEmp.name}" submitted for Gym Admin approval!`);
+      }
 
       setIsAddModalOpen(false);
       setAddStep(1);
@@ -1199,66 +1242,102 @@ export const EmployeeManagement = ({
     {
       title: 'Actions',
       key: 'actions',
-      width: 130,
-      render: (_, record) => (
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Button
-            type="text"
-            size="small"
-            onClick={() => handleOpenDetails(record)}
-            icon={<EyeOutlined style={{ color: '#722ed1', fontSize: 15 }} />}
-            style={{
-              backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
-              borderRadius: 'var(--radius-base)',
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          />
-          <Button
-            type="text"
-            size="small"
-            onClick={() => handleOpenDetails(record)}
-            icon={<EditOutlined style={{ color: '#722ed1', fontSize: 15 }} />}
-            style={{
-              backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
-              borderRadius: 'var(--radius-base)',
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          />
-          <Dropdown
-            menu={{
-              items: [
-                { key: 'view', label: 'View Profile', icon: <EyeOutlined />, onClick: () => handleOpenDetails(record) },
-                { key: 'edit', label: 'Edit Permissions', icon: <EditOutlined />, onClick: () => handleOpenDetails(record) },
-                {
-                  key: 'deactivate',
-                  label: 'Deactivate',
-                  icon: <DeleteOutlined style={{ color: '#ef4444' }} />,
-                  onClick: () => {
-                    setEmployeesList(employeesList.map((e) => (e.key === record.key ? { ...e, status: 'Inactive', attendance: '—' } : e)));
-                    message.warning(`Employee ${record.name} deactivated.`);
+      width: 170,
+      render: (_, record) => {
+        const isPendingApproval = record.approvalStatus === 'Pending Approval';
+        return (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {isPendingApproval ? (
+              <>
+                <Button
+                  type="primary"
+                  size="small"
+                  style={{
+                    backgroundColor: '#10b981',
+                    borderColor: '#10b981',
+                    borderRadius: 'var(--radius-base)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                  }}
+                  onClick={() => handleReviewApproval(record.id || record._id, 'approve')}
+                >
+                  Approve
+                </Button>
+                <Button
+                  danger
+                  size="small"
+                  style={{
+                    borderRadius: 'var(--radius-base)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                  }}
+                  onClick={() => handleReviewApproval(record.id || record._id, 'reject', 'Rejected by Gym Admin')}
+                >
+                  Reject
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={() => handleOpenDetails(record)}
+                  icon={<EyeOutlined style={{ color: '#722ed1', fontSize: 15 }} />}
+                  style={{
+                    backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
+                    borderRadius: 'var(--radius-base)',
+                    width: 32,
+                    height: 32,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                />
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={() => handleOpenDetails(record)}
+                  icon={<EditOutlined style={{ color: '#722ed1', fontSize: 15 }} />}
+                  style={{
+                    backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
+                    borderRadius: 'var(--radius-base)',
+                    width: 32,
+                    height: 32,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                />
+              </>
+            )}
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'view', label: 'View Profile', icon: <EyeOutlined />, onClick: () => handleOpenDetails(record) },
+                  { key: 'edit', label: 'Edit Permissions', icon: <EditOutlined />, onClick: () => handleOpenDetails(record) },
+                  {
+                    key: 'deactivate',
+                    label: 'Deactivate',
+                    icon: <DeleteOutlined style={{ color: '#ef4444' }} />,
+                    onClick: () => {
+                      setEmployeesList(employeesList.map((e) => (e.key === record.key ? { ...e, status: 'Inactive', attendance: '—' } : e)));
+                      message.warning(`Employee ${record.name} deactivated.`);
+                    },
                   },
-                },
-              ],
-            }}
-            trigger={['click']}
-          >
-            <Button
-              type="text"
-              size="small"
-              icon={<MoreOutlined style={{ fontSize: 16, color: isDarkMode ? '#888888' : '#64748b' }} />}
-              style={{ width: 28, height: 32 }}
-            />
-          </Dropdown>
-        </div>
-      ),
+                ],
+              }}
+              trigger={['click']}
+            >
+              <Button
+                type="text"
+                size="small"
+                icon={<MoreOutlined style={{ fontSize: 16, color: isDarkMode ? '#888888' : '#64748b' }} />}
+                style={{ width: 28, height: 32 }}
+              />
+            </Dropdown>
+          </div>
+        );
+      },
     },
   ];
 
@@ -2024,6 +2103,7 @@ export const EmployeeManagement = ({
                         <Col xs={24} sm={12}>
                           <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Role / Designation <span style={{ color: '#ef4444' }}>*</span></span>} style={{ marginBottom: 14 }}>
                             <Select value={detailRole} onChange={setDetailRole} style={{ height: 40 }}>
+                              <Option value="Manager">Manager</Option>
                               <Option value="Trainer">Trainer</Option>
                               <Option value="Head Trainer">Head Trainer</Option>
                               <Option value="Front Desk Manager">Front Desk Manager</Option>
@@ -2047,6 +2127,47 @@ export const EmployeeManagement = ({
                           </Form.Item>
                         </Col>
                       </Row>
+
+                      {detailRole === 'Manager' && (
+                        <Card
+                          size="small"
+                          style={{
+                            marginBottom: 16,
+                            borderRadius: 'var(--radius-base)',
+                            backgroundColor: isDarkMode ? '#1e1b4b' : '#f5f3ff',
+                            borderColor: isDarkMode ? '#4338ca' : '#c7d2fe',
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#4f46e5', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <CrownOutlined /> Manager Delegation Permissions (Admin Approval Required)
+                          </div>
+                          <div style={{ fontSize: 11.5, color: isDarkMode ? '#c7d2fe' : '#475569', marginBottom: 12 }}>
+                            Check the operations that require your (Gym Admin) approval before taking effect. Uncheck to allow direct manager execution.
+                          </div>
+                          <Row gutter={[12, 10]}>
+                            <Col xs={24} sm={12}>
+                              <Form.Item name="requireStaffApproval" valuePropName="checked" style={{ marginBottom: 8 }}>
+                                <Checkbox style={{ fontSize: 12 }}>Staff & Trainers (Add/Edit/Remove)</Checkbox>
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={12}>
+                              <Form.Item name="requirePlanSwitchApproval" valuePropName="checked" style={{ marginBottom: 8 }}>
+                                <Checkbox style={{ fontSize: 12 }}>Plan Switches & Prorations</Checkbox>
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={12}>
+                              <Form.Item name="requireCancellationApproval" valuePropName="checked" style={{ marginBottom: 8 }}>
+                                <Checkbox style={{ fontSize: 12 }}>Cancellations & Refund Claims</Checkbox>
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={12}>
+                              <Form.Item name="requireProfileEditApproval" valuePropName="checked" style={{ marginBottom: 8 }}>
+                                <Checkbox style={{ fontSize: 12 }}>Gym Profile & Operating Timings</Checkbox>
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                        </Card>
+                      )}
 
                       {/* Change Access Type (3 Cards Grid) */}
                       <div style={{ marginBottom: 12 }}>
@@ -2863,6 +2984,7 @@ export const EmployeeManagement = ({
               <Col xs={24} sm={12}>
                 <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Role <span style={{ color: '#ef4444' }}>*</span></span>} name="role" initialValue="Trainer" rules={[{ required: true }]} style={{ marginBottom: 14 }}>
                   <Select style={{ height: 40 }}>
+                    <Option value="Manager">Manager</Option>
                     <Option value="Trainer">Trainer</Option>
                     <Option value="Front Desk Manager">Front Desk Manager</Option>
                     <Option value="Customer Support">Customer Support</Option>
@@ -2886,6 +3008,47 @@ export const EmployeeManagement = ({
                 </div>
               </Col>
             </Row>
+
+            {addRoleWatch === 'Manager' && (
+              <Card
+                size="small"
+                style={{
+                  marginBottom: 16,
+                  borderRadius: 'var(--radius-base)',
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#f5f3ff',
+                  borderColor: isDarkMode ? '#4338ca' : '#c7d2fe',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#4f46e5', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CrownOutlined /> Manager Delegation Permissions (Admin Approval Required)
+                </div>
+                <div style={{ fontSize: 11.5, color: isDarkMode ? '#c7d2fe' : '#475569', marginBottom: 12 }}>
+                  Check the operations that require your (Gym Admin) approval before taking effect. Uncheck to allow direct manager execution.
+                </div>
+                <Row gutter={[12, 10]}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="requireStaffApproval" valuePropName="checked" initialValue={true} style={{ marginBottom: 8 }}>
+                      <Checkbox style={{ fontSize: 12 }}>Staff & Trainers (Add/Edit/Remove)</Checkbox>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="requirePlanSwitchApproval" valuePropName="checked" initialValue={true} style={{ marginBottom: 8 }}>
+                      <Checkbox style={{ fontSize: 12 }}>Plan Switches & Prorations</Checkbox>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="requireCancellationApproval" valuePropName="checked" initialValue={true} style={{ marginBottom: 8 }}>
+                      <Checkbox style={{ fontSize: 12 }}>Cancellations & Refund Claims</Checkbox>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="requireProfileEditApproval" valuePropName="checked" initialValue={true} style={{ marginBottom: 8 }}>
+                      <Checkbox style={{ fontSize: 12 }}>Gym Profile & Operating Timings</Checkbox>
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
+            )}
 
             {/* Trainer Profile & Showcase (Shown in User App) */}
             <div style={{ borderTop: `1px solid ${isDarkMode ? '#222222' : '#f1f5f9'}`, paddingTop: 14, marginTop: 6, marginBottom: 14 }}>

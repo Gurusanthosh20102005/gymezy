@@ -890,9 +890,28 @@ export const gymOfferCancellationRefund = async (req, res, next) => {
 export const gymAcceptCancellation = async (req, res, next) => {
   try {
     const negotiation = await findNegotiation(req.params.requestId);
-    if (!['PENDING_GYM_APPROVAL', 'PENDING_MEMBER_APPROVAL'].includes(negotiation.status)) {
+    if (!['PENDING_GYM_APPROVAL', 'PENDING_MEMBER_APPROVAL', 'PENDING_GYM_ADMIN_APPROVAL'].includes(negotiation.status)) {
       throw ApiError.badRequest('This negotiation can no longer be updated.');
     }
+
+    const isGymOwner = req.user?.role === USER_ROLES.GYM_OWNER || req.user?.accessType === 'Admin';
+    let isManagerWithoutApproval = false;
+    if (!isGymOwner) {
+      const callerEmployee = await Employee.findOne({
+        $or: [{ phone: req.user?.phone }, { email: req.user?.email }, { userId: req.user?._id }],
+        gymId: negotiation.gymId,
+      });
+      if (callerEmployee?.managerPermissions?.requireCancellationApproval === false) {
+        isManagerWithoutApproval = true;
+      }
+    }
+
+    if (!isGymOwner && !isManagerWithoutApproval) {
+      negotiation.status = 'PENDING_GYM_ADMIN_APPROVAL';
+      await negotiation.save();
+      return res.status(200).json(ApiResponse.success(negotiation, 'Cancellation decision forwarded to Gym Admin for approval.'));
+    }
+
     const deductionAmount = Number(req.body.deductionAmount ?? negotiation.currentOffer?.deductionAmount ?? 0);
     if (!Number.isFinite(deductionAmount) || deductionAmount < 0 || deductionAmount > negotiation.maximumRefundAmount) {
       throw ApiError.badRequest(`Deduction must be between 0 and ${negotiation.maximumRefundAmount}.`);
@@ -1306,14 +1325,39 @@ export const gymActionReviewSwitchRequest = async (req, res, next) => {
     const reviewerId = req.user?.userId || req.user?.id || null;
 
     if (action === 'ACCEPT') {
-      request.status = 'PENDING_SUPER_ADMIN_APPROVAL';
-      request.gymApproval = {
-        status: 'ACCEPTED',
-        reviewedBy: reviewerId,
-        reviewerName,
-        reviewedAt: new Date(),
-        remarks: remarks || 'Accepted by Gym Owner',
-      };
+      const isGymOwner = req.user?.role === USER_ROLES.GYM_OWNER || req.user?.accessType === 'Admin';
+      let isManagerWithoutApproval = false;
+      if (!isGymOwner) {
+        const callerEmployee = await Employee.findOne({
+          $or: [{ phone: req.user?.phone }, { email: req.user?.email }, { userId: req.user?._id }],
+          gymId: request.gymId,
+        });
+        if (callerEmployee?.managerPermissions?.requirePlanSwitchApproval === false) {
+          isManagerWithoutApproval = true;
+        }
+      }
+
+      if (isGymOwner || isManagerWithoutApproval) {
+        // Direct ACID execution - no Super Admin required
+        const result = await ProrationEngine.executeApprovedSwitchTransaction({
+          switchRequestId: request._id,
+          approvedByUser: { _id: reviewerId, fullName: reviewerName },
+          remarks: remarks || 'Accepted and executed by Gym Admin',
+        });
+        return res.status(200).json(ApiResponse.success(result, 'Switch request approved and executed successfully.'));
+      } else {
+        // Staged for Gym Admin approval
+        request.status = 'PENDING_GYM_ADMIN_APPROVAL';
+        request.gymApproval = {
+          status: 'PENDING',
+          reviewedBy: reviewerId,
+          reviewerName,
+          reviewedAt: new Date(),
+          remarks: remarks || 'Submitted by Manager. Pending Gym Admin approval.',
+        };
+        await request.save();
+        return res.status(200).json(ApiResponse.success(request, 'Switch request forwarded to Gym Admin for final approval.'));
+      }
     } else {
       request.status = 'REJECTED_BY_GYM';
       request.gymApproval = {
@@ -1323,11 +1367,9 @@ export const gymActionReviewSwitchRequest = async (req, res, next) => {
         reviewedAt: new Date(),
         remarks: remarks || 'Rejected by Gym Owner',
       };
+      await request.save();
+      return res.status(200).json(ApiResponse.success(request, 'Switch request rejected.'));
     }
-
-    await request.save();
-
-    return res.status(200).json(ApiResponse.success(request, `Switch request ${action === 'ACCEPT' ? 'accepted and forwarded to Super Admin' : 'rejected'}.`));
   } catch (error) {
     next(error);
   }
