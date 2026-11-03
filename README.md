@@ -1,23 +1,31 @@
 # GYMEZY — Next-Gen Fitness Access and Gym Management Platform
 
-[![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
+[![React Native](https://img.shields.io/badge/React_Native-0.76+-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactnative.dev)
+[![Expo](https://img.shields.io/badge/Expo-SDK_52+-000020?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
-[![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev)
+[![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev)
 [![Node.js](https://img.shields.io/badge/Node.js-20.x-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://mongodb.com)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas_/_VPS-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://mongodb.com)
 [![Ant Design](https://img.shields.io/badge/Ant_Design-6.x-0170FE?style=for-the-badge&logo=antdesign&logoColor=white)](https://ant.design)
 
 **GYMEZY** is a unified multi-platform fitness ecosystem that connects fitness seekers with gyms, boutique fitness studios (Yoga, Zumba, HIIT, CrossFit, Boxing), and certified personal trainers. It eliminates rigid annual contracts by providing pay-as-you-go single-session passes, flexible multi-day packages, tiered memberships with trainer add-ons, and secure digital QR/OTP access control.
 
 ---
 
-## Quick Navigation and Documentation Links
+## Technical Documentation Directory
 
-* [Comprehensive System & DB Architecture Documentation](PROJECT_DOCUMENTATION_AND_DB_ARCHITECTURE.md)  
-  *(Full ER diagrams, MongoDB collections, indexing strategy, state machines, API contracts, and security specs)*
-* [Mobile Application (User App)](Mobile%20Application/user)
-* [Web Application (Portal)](Web%20Application)
-* [Middleware API (Backend)](middleware)
+For complete architecture, logic flows, database models, and build guides, see the [`doc/`](doc/README.md) directory:
+
+| Document | Description |
+|---|---|
+| **[BUILD_COMMANDS.md](doc/BUILD_COMMANDS.md)** | Single source of truth for build, start, bundling, and environment scripts across all 5 apps. |
+| **[ATTENDANCE_CHECKIN_CHECKOUT_FLOW.md](doc/ATTENDANCE_CHECKIN_CHECKOUT_FLOW.md)** | Unified check-in / check-out toggle, 120s anti-bounce cooldown, and pass validation matrices. |
+| **[SESSION_BOOKING_FLOW.md](doc/SESSION_BOOKING_FLOW.md)** | Dynamic multi-tier session booking architecture (Per Session, Weekly, Custom Dates, Group Classes). |
+| **[MEMBERSHIP_FLOW.md](doc/MEMBERSHIP_FLOW.md)** | Membership lifecycle, ProrationEngine mathematical model for upgrades/downgrades, and cancellations. |
+| **[CI_CD_DEPLOYMENT_WORKFLOW.md](doc/CI_CD_DEPLOYMENT_WORKFLOW.md)** | Automated GitHub Actions CI/CD pipeline for `dev` & `prod` branches, SSH scripts, and VPS deployment. |
+| **[WALLET_FINANCIAL_ARCHITECTURE.md](doc/WALLET_FINANCIAL_ARCHITECTURE.md)** | Gym-specific wallet isolation, compound indexing, split-payment checkout, and financial ledger integrity. |
+| **[AUTHENTICATION_FLOW.md](doc/AUTHENTICATION_FLOW.md)** | End-to-end authentication, Firebase JWT verification, RBAC matrices, and session security. |
+| **[LOGIC_FLOW.md](doc/LOGIC_FLOW.md)** | Master architectural sequence diagrams, state machines, and cross-platform network topography. |
 
 ---
 
@@ -25,32 +33,43 @@
 
 ```text
 GYMEZY/
-├── Mobile Application/
-│   ├── user/                     # Flutter User App (iOS, Android, Web)
-│   │   ├── lib/
-│   │   │   ├── data/             # Repositories and Mock Data
-│   │   │   ├── models/           # Domain Models (Gym, BookingItem, MembershipItem, Trainer)
-│   │   │   ├── pages/            # 13+ Screens (Discovery, Booking, Passes, Profile, etc.)
-│   │   │   ├── theme/            # Centralized Theme, Dark/Light Mode and Tokens
-│   │   │   ├── widgets/          # Custom Calendar, QR Pass Card, Dialogs
-│   │   │   └── main.dart         # Flutter App Entry Point
-│   │   └── pubspec.yaml          # Flutter Dependencies
-│   └── gym owner/                # Flutter Gym Owner and Front-Desk Scanner App
+├── mobile-application/
+│   ├── user-react/               # Member / User Mobile App (React Native + Expo SDK 52+)
+│   │   ├── src/
+│   │   │   ├── pages/            # Discovery, Booking, Digital Passes, Profile, Wallet
+│   │   │   ├── widgets/          # SessionBookingFlow, DigitalQrPassCard, CustomCalendar
+│   │   │   ├── services/         # apiService (Axios gateway), notificationService
+│   │   │   └── theme/            # Centralized Theme, Dark/Light Mode, AppColors tokens
+│   │   ├── app.json              # Expo Application Configuration
+│   │   └── package.json          # User App Dependencies
+│   │
+│   └── gym-owner/                # Gym Owner & Turnstile Scanner Mobile App (React Native CLI)
+│       ├── android/              # Native Android project configuration
+│       ├── ios/                  # Native iOS project configuration
+│       ├── src/                  # Scanner, Check-In/Check-Out, Live Attendance Dashboard
+│       └── package.json          # RN CLI Dependencies
 │
-├── Web Application/              # React 19 + Vite Web Application and Landing Page
+├── web-application/
+│   ├── gym-owner/                # Gym Owner Web Portal (React 19 + Vite, Port 5173)
+│   │   ├── src/                  # Member management, Section/Class scheduling, KYC, Finances
+│   │   └── package.json
+│   │
+│   └── super-admin/              # Super Admin Web Portal (React 19 + Vite, Port 5174)
+│       ├── src/                  # Gym KYC approvals, Platform commissions, Global audit logs
+│       └── package.json
+│
+├── middleware/                   # Node.js + Express REST API Gateway (Port 5001)
 │   ├── src/
-│   │   ├── pages/                # Landing Page and Dashboard Pages
-│   │   ├── App.jsx               # Root React Component
-│   │   └── main.jsx              # React Entry Point
-│   ├── package.json              # Web App Dependencies (Ant Design, Axios)
-│   └── vite.config.js            # Vite Build Configuration
+│   │   ├── controllers/          # attendance, booking, membership, gym, auth, wallet controllers
+│   │   ├── models/               # Mongoose Schemas (User, Gym, Booking, Membership, Attendance)
+│   │   ├── routes/               # Express API v1 Route Definitions
+│   │   ├── services/             # Proration engine, Cron sweepers, Firebase notifications
+│   │   └── middleware/           # JWT auth validator, RBAC guard, Error handler
+│   ├── test/                     # Automated unit and integration test suite (node --test)
+│   ├── .env                      # Environment Variables
+│   └── package.json              # Express, Mongoose, Helmet, Morgan, dotenvx
 │
-├── middleware/                   # Node.js + Express REST API Backend
-│   ├── server.js                 # Express Application and MongoDB Mongoose Gateway
-│   ├── package.json              # Backend Dependencies (Express, Mongoose, Helmet, Morgan)
-│   └── .env                      # Server Environment Variables (PORT, MONGODB_URI)
-│
-├── PROJECT_DOCUMENTATION_AND_DB_ARCHITECTURE.md # Master System & DB Architecture Reference
+├── doc/                          # Technical Specifications and Flow Diagrams
 └── README.md                     # Master Project README
 ```
 
@@ -58,13 +77,29 @@ GYMEZY/
 
 ## Technology Stack
 
-| Layer | Technologies | Description |
+### 1. Multi-Platform Application Matrix
+
+| Layer / Application | Primary Framework | Key Libraries & Tooling | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Member Mobile App**<br/>`mobile-application/user-react` | **React Native** (`0.86+`)<br/>**Expo** (`SDK 57+`) | • React Navigation v7 (Stack & Bottom Tabs)<br/>• `expo-location` (GPS Geo-Discovery)<br/>• `expo-local-authentication` (Biometric Login)<br/>• `react-native-qrcode-svg` (Dynamic Passes)<br/>• `lottie-react-native` & `expo-linear-gradient`<br/>• `expo-clipboard` & `expo-image-picker` | Native iOS and Android app for gym discovery, section booking, memberships, split-wallet checkout, and QR pass turnstile access. |
+| **Gym Owner Scanner App**<br/>`mobile-application/gym-owner` | **React Native CLI** (`0.74+`) | • Native Camera / QR Scanner<br/>• React Native Gesture Handler<br/>• Vector Icons & Safe Area Context | Dedicated reception desk and gate operator tool for scanning turnstile QR passes and verifying entry OTPs in offline/online mode. |
+| **Gym Owner Web Portal**<br/>`web-application/gym-owner` | **React 19**<br/>**Vite** (`8.x`) | • **Ant Design** (`antd 6.x`) & `@ant-design/icons`<br/>• Redux Toolkit (`@reduxjs/toolkit`) & React-Redux<br/>• React Router DOM (`v7.x`)<br/>• Lucide React Icons<br/>• `canvas-confetti` & `jsqr` | High-density administrative desktop portal for gym profile setup, trainer allocations, class scheduling, membership approvals, and revenue analytics. |
+| **Super Admin Web Portal**<br/>`web-application/super-admin` | **React 19**<br/>**Vite** (`8.x`) | • **Ant Design** (`antd 6.x`) & `@ant-design/icons`<br/>• Redux Toolkit (`@reduxjs/toolkit`)<br/>• React Router DOM (`v7.x`)<br/>• Lucide React Icons & Axios | Master governance console for verifying gym KYC submissions, inspecting documents, approving partner tiers, managing platform commissions, and global audit logs. |
+| **Backend REST API Gateway**<br/>`middleware` | **Node.js** (`20+ LTS`)<br/>**Express.js** (`v5.x`) | • `mongoose` (`v9.x`) (ODM)<br/>• `firebase-admin` (`v14.x`) (FCM & Google SSO)<br/>• `jsonwebtoken` (`v9.x`) & `bcryptjs`<br/>• `sharp` (Image Compression & WebP Conversion)<br/>• `node-cron` (Automated Attendance Sweepers)<br/>• `helmet`, `cors`, `morgan`, `cookie-parser` | Centralized REST API handling geospatial queries, atomic booking transactions, wallet debit lifecycles, proration math, and turnstile check-ins. |
+
+---
+
+### 2. Core Architectural & Infrastructure Technologies
+
+| Domain | Technology / Tool | Specification & Implementation Details |
 | :--- | :--- | :--- |
-| **Mobile App (User)** | Flutter 3.x, Dart 3.x, Google Fonts (`Outfit`), Flutter Animate, QR Flutter | Cross-platform native mobile experience for gym discovery, booking, and digital passes. |
-| **Web Portal** | React 19, Vite, Ant Design (`antd 6.x`), Axios | Modern, responsive web platform for onboarding and management. |
-| **Backend API** | Node.js 20+, Express.js, Helmet, Morgan, CORS | Scalable REST API gateway handling business logic and auth. |
-| **Database** | MongoDB Atlas, Mongoose ODM, 2dsphere GeoJSON | Geo-spatial indexing for location queries and flexible document storage. |
-| **Security & Access** | JWT Auth, HMAC-SHA256 Dynamic QR Codes, 6-Digit OTPs | Contactless access control and anti-passback verification. |
+| **Database & Search** | **MongoDB** (`6.x / 7.x`)<br/>**Mongoose ODM** | • **Geospatial**: `2dsphere` index on `location.coordinates` for Haversine distance-sorted gym queries.<br/>• **Financial Ledger**: Compound unique index `{ userId: 1, gymId: 1 }` on `Wallet` for multi-tenant balance isolation.<br/>• **Consistency**: Atomic ledger debit operations with automatic rollback on booking failure. |
+| **Authentication & RBAC** | **Google OAuth 2.0**<br/>**Firebase Auth**<br/>**JWT** | • Hybrid token lifecycle: Firebase ID token validation (`verifyGoogleIdToken`) + proprietary gym JWT access tokens.<br/>• Role-Based Access Control enforcing strict separation: `Customer`, `GymOwner`, `Employee`, `SuperAdmin`.<br/>• Hardware-backed biometric authentication (Fingerprint / Face ID) via Expo LocalAuthentication. |
+| **Push Notifications** | **Firebase Cloud Messaging** (FCM) | • Cloud messaging via `firebase-admin` service accounts.<br/>• Automatic multicast dispatch to member and gym owner device tokens for check-ins, switch approvals, and expiry alerts. |
+| **Financial Engine** | **GYMEZY ProrationEngine** & **Wallet Core** | • Mathematical proration engine with 4 downgrade compensation modes (`WALLET`, `EXTEND`, `REFUND`, `FORFEIT`).<br/>• Split / Hybrid checkout payment: offsets purchases using available gym wallet funds and routes remainder through external gateways. |
+| **DevOps & CI/CD** | **GitHub Actions**<br/>**Appleboy SSH Action** | • Automated multi-branch pipeline ([`deploy.yml`](.github/workflows/deploy.yml)): pushes to `dev` trigger `/var/www/gymezy/deploy-dev.sh`, pushes to `prod` trigger `/var/www/gymezy/deploy-prod.sh`.<br/>• Zero-downtime cluster reloads via PM2 and Nginx reverse proxy on Hostinger VPS. |
+| **Server & Hosting** | **Hostinger Linux VPS**<br/>**Nginx** & **PM2** | • Ubuntu Linux VPS (`187.127.149.165`) hosting standalone MongoDB on `27017` with direct connection support.<br/>• Reverse proxy routing: Web ports `5173`/`5174`, API port `5001`, and production SSL terminations. |
+| **Testing & Quality** | **Node.js Native Test Runner** (`node --test`) | • Zero-dependency fast test suite in `middleware/test/` verifying proration math, banner geo-sorting, model constraints, Google SSO, and wallet ledger isolation. |
 
 ---
 
@@ -72,16 +107,17 @@ GYMEZY/
 
 ### 1. Prerequisites
 Ensure you have the following installed on your machine:
-* **Flutter SDK** (`>= 3.0.0`) & Xcode / Android Studio
-* **Node.js** (`>= 18.x.x` or `20.x.x`) & `npm`
+* **Node.js** (`>= 20.x.x`) & `npm` (`>= 10.x.x`)
 * **Git**
-* **MongoDB** (Local instance or MongoDB Atlas cluster connection string)
+* **MongoDB** (Local instance, Atlas cluster, or VPS database)
+* **Android Studio & SDK** (with `adb` configured in PATH) — *for running Android apps*
+* **Xcode & CocoaPods** (macOS only) — *for running iOS apps*
 
 ---
 
 ### 2. Backend Middleware Setup
 
-1. Open your terminal and navigate to the `middleware` directory:
+1. Navigate to the `middleware` directory:
    ```bash
    cd middleware
    ```
@@ -91,52 +127,58 @@ Ensure you have the following installed on your machine:
    ```
 3. Configure the `.env` file:
    ```env
-   PORT=5000
-   MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/gymezy?retryWrites=true&w=majority
+   PORT=5001
+   NODE_ENV=development
+   MONGODB_URI=mongodb://localhost:27017/gymezy_dev
+   JWT_SECRET=your_jwt_secret_key_here
    ```
-4. Start the server:
+4. Run automated test suite:
+   ```bash
+   npm test
+   ```
+5. Start the backend development server:
+   ```bash
+   npm run dev
+   ```
+   *The API gateway runs at `http://localhost:5001/api/v1`.*
+
+---
+
+### 3. Member Mobile Application (`user-react`) Setup
+
+1. Forward API and Metro ports to your connected Android device / emulator:
+   ```bash
+   adb reverse tcp:5001 tcp:5001
+   adb reverse tcp:8081 tcp:8081
+   ```
+2. Navigate to the user app directory:
+   ```bash
+   cd mobile-application/user-react
+   ```
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
+4. Start Metro bundler:
    ```bash
    npm start
-   # or with nodemon for live reload:
-   npx nodemon server.js
    ```
-   *The server runs at `http://localhost:5000`.*
+5. Launch on device:
+   ```bash
+   # Run on connected Android device / emulator
+   npm run android
+
+   # Run on iOS simulator (macOS only)
+   npm run ios
+   ```
 
 ---
 
-### 3. Mobile User Application (Flutter) Setup
+### 4. Gym Owner Web Portal Setup
 
-1. Open a new terminal tab and navigate to the user mobile app directory:
+1. Navigate to the Gym Owner web application:
    ```bash
-   cd "Mobile Application/user"
-   ```
-2. Fetch Flutter packages:
-   ```bash
-   flutter pub get
-   ```
-3. Run on your simulator, emulator, or connected physical device:
-   ```bash
-   # Run on default connected device
-   flutter run
-
-   # Or run specifically on Chrome / macOS / iOS Simulator / Android
-   flutter run -d chrome
-   flutter run -d ios
-   flutter run -d android
-   ```
-
-> **Demo Login Credentials:**
-> - **Email:** `sam@gmail.com`
-> - **Password:** `123456`
-> - *(Or tap the "Auto-Fill Demo" button on the Login Screen)*
-
----
-
-### 4. Web Application (React + Vite) Setup
-
-1. Open a new terminal tab and navigate to the web application directory:
-   ```bash
-   cd "Web Application"
+   cd web-application/gym-owner
    ```
 2. Install dependencies:
    ```bash
@@ -146,41 +188,39 @@ Ensure you have the following installed on your machine:
    ```bash
    npm run dev
    ```
-4. Open your browser at `http://localhost:5173`.
+   *The portal runs at `http://localhost:5173`.*
 
 ---
 
-## Key Application Features
+### 5. Super Admin Web Portal Setup
 
-* **Intelligent Geo-Discovery:** Find gyms and studios in real time sorted by distance, ratings, price, and specialized workout tags (`HIIT`, `Yoga`, `Strength`, `Boxing`, `CrossFit`, `Women Only`).
-* **Multi-Mode Bookings:** 
-  - **Single Session Pass:** Pay only for the day you work out.
-  - **Weekly Pass:** 7-day unlimited access.
-  - **Custom Multi-Dates:** Flexible batch selection.
-  - **Group Studio Classes:** Yoga, Zumba, HIIT time slot reservations.
-* **Tiered Memberships:** 1 Month, 3 Months, 6 Months, and 12 Months plans with instant savings calculation.
-* **Personal Trainer Integration:** Select certified trainers based on specialty (e.g. Weight Loss, Muscle Hypertrophy) with customized day schedules (e.g. Mon/Wed/Fri 5 PM).
-* **Digital QR Pass and OTP Access:** High-contrast digital pass screen with full-screen dynamic QR code and backup 6-digit OTP for contactless check-in.
-* **Rescheduling and Instant Refund Cancellation:** Reschedule session dates or cancel with instant policy checks and automated refund processing.
-* **Fitness Health Metrics:** Track height, weight, BMI categorization, target weight, emergency contacts, and workout reminders.
-
----
-
-## Security and Data Integrity
-
-* **Anti-Passback Protection:** Dynamic QR payloads refresh periodically to prevent pass-sharing via screenshots.
-* **Geo-Spatial Query Optimizations:** High-performance `$nearSphere` queries powered by MongoDB `2dsphere` indexes.
-* **Secure Storage:** Biometric local authentication support for streamlined user logins.
+1. Navigate to the Super Admin web application:
+   ```bash
+   cd web-application/super-admin
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the Vite development server:
+   ```bash
+   npm run dev
+   ```
+   *The portal runs at `http://localhost:5174`.*
 
 ---
 
-## Engineering and Contributions
+## Key Platform Features
 
-1. Clone the repository: `git clone https://github.com/your-org/GYMEZY.git`
-2. Create your feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m "feat: add amazing feature"`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request.
+* **Intelligent Geo-Discovery:** Find gyms and studios sorted by distance, ratings, price, and specialized workout tags (`HIIT`, `Yoga`, `Strength`, `Boxing`, `CrossFit`, `Women Only`).
+* **Multi-Tier Booking Engine:**
+  - **Single Session Pass:** Pay-per-visit with optional personal coach add-on.
+  - **Weekly Pass:** Unlimited access for 7 days.
+  - **Custom Multi-Dates:** Pick specific calendar days for your training schedule.
+  - **Group Classes & Section Batches:** Scheduled batch reservations with weekday enforcement.
+* **Tiered Memberships & Flexible Upgrades:** 1, 3, 6, and 12-month memberships with dynamic proration math for instant upgrades/downgrades and wallet settlements.
+* **Digital Access Control:** High-contrast dynamic QR pass and backup 6-digit entry OTP with turnstile tap-in / tap-out auto check-out and 120s anti-bounce guards.
+* **Health & Fitness Tracking:** BMI categorization, emergency contact profiles, and attendance history logs.
 
 ---
 

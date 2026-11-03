@@ -4,10 +4,14 @@ class WalletService {
   /**
    * Fetch current user's wallet summary & transactions
    * @param {string} [userId]
+   * @param {string} [gymId]
    */
-  async fetchMyWallet(userId) {
+  async fetchMyWallet(userId, gymId) {
     try {
-      const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+      const params = [];
+      if (userId) params.push(`userId=${encodeURIComponent(userId)}`);
+      if (gymId) params.push(`gymId=${encodeURIComponent(gymId)}`);
+      const query = params.length > 0 ? `?${params.join('&')}` : '';
       const response = await apiService.executeFetch(
         `/wallet/my${query}`,
         {
@@ -24,6 +28,35 @@ class WalletService {
       return null;
     } catch (error) {
       console.warn('[WALLET SERVICE] fetchMyWallet error:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch current user's wallet for a specific gym
+   * @param {string} gymId
+   * @param {string} [userId]
+   */
+  async fetchGymWallet(gymId, userId) {
+    if (!gymId) return null;
+    try {
+      const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+      const response = await apiService.executeFetch(
+        `/wallet/gym/${encodeURIComponent(gymId)}${query}`,
+        {
+          method: 'GET',
+          headers: apiService.getHeaders(),
+        },
+        8000
+      );
+
+      const json = await response.json();
+      if (response.ok && json.success && json.data) {
+        return json.data;
+      }
+      return null;
+    } catch (error) {
+      console.warn('[WALLET SERVICE] fetchGymWallet error:', error.message);
       return null;
     }
   }

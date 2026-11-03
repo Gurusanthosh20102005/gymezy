@@ -3,6 +3,7 @@ import { getCloudApiUrl } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
 const CURRENT_MAC_IP = '192.168.0.107';
+const LOCAL_WIFI_IP = '192.168.0.107';
 
 const getMetroHost = () => {
   try {
@@ -139,6 +140,9 @@ class ApiService {
         this.baseUrl = currentBase;
         return response;
       } catch (err) {
+        if (this.verifiedBase === currentBase) {
+          this.verifiedBase = null;
+        }
         lastError = err;
         console.warn(`[API SERVICE] Failed ${targetUrl}:`, err.message);
       }
@@ -282,6 +286,21 @@ class ApiService {
       headers: this.getHeaders(),
     });
     const json = await response.json();
+    return json.data;
+  }
+
+  /**
+   * Fetch Single Gym Details by ID or Partner ID
+   */
+  async getGymDetails(gymId) {
+    const response = await this.executeFetch(`/gyms/${gymId}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Failed to fetch gym details.');
+    }
     return json.data;
   }
 

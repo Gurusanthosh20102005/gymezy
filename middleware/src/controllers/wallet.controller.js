@@ -8,11 +8,14 @@ import { ApiError } from '../utils/apiError.js';
 
 /**
  * Get logged-in user's consolidated wallet summary & transactions
+ * Supports optional ?gymId= filter for gym-scoped queries
  * GET /api/v1/wallet/my
  */
 export const getMyWallet = async (req, res, next) => {
   try {
     const rawUserId = req.user?.userId || req.user?.id || req.user?._id || req.query?.userId;
+    const filterGymId = req.query?.gymId;
+
     if (!rawUserId) {
       return res.status(200).json(
         ApiResponse.success(
@@ -33,8 +36,18 @@ export const getMyWallet = async (req, res, next) => {
     const isObjectId = mongoose.Types.ObjectId.isValid(rawUserId);
     const userQuery = isObjectId ? { userId: new mongoose.Types.ObjectId(rawUserId) } : { userId: rawUserId };
 
+    if (filterGymId) {
+      const isGymObjectId = mongoose.Types.ObjectId.isValid(filterGymId);
+      const gym = await Gym.findOne(
+        isGymObjectId ? { $or: [{ _id: filterGymId }, { partnerId: filterGymId }] } : { partnerId: filterGymId }
+      ).select('_id').lean();
+      if (gym) {
+        userQuery.gymId = gym._id;
+      }
+    }
+
     const userWallets = await Wallet.find(userQuery)
-      .populate('gymId', 'name partnerId address location logo coverPhoto image images phone')
+      .populate('gymId', 'name partnerId address location logo coverPhoto image images phone area city')
       .lean();
 
     let totalBalancePaise = 0;
@@ -125,7 +138,95 @@ export const getMyWallet = async (req, res, next) => {
 };
 
 /**
- * Top Up / Add money to wallet
+ * Get user's wallet for a specific gym
+ * GET /api/v1/wallet/gym/:gymId
+ */
+export const getGymWallet = async (req, res, next) => {
+  try {
+    const rawUserId = req.user?.userId || req.user?.id || req.user?._id || req.query?.userId;
+    const { gymId } = req.params;
+
+    if (!rawUserId) {
+      throw ApiError.unauthorized('User must be logged in to view wallet.');
+    }
+    if (!gymId) {
+      throw ApiError.badRequest('Gym ID parameter is required.');
+    }
+
+    const isGymObjectId = mongoose.Types.ObjectId.isValid(gymId);
+    const gym = await Gym.findOne(
+      isGymObjectId ? { $or: [{ _id: gymId }, { partnerId: gymId }] } : { partnerId: gymId }
+    ).select('name partnerId address location logo coverPhoto image images phone area city').lean();
+
+    if (!gym) {
+      throw ApiError.notFound('Gym not found.');
+    }
+
+    const isUserObjectId = mongoose.Types.ObjectId.isValid(rawUserId);
+    const userQuery = isUserObjectId ? { userId: new mongoose.Types.ObjectId(rawUserId) } : { userId: rawUserId };
+
+    const wallet = await Wallet.findOne({ ...userQuery, gymId: gym._id }).lean();
+
+    const gymLogo =
+      (typeof gym.logo === 'string' && gym.logo.trim()) ||
+      gym.logo?.fileData ||
+      gym.coverPhoto?.fileData ||
+      gym.image ||
+      (Array.isArray(gym.images) && gym.images[0]) ||
+      null;
+
+    let gymLocationStr = 'Verified GYMEZY Partner';
+    if (typeof gym.area === 'string' && gym.area.trim()) {
+      gymLocationStr = gym.city ? `${gym.area.trim()}, ${gym.city.trim()}` : gym.area.trim();
+    } else if (typeof gym.city === 'string' && gym.city.trim()) {
+      gymLocationStr = gym.city.trim();
+    } else if (typeof gym.address === 'string' && gym.address.trim()) {
+      gymLocationStr = gym.address.trim();
+    } else if (typeof gym.location === 'string' && gym.location.trim()) {
+      gymLocationStr = gym.location.trim();
+    }
+
+    const balancePaise = wallet?.balancePaise || 0;
+    const history = (wallet?.history || [])
+      .map((tx) => ({
+        id: tx._id ? String(tx._id) : tx.transactionId,
+        transactionId: tx.transactionId,
+        type: tx.type,
+        source: tx.source,
+        amountPaise: tx.amountPaise,
+        amountINR: (tx.amountPaise || 0) / 100,
+        balanceAfterPaise: tx.balanceAfterPaise || 0,
+        balanceAfterINR: (tx.balanceAfterPaise || 0) / 100,
+        description: tx.description,
+        createdAt: tx.createdAt,
+        referenceRequestId: tx.referenceRequestId || null,
+      }))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const responseData = {
+      gymId: gym._id,
+      gymName: gym.name,
+      gymLocation: gymLocationStr,
+      gymLogo,
+      balancePaise,
+      balanceINR: balancePaise / 100,
+      currency: wallet?.currency || 'INR',
+      exists: Boolean(wallet),
+      transactionsCount: history.length,
+      transactions: history,
+      updatedAt: wallet?.updatedAt || null,
+    };
+
+    return res.status(200).json(
+      ApiResponse.success(responseData, `Wallet details for ${gym.name} retrieved successfully.`)
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Top Up / Add money to gym-specific wallet
  * POST /api/v1/wallet/top-up
  */
 export const topUpWallet = async (req, res, next) => {
@@ -141,22 +242,27 @@ export const topUpWallet = async (req, res, next) => {
       throw ApiError.badRequest('Please specify a valid top-up amount greater than 0.');
     }
 
-    // If no gymId provided, attach to primary gym or first available gym
-    let targetGymId = gymId;
-    if (!targetGymId) {
-      const anyGym = await Gym.findOne().select('_id').lean();
-      if (!anyGym) throw ApiError.notFound('Gym not found for wallet association.');
-      targetGymId = anyGym._id;
+    if (!gymId) {
+      throw ApiError.badRequest('Gym ID is required. Funds must be deposited into a specific gym wallet.');
+    }
+
+    const isGymObjectId = mongoose.Types.ObjectId.isValid(gymId);
+    const gym = await Gym.findOne(
+      isGymObjectId ? { $or: [{ _id: gymId }, { partnerId: gymId }] } : { partnerId: gymId }
+    ).select('_id name').lean();
+
+    if (!gym) {
+      throw ApiError.notFound('Gym not found for wallet association.');
     }
 
     const amountPaise = Math.round(numAmount * 100);
     const txnId = transactionId || `WAL_TOP_${Date.now()}_${crypto.randomInt(100, 999)}`;
 
-    let userWallet = await Wallet.findOne({ userId: rawUserId, gymId: targetGymId });
+    let userWallet = await Wallet.findOne({ userId: rawUserId, gymId: gym._id });
     if (!userWallet) {
       userWallet = new Wallet({
         userId: rawUserId,
-        gymId: targetGymId,
+        gymId: gym._id,
         balancePaise: 0,
         currency: 'INR',
         history: [],
@@ -171,7 +277,7 @@ export const topUpWallet = async (req, res, next) => {
       source: 'TOP_UP',
       amountPaise,
       balanceAfterPaise: newBalancePaise,
-      description: `Wallet top-up via ${paymentMethod}`,
+      description: `Wallet top-up for ${gym.name} via ${paymentMethod}`,
       createdAt: new Date(),
     });
 
@@ -181,11 +287,13 @@ export const topUpWallet = async (req, res, next) => {
       ApiResponse.success(
         {
           transactionId: txnId,
+          gymId: gym._id,
+          gymName: gym.name,
           amountINR: numAmount,
           newBalanceINR: newBalancePaise / 100,
           wallet: userWallet,
         },
-        'Wallet topped up successfully.'
+        `Successfully added ₹${numAmount.toLocaleString('en-IN')} to ${gym.name} wallet.`
       )
     );
   } catch (error) {
@@ -194,7 +302,7 @@ export const topUpWallet = async (req, res, next) => {
 };
 
 /**
- * Request balance withdrawal / refund
+ * Request balance withdrawal / refund from gym-specific wallet
  * POST /api/v1/wallet/withdraw
  */
 export const withdrawWallet = async (req, res, next) => {
@@ -210,28 +318,47 @@ export const withdrawWallet = async (req, res, next) => {
       throw ApiError.badRequest('Please enter a valid withdrawal amount.');
     }
 
+    if (!gymId) {
+      throw ApiError.badRequest('Gym ID is required. Withdrawal requests must specify the issuing gym wallet.');
+    }
+
+    const isGymObjectId = mongoose.Types.ObjectId.isValid(gymId);
+    const gym = await Gym.findOne(
+      isGymObjectId ? { $or: [{ _id: gymId }, { partnerId: gymId }] } : { partnerId: gymId }
+    ).select('_id name').lean();
+
+    if (!gym) {
+      throw ApiError.notFound('Gym not found for withdrawal.');
+    }
+
     const amountPaise = Math.round(numAmount * 100);
 
-    // Find wallet
-    const query = gymId ? { userId: rawUserId, gymId } : { userId: rawUserId, balancePaise: { $gte: amountPaise } };
-    const userWallet = await Wallet.findOne(query);
+    const userWallet = await Wallet.findOne({ userId: rawUserId, gymId: gym._id });
 
     if (!userWallet || userWallet.balancePaise < amountPaise) {
-      throw ApiError.badRequest('Insufficient wallet balance for this withdrawal amount.');
+      const availINR = ((userWallet?.balancePaise || 0) / 100).toFixed(2);
+      throw ApiError.badRequest(
+        `Insufficient wallet balance at ${gym.name}. Requested: ₹${numAmount}, Available: ₹${availINR}.`
+      );
     }
 
     const txnId = `WAL_WTH_${Date.now()}_${crypto.randomInt(100, 999)}`;
     const newBalancePaise = userWallet.balancePaise - amountPaise;
     userWallet.balancePaise = newBalancePaise;
 
-    const destination = upiId ? `UPI (${upiId})` : (accountDetails?.accountNumber ? `Bank Account (•••${accountDetails.accountNumber.slice(-4)})` : 'Primary Account');
+    const destination = upiId
+      ? `UPI (${upiId})`
+      : accountDetails?.accountNumber
+      ? `Bank Account (•••${accountDetails.accountNumber.slice(-4)})`
+      : 'Primary Account';
+
     userWallet.history.push({
       transactionId: txnId,
       type: 'DEBIT',
       source: 'WALLET_WITHDRAWAL',
       amountPaise,
       balanceAfterPaise: newBalancePaise,
-      description: `Withdrawal request to ${destination}${reason ? ` - ${reason}` : ''}`,
+      description: `Withdrawal from ${gym.name} to ${destination}${reason ? ` - ${reason}` : ''}`,
       createdAt: new Date(),
     });
 
@@ -241,11 +368,13 @@ export const withdrawWallet = async (req, res, next) => {
       ApiResponse.success(
         {
           transactionId: txnId,
+          gymId: gym._id,
+          gymName: gym.name,
           amountINR: numAmount,
           newBalanceINR: newBalancePaise / 100,
           destination,
         },
-        'Withdrawal request submitted successfully. Funds will be transferred shortly.'
+        `Withdrawal request of ₹${numAmount} from ${gym.name} submitted successfully.`
       )
     );
   } catch (error) {

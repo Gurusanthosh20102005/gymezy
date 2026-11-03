@@ -24,6 +24,7 @@ import { BrandWatermarkFooter } from '../widgets/BrandWatermarkFooter';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
 import { attendanceService } from '../services/attendanceService';
+import { notificationService } from '../services/notificationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Storage keys for user preferences & security
@@ -139,12 +140,12 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   const [targetWeightKg, setTargetWeightKg] = useState(70.0);
   const [fitnessGoal, setFitnessGoal] = useState('Muscle Building & Hypertrophy');
 
-  // Preferences Toggles - initialized from user preferences or defaults
+  // Preferences Toggles - initialized from user preferences or defaults (default false)
   const [workoutReminders, setWorkoutReminders] = useState(
-    user?.preferences?.workoutReminders !== undefined ? Boolean(user.preferences.workoutReminders) : true
+    user?.preferences?.workoutReminders !== undefined ? Boolean(user.preferences.workoutReminders) : false
   );
   const [passExpiryAlerts, setPassExpiryAlerts] = useState(
-    user?.preferences?.passExpiryAlerts !== undefined ? Boolean(user.preferences.passExpiryAlerts) : true
+    user?.preferences?.passExpiryAlerts !== undefined ? Boolean(user.preferences.passExpiryAlerts) : false
   );
   const [biometricLogin, setBiometricLogin] = useState(
     user?.preferences?.biometricLogin !== undefined
@@ -198,27 +199,27 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
 
   // Handler for Workout Reminders toggle
   const handleToggleWorkoutReminders = async (nextVal) => {
+    if (nextVal) {
+      await notificationService.requestNotificationPermission();
+    }
     setWorkoutReminders(nextVal);
     try {
       await AsyncStorage.setItem(PREF_WORKOUT_REMINDERS_KEY, String(nextVal));
+
+      const updatedPrefs = {
+        ...(user?.preferences || {}),
+        workoutReminders: nextVal,
+        passExpiryAlerts,
+        biometricLogin,
+      };
+
       if (updateUser) {
-        await updateUser({
-          preferences: {
-            ...(user?.preferences || {}),
-            workoutReminders: nextVal,
-          },
-        });
+        await updateUser({ preferences: updatedPrefs });
       }
-      apiService
-        .updateProfile({
-          preferences: {
-            ...(user?.preferences || {}),
-            workoutReminders: nextVal,
-            passExpiryAlerts,
-            biometricLogin,
-          },
-        })
-        .catch(() => {});
+
+      await apiService.updateProfile({
+        preferences: updatedPrefs,
+      });
 
       showToast({
         message: nextVal
@@ -236,27 +237,27 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
 
   // Handler for Pass Expiry Alerts toggle
   const handleTogglePassExpiryAlerts = async (nextVal) => {
+    if (nextVal) {
+      await notificationService.requestNotificationPermission();
+    }
     setPassExpiryAlerts(nextVal);
     try {
       await AsyncStorage.setItem(PREF_PASS_EXPIRY_ALERTS_KEY, String(nextVal));
+
+      const updatedPrefs = {
+        ...(user?.preferences || {}),
+        workoutReminders,
+        passExpiryAlerts: nextVal,
+        biometricLogin,
+      };
+
       if (updateUser) {
-        await updateUser({
-          preferences: {
-            ...(user?.preferences || {}),
-            passExpiryAlerts: nextVal,
-          },
-        });
+        await updateUser({ preferences: updatedPrefs });
       }
-      apiService
-        .updateProfile({
-          preferences: {
-            ...(user?.preferences || {}),
-            workoutReminders,
-            passExpiryAlerts: nextVal,
-            biometricLogin,
-          },
-        })
-        .catch(() => {});
+
+      await apiService.updateProfile({
+        preferences: updatedPrefs,
+      });
 
       showToast({
         message: nextVal
@@ -334,17 +335,15 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
             },
           });
         }
-        apiService
-          .updateProfile({
-            biometricEnabled: true,
-            preferences: {
-              ...(user?.preferences || {}),
-              workoutReminders,
-              passExpiryAlerts,
-              biometricLogin: true,
-            },
-          })
-          .catch(() => {});
+        await apiService.updateProfile({
+          biometricEnabled: true,
+          preferences: {
+            ...(user?.preferences || {}),
+            workoutReminders,
+            passExpiryAlerts,
+            biometricLogin: true,
+          },
+        });
 
         showToast({
           message: 'Biometric / Face ID Login enabled successfully!',
@@ -370,17 +369,15 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
             },
           });
         }
-        apiService
-          .updateProfile({
-            biometricEnabled: false,
-            preferences: {
-              ...(user?.preferences || {}),
-              workoutReminders,
-              passExpiryAlerts,
-              biometricLogin: false,
-            },
-          })
-          .catch(() => {});
+        await apiService.updateProfile({
+          biometricEnabled: false,
+          preferences: {
+            ...(user?.preferences || {}),
+            workoutReminders,
+            passExpiryAlerts,
+            biometricLogin: false,
+          },
+        });
 
         showToast({
           message: 'Biometric authentication turned off.',
