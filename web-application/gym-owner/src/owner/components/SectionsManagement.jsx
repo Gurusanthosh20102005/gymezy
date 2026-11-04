@@ -629,39 +629,25 @@ export const SectionsManagement = () => {
           marginBottom: 20,
         }}
       >
-        {/* Category Pills */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {SECTION_CATEGORIES.map((cat) => {
-            const isSelected = activeCategory === cat.key;
-            return (
-              <Button
-                key={cat.key}
-                onClick={() => setActiveCategory(cat.key)}
-                style={{
-                  borderRadius: 'var(--radius-base)',
-                  fontWeight: isSelected ? 700 : 500,
-                  backgroundColor: isSelected
-                    ? '#003882'
-                    : isDarkMode
-                    ? '#161b22'
-                    : '#ffffff',
-                  color: isSelected ? '#ffffff' : isDarkMode ? '#c9d1d9' : '#334155',
-                  borderColor: isSelected ? '#003882' : isDarkMode ? '#30363d' : '#cbd5e1',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                {cat.icon}
-                {cat.label}
-              </Button>
-            );
-          })}
-        </div>
+        {/* Category Dropdown & Search Filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Select
+            value={activeCategory}
+            onChange={(val) => setActiveCategory(val)}
+            style={{ width: 200, height: 38 }}
+            popupMatchSelectWidth={false}
+          >
+            {SECTION_CATEGORIES.map((cat) => (
+              <Option key={cat.key} value={cat.key}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: cat.color || '#003882', display: 'inline-flex' }}>{cat.icon}</span>
+                  <span style={{ fontWeight: 500 }}>{cat.label}</span>
+                </span>
+              </Option>
+            ))}
+          </Select>
 
-        {/* Search & Add Action */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 240 }}>
+          <div style={{ width: 260 }}>
             <Input
               prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
               placeholder="Search section or trainer..."
@@ -672,15 +658,19 @@ export const SectionsManagement = () => {
                 borderRadius: 'var(--radius-base)',
                 backgroundColor: isDarkMode ? '#161b22' : '#ffffff',
                 borderColor: isDarkMode ? '#30363d' : '#cbd5e1',
+                height: 38,
               }}
             />
           </div>
+        </div>
 
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Tooltip title="Reload Sections">
             <Button
               icon={<ReloadOutlined spin={isLoading} />}
               onClick={fetchSections}
-              style={{ borderRadius: 'var(--radius-base)' }}
+              style={{ borderRadius: 'var(--radius-base)', height: 38 }}
             />
           </Tooltip>
 
