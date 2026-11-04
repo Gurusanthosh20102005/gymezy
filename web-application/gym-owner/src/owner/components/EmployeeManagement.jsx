@@ -711,7 +711,7 @@ export const EmployeeManagement = ({
 
   const handleNextToAddStep2 = async () => {
     try {
-      await addEmployeeForm.validateFields(['name', 'phone', 'email', 'role', 'accessLevel']);
+      await addEmployeeForm.validateFields(['name', 'phone', 'email', 'role']);
       setAddStep(2);
     } catch {
       message.warning('Please complete all required fields on Page 1 before proceeding.');
@@ -756,7 +756,12 @@ export const EmployeeManagement = ({
       joinDate: todayFormatted,
       status: 'Active',
       attendance: 'Present',
-      accessType: allFormValues.accessLevel || 'Admin',
+      accessType:
+        allFormValues.role === 'Manager'
+          ? 'Admin'
+          : ['Trainer', 'Front Desk Manager', 'Customer Support'].includes(allFormValues.role)
+          ? 'Employee'
+          : 'None',
       managerPermissions: {
         requireStaffApproval: allFormValues.requireStaffApproval ?? true,
         requirePlanSwitchApproval: allFormValues.requirePlanSwitchApproval ?? true,
@@ -2981,10 +2986,10 @@ export const EmployeeManagement = ({
             </Row>
 
             <Row gutter={16}>
-              <Col xs={24} sm={12}>
+              <Col xs={24} sm={24}>
                 <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Role <span style={{ color: '#ef4444' }}>*</span></span>} name="role" initialValue="Trainer" rules={[{ required: true }]} style={{ marginBottom: 14 }}>
                   <Select style={{ height: 40 }}>
-                    <Option value="Manager">Manager</Option>
+                    <Option value="Manager">Manager (Operational Admin)</Option>
                     <Option value="Trainer">Trainer</Option>
                     <Option value="Front Desk Manager">Front Desk Manager</Option>
                     <Option value="Customer Support">Customer Support</Option>
@@ -2994,18 +2999,6 @@ export const EmployeeManagement = ({
                     <Option value="Security">Security</Option>
                   </Select>
                 </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Access Level <span style={{ color: '#ef4444' }}>*</span></span>} name="accessLevel" initialValue="Admin" rules={[{ required: true }]} style={{ marginBottom: 4 }}>
-                  <Select style={{ height: 40 }}>
-                    <Option value="Admin">Admin</Option>
-                    <Option value="Employee">Employee</Option>
-                    <Option value="None">None</Option>
-                  </Select>
-                </Form.Item>
-                <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 14 }}>
-                  Define what this employee can access in the system.
-                </div>
               </Col>
             </Row>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Row,
   Col,
@@ -43,6 +43,7 @@ import {
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { recordCheckIn, recordCheckOut } from '../redux/slices/gymSlice';
+import { apiClient } from '../services/apiClient';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -51,13 +52,42 @@ export const Dashboard = () => {
   const dispatch = useDispatch();
   const { isDarkMode } = useTheme();
 
+  const { user } = useSelector((state) => state.auth || {});
   const { liveOccupancy, capacity, members, checkIns, bookings, gymProfile } = useSelector((state) => state.gym);
+
+  // Scoped gym partner identity
+  const activeGym = user?.gym || gymProfile || {};
+  const gymId = activeGym._id || activeGym.id || user?.gymId?._id || user?.gymId || user?.partnerId || 'me';
+
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   const [quickOtp, setQuickOtp] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [selectedDate, setSelectedDate] = useState('Today');
   const [isCustomDateModalOpen, setIsCustomDateModalOpen] = useState(false);
   const [tempCustomRange, setTempCustomRange] = useState(null);
+
+  const fetchDashboardStats = useCallback(async () => {
+    if (!gymId) return;
+    setLoadingStats(true);
+    try {
+      const res = await apiClient.get(`/gyms/${gymId}/dashboard-stats`, {
+        params: { range: selectedDate },
+      });
+      if (res?.data?.data) {
+        setDashboardStats(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load gym dashboard statistics:', err);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [gymId, selectedDate]);
+
+  useEffect(() => {
+    fetchDashboardStats();
+  }, [fetchDashboardStats]);
 
   const handleQuickCheckIn = () => {
     if (!quickOtp || quickOtp.length < 6) {
@@ -265,7 +295,7 @@ export const Dashboard = () => {
                   Total Revenue
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{Number(gymProfile?.monthlyRevenue || 0).toLocaleString('en-IN')}
+                  ₹{Number(dashboardStats?.metrics?.totalRevenue ?? gymProfile?.monthlyRevenue ?? 0).toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
                   Monthly GMV
@@ -308,7 +338,7 @@ export const Dashboard = () => {
                   Member Revenue
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{(members || []).reduce((acc, m) => acc + (parseInt(String(m.amount || '').replace(/[^\d]/g, ''), 10) || 0), 0).toLocaleString('en-IN')}
+                  ₹{Number(dashboardStats?.metrics?.memberRevenue ?? (members || []).reduce((acc, m) => acc + (parseInt(String(m.amount || '').replace(/[^\d]/g, ''), 10) || 0), 0)).toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
                   Active Plan Subscriptions
@@ -351,7 +381,7 @@ export const Dashboard = () => {
                   App Booking Revenue
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{(checkIns || []).reduce((acc, b) => acc + (Number(b.price) || 0), 0).toLocaleString('en-IN')}
+                  ₹{Number(dashboardStats?.metrics?.appBookingRevenue ?? (checkIns || []).reduce((acc, b) => acc + (Number(b.price) || 0), 0)).toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
                   Direct GYMEZY App Passes
@@ -394,7 +424,7 @@ export const Dashboard = () => {
                   Total Active Users
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {gymProfile?.membersCount || (members || []).length || 0}
+                  {dashboardStats?.metrics?.totalActiveUsers ?? gymProfile?.membersCount ?? (members || []).length ?? 0}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
                   Registered Members
@@ -437,7 +467,7 @@ export const Dashboard = () => {
                   Members
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {(members || []).length}
+                  {dashboardStats?.metrics?.activeMembersCount ?? (members || []).length}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
                   Active Gym Passes
@@ -480,7 +510,7 @@ export const Dashboard = () => {
                   App Booking Number
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {(checkIns || []).length}
+                  {dashboardStats?.metrics?.completedBookingsCount ?? (checkIns || []).length}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
                   Completed Bookings
@@ -540,7 +570,8 @@ export const Dashboard = () => {
               pagination={false}
               size="middle"
               scroll={{ x: 'max-content' }}
-              dataSource={bookings || []}
+              loading={loadingStats}
+              dataSource={dashboardStats?.recentBookings || bookings || []}
               locale={{ emptyText: 'No recent bookings recorded today' }}
               columns={[
                 {
@@ -688,7 +719,8 @@ export const Dashboard = () => {
               pagination={false}
               size="middle"
               scroll={{ x: 'max-content' }}
-              dataSource={members || []}
+              loading={loadingStats}
+              dataSource={dashboardStats?.recentMembers || members || []}
               locale={{ emptyText: 'No registered active members found' }}
               columns={[
                 {
