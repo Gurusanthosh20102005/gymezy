@@ -2311,12 +2311,13 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
       const uId = m.userId._id || m.userId.id || m.userId;
       if (uId) userIdsSet.add(String(uId));
     }
-    if (m.payment?.status === 'Completed' || m.status !== 'Cancelled') {
-      const amt = Number(m.pricing?.totalAmount || m.totalAmount || 0);
-      memberRevenue += amt;
-    }
+    // Only active plan subscriptions (excludes Switched and Cancelled)
     if (['Active', 'Upcoming', 'Expiring Soon'].includes(m.status)) {
       activeMembersCount++;
+      if (m.payment?.status !== 'Failed' && m.payment?.status !== 'Refunded') {
+        const amt = Number(m.pricing?.totalAmount || m.totalAmount || 0);
+        memberRevenue += amt;
+      }
     }
   }
 
@@ -2328,7 +2329,7 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
       const uId = b.userId._id || b.userId.id || b.userId;
       if (uId) userIdsSet.add(String(uId));
     }
-    if (b.payment?.status === 'Completed' || b.status !== 'Cancelled') {
+    if (b.payment?.status !== 'Failed' && b.payment?.status !== 'Refunded' && b.status !== 'Cancelled') {
       const amt = Number(b.pricing?.totalAmount || b.totalAmount || 0);
       appBookingRevenue += amt;
     }
@@ -2338,7 +2339,8 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
   }
 
   const totalRevenue = memberRevenue + appBookingRevenue;
-  const totalActiveUsers = Math.max(userIdsSet.size, gymDoc?.membersCount || 0);
+  // Option A: Real App Users (unique customer accounts who have booked or bought passes at this gym)
+  const totalActiveUsers = userIdsSet.size;
 
   const defaultAvatar = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop';
 

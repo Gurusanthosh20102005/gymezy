@@ -335,7 +335,7 @@ export const Dashboard = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Member Revenue
+                  Membership Plans
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
                   ₹{Number(dashboardStats?.metrics?.memberRevenue ?? (members || []).reduce((acc, m) => acc + (parseInt(String(m.amount || '').replace(/[^\d]/g, ''), 10) || 0), 0)).toLocaleString('en-IN')}
@@ -378,13 +378,13 @@ export const Dashboard = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  App Booking Revenue
+                  Session Bookings
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
                   ₹{Number(dashboardStats?.metrics?.appBookingRevenue ?? (checkIns || []).reduce((acc, b) => acc + (Number(b.price) || 0), 0)).toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Direct GYMEZY App Passes
+                  Day Passes & Group Classes
                 </div>
               </div>
             </div>
@@ -424,10 +424,10 @@ export const Dashboard = () => {
                   Total Active Users
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {dashboardStats?.metrics?.totalActiveUsers ?? gymProfile?.membersCount ?? (members || []).length ?? 0}
+                  {dashboardStats?.metrics?.totalActiveUsers ?? 0}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Registered Members
+                  Active App Customers
                 </div>
               </div>
             </div>
@@ -507,13 +507,13 @@ export const Dashboard = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  App Booking Number
+                  Completed Sessions
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
                   {dashboardStats?.metrics?.completedBookingsCount ?? (checkIns || []).length}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Completed Bookings
+                  Classes & Session Passes
                 </div>
               </div>
             </div>
