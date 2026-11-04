@@ -132,9 +132,18 @@ The desk operator can select one of two entry modes:
 - Search results display customer name, phone number, pass type, and an explicit `WALK-IN` badge.
 - A single click on **"Verify & Check In"** validates access, unlocks the turnstile gate, creates the attendance record, and launches confetti confirmation.
 
-### 5.4 Dashboard Quick Actions (`/owner/dashboard`)
-- Direct shortcut cards for **"New Walk-in Booking"** and **"New Walk-in Member"** in the Quick Actions section.
-- Recent Bookings and Membership Status tables render `APP` vs `WALK-IN` pills alongside each customer record.
+### 5.4 Dashboard Overview Stat Cards & Quick Actions (`/owner/dashboard`)
+- **Row 1 (Financial Metrics)**:
+  1. **Total Revenue**: Monthly GMV (Member Revenue + App Booking Revenue).
+  2. **Membership Plans**: Active plan subscription collections.
+  3. **Session Bookings**: Day passes and group class revenues.
+- **Row 2 (Community & Channel Distribution Metrics)**:
+  4. **App Count**: Total passes & session bookings originated from the GYMEZY mobile app (`metrics.appCount`).
+  5. **Total Active Users**: Total registered unique customer community (`metrics.totalActiveUsers`).
+  6. **Walk-in Count**: Total passes & session bookings created at the gym counter (`metrics.walkInCount`).
+- **Quick Actions & Activity**:
+  - Direct shortcut cards for **"New Walk-in Booking"** and **"New Walk-in Member"** in the Quick Actions section.
+  - Recent Bookings and Membership Status tables render `APP` vs `WALK-IN` pills alongside each customer record.
 
 ---
 
