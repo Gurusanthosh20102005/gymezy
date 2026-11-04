@@ -73,3 +73,4 @@ test('Walk-in Model & Architecture Verification', async (t) => {
     assert.strictEqual(walkInRecords.length, 2, 'Should find 2 WALK_IN records');
   });
 });
+
