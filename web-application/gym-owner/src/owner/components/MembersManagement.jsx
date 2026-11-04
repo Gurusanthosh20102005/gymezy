@@ -166,6 +166,7 @@ export const MembersManagement = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [sourceFilter, setSourceFilter] = useState('ALL');
   const [selectedDateRange, setSelectedDateRange] = useState('All Dates');
 
   // Plan Switch Requests State & Fetcher
@@ -202,12 +203,22 @@ export const MembersManagement = ({
   const [selectedPlanType, setSelectedPlanType] = useState('Platinum (6 Months)');
   const [selectedPaymentType, setSelectedPaymentType] = useState('Online');
 
+  // Auto-open Add Walk-in Member modal if navigated with ?action=walkin
+  useEffect(() => {
+    if (searchParams.get('action') === 'walkin') {
+      setIsAddModalOpen(true);
+      searchParams.delete('action');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   const fetchGymMemberships = async (
     page = currentPage,
     limit = pageSize,
     search = searchQuery,
     status = statusFilter,
-    tier = planFilter
+    tier = planFilter,
+    source = sourceFilter
   ) => {
     if (!gymId) return;
     setIsMembersLoading(true);
@@ -219,6 +230,7 @@ export const MembersManagement = ({
       if (search?.trim()) params.search = search.trim();
       if (status && status !== 'ALL' && status !== 'All') params.status = status;
       if (tier && tier !== 'ALL' && tier !== 'All') params.tier = tier;
+      if (source && source !== 'ALL') params.source = source;
 
       const res = await apiClient.get(`/memberships/gym/${gymId}`, { params });
       const data = res.data?.data?.memberships;
@@ -256,6 +268,7 @@ export const MembersManagement = ({
             expiryDate: endStr,
             daysLeft: `${daysRemaining} days left`,
             status: m.status,
+            source: m.source || 'APP',
             paymentType: m.payment?.method || 'Online',
             amount: `₹${m.pricing?.totalAmount || 0}`,
             trainerName: m.trainerId?.name || (m.hasTrainer ? 'Assigned' : 'None'),
@@ -271,8 +284,8 @@ export const MembersManagement = ({
   };
 
   useEffect(() => {
-    void fetchGymMemberships(currentPage, pageSize, searchQuery, statusFilter, planFilter);
-  }, [gymId, currentPage, pageSize, searchQuery, statusFilter, planFilter]);
+    void fetchGymMemberships(currentPage, pageSize, searchQuery, statusFilter, planFilter, sourceFilter);
+  }, [gymId, currentPage, pageSize, searchQuery, statusFilter, planFilter, sourceFilter]);
 
   const fetchGymSwitchRequests = async () => {
     if (!gymId) return;
@@ -362,9 +375,10 @@ export const MembersManagement = ({
     setSearchQuery('');
     setPlanFilter('ALL');
     setStatusFilter('ALL');
+    setSourceFilter('ALL');
     setSelectedDateRange('All Dates');
     setCurrentPage(1);
-    void fetchGymMemberships(1, pageSize, '', 'ALL', 'ALL');
+    void fetchGymMemberships(1, pageSize, '', 'ALL', 'ALL', 'ALL');
     message.info('Filters cleared');
   };
 
@@ -384,57 +398,78 @@ export const MembersManagement = ({
     setIsExtendModalOpen(true);
   };
 
-  const handleAddMemberSubmit = (values) => {
-    const plan = selectedPlanType || values.plan || 'Platinum (6 Months)';
-    const amountMap = {
-      'Silver (1 Month)': '₹1,599',
-      'Gold (3 Months)': '₹4,499',
-      'Platinum (6 Months)': '₹7,999',
-      'Annual (12 Months)': '₹14,999',
-    };
-    const daysMap = {
-      'Silver (1 Month)': '30 days left',
-      'Gold (3 Months)': '90 days left',
-      'Platinum (6 Months)': '180 days left',
-      'Annual (12 Months)': '365 days left',
-    };
-    const expiryMap = {
-      'Silver (1 Month)': '21 Aug 2025',
-      'Gold (3 Months)': '21 Oct 2025',
-      'Platinum (6 Months)': '21 Jan 2026',
-      'Annual (12 Months)': '21 Jul 2026',
-    };
+  const handleAddMemberSubmit = async (values) => {
+    const rawPlan = selectedPlanType || values.plan || 'Platinum (6 Months)';
+    let tier = 'Monthly';
+    if (rawPlan.includes('3 Month') || rawPlan.toLowerCase().includes('gold') || rawPlan.toLowerCase().includes('quarterly')) {
+      tier = 'Quarterly';
+    } else if (rawPlan.includes('6 Month') || rawPlan.toLowerCase().includes('platinum') || rawPlan.toLowerCase().includes('half')) {
+      tier = 'Half-Yearly';
+    } else if (rawPlan.includes('12 Month') || rawPlan.toLowerCase().includes('annual') || rawPlan.toLowerCase().includes('year')) {
+      tier = 'Annual';
+    } else if (rawPlan.toLowerCase().includes('monthly') || rawPlan.includes('1 Month')) {
+      tier = 'Monthly';
+    }
 
-    const newMember = {
-      key: Date.now().toString(),
-      memberId: `MEM000${membersList.length + 1}`,
-      name: values.name,
-      phone: `${values.countryCode || '+91'} ${values.phone}`,
-      email: `${values.name.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
-      avatar:
-        addMemberPhoto ||
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
-      plan: plan,
-      startDate: '21 Jul 2025',
-      expiryDate: expiryMap[plan] || '21 Oct 2025',
-      daysLeft: daysMap[plan] || '90 days left',
-      status: 'Active',
-      paymentType: selectedPaymentType || 'Online',
-      amount: amountMap[plan] || '₹4,499',
+    const priceMap = {
+      Monthly: 1599,
+      Quarterly: 4499,
+      'Half-Yearly': 7999,
+      Annual: 14999,
     };
 
-    const updated = [newMember, ...membersList];
-    setMembersList(updated);
-    setIsAddModalOpen(false);
-    form.resetFields();
-    setAddMemberPhoto(null);
+    const finalAmount = Number(values.amount || priceMap[tier] || 1599);
 
-    // Save for Success Modal & Launch Canvas Confetti Popper
-    setAddedMemberData(newMember);
-    setIsSuccessModalOpen(true);
-    triggerConfettiPopper();
+    try {
+      setIsMembersLoading(true);
+      const payload = {
+        customerName: values.name,
+        phone: `${values.countryCode || '+91'} ${values.phone}`.trim(),
+        email: values.email || undefined,
+        tier: tier,
+        amount: finalAmount,
+        paymentMethod: selectedPaymentType || values.paymentType || 'Cash',
+      };
 
-    if (onAddMember) onAddMember(newMember);
+      const res = await apiClient.post(`/memberships/gym/${gymId}/walk-in`, payload);
+      if (res.data?.success) {
+        const created = res.data.data;
+        const newMember = {
+          key: created._id || Date.now().toString(),
+          memberId: created.membershipId || `MEM${Date.now().toString().slice(-4)}`,
+          name: values.name,
+          phone: `${values.countryCode || '+91'} ${values.phone}`,
+          email: values.email || `${values.name.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
+          avatar:
+            addMemberPhoto ||
+            'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
+          plan: tier,
+          startDate: new Date().toLocaleDateString('en-GB'),
+          expiryDate: created.endDate ? new Date(created.endDate).toLocaleDateString('en-GB') : 'N/A',
+          daysLeft: 'Active',
+          status: 'Active',
+          source: 'WALK_IN',
+          paymentType: selectedPaymentType || 'Cash',
+          amount: `₹${finalAmount}`,
+        };
+
+        setIsAddModalOpen(false);
+        form.resetFields();
+        setAddMemberPhoto(null);
+
+        // Save for Success Modal & Launch Canvas Confetti Popper
+        setAddedMemberData(newMember);
+        setIsSuccessModalOpen(true);
+        triggerConfettiPopper();
+
+        void fetchGymMemberships(1, pageSize, searchQuery, statusFilter, planFilter, sourceFilter);
+        if (onAddMember) onAddMember(newMember);
+      }
+    } catch (err) {
+      message.error(err.response?.data?.message || err.message || 'Failed to create walk-in member.');
+    } finally {
+      setIsMembersLoading(false);
+    }
   };
 
   const handleExtendSubmit = (values) => {
@@ -872,6 +907,29 @@ export const MembersManagement = ({
           </span>
         </Tooltip>
       ),
+    },
+    {
+      title: 'Source',
+      dataIndex: 'source',
+      key: 'source',
+      width: 105,
+      ellipsis: true,
+      render: (source) => {
+        const isWalkIn = source === 'WALK_IN';
+        return (
+          <Tag
+            color={isWalkIn ? 'purple' : 'blue'}
+            style={{
+              fontWeight: 700,
+              fontSize: 10.5,
+              borderRadius: 'var(--radius-base)',
+              padding: '2px 8px',
+            }}
+          >
+            {isWalkIn ? 'WALK-IN' : 'APP'}
+          </Tag>
+        );
+      },
     },
     {
       title: 'Status',
@@ -1743,7 +1801,7 @@ export const MembersManagement = ({
             onChange={(val) => {
               setStatusFilter(val);
               setCurrentPage(1);
-              void fetchGymMemberships(1, pageSize, searchQuery, val, planFilter);
+              void fetchGymMemberships(1, pageSize, searchQuery, val, planFilter, sourceFilter);
             }}
             style={{ width: 140, height: 40 }}
           >
@@ -1754,6 +1812,35 @@ export const MembersManagement = ({
             <Option value="Expired">Expired</Option>
             <Option value="Cancelled">Cancelled</Option>
           </Select>
+
+          <Select
+            value={sourceFilter}
+            onChange={(val) => {
+              setSourceFilter(val);
+              setCurrentPage(1);
+              void fetchGymMemberships(1, pageSize, searchQuery, statusFilter, planFilter, val);
+            }}
+            style={{ width: 130, height: 40 }}
+          >
+            <Option value="ALL">All Sources</Option>
+            <Option value="APP">GYMEZY App</Option>
+            <Option value="WALK_IN">Walk-in</Option>
+          </Select>
+
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setIsAddModalOpen(true)}
+            style={{
+              height: 40,
+              borderRadius: 'var(--radius-base)',
+              fontWeight: 600,
+              backgroundColor: '#722ed1',
+              borderColor: '#722ed1',
+            }}
+          >
+            New Walk-in Member
+          </Button>
 
           <Dropdown menu={dateRangeMenu} trigger={['click']}>
             <div
@@ -3407,6 +3494,17 @@ export const MembersManagement = ({
                   </Form.Item>
                 </div>
               </div>
+
+              <Form.Item
+                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Email Address (Optional)</span>}
+                name="email"
+                style={{ marginTop: 10, marginBottom: 0 }}
+              >
+                <Input
+                  placeholder="customer@example.com"
+                  style={{ height: 42, borderRadius: 'var(--radius-base)' }}
+                />
+              </Form.Item>
             </Col>
           </Row>
 

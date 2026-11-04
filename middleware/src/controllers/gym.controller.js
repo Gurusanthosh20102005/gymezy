@@ -2375,6 +2375,7 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
       date: b.startDate ? new Date(b.startDate).toLocaleDateString('en-GB') : 'Today',
       type: typeDisplay,
       status: statusDisplay,
+      source: b.source || 'APP',
       amount: Number(b.pricing?.totalAmount || 0),
     };
   });
@@ -2407,6 +2408,7 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
       plan: planDisplay,
       endDate: endFormatted,
       status: m.status || 'Active',
+      source: m.source || 'APP',
       amount: Number(m.pricing?.totalAmount || 0),
     };
   });

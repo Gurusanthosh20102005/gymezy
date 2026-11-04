@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 
 export const BOOKING_TYPES = ['SECTION', 'GROUP_CLASS', 'GYM_SESSION'];
 export const BOOKING_STATUS = ['Upcoming', 'Active', 'Completed', 'Cancelled'];
+export const BOOKING_SOURCES = ['APP', 'WALK_IN'];
 export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Cash', 'Wallet'];
 export const PAYMENT_STATUS = ['Completed', 'Pending', 'Failed', 'Refunded'];
 
@@ -125,6 +126,17 @@ const bookingSchema = new mongoose.Schema(
       enum: BOOKING_STATUS,
       default: 'Upcoming',
       index: true,
+    },
+    source: {
+      type: String,
+      enum: BOOKING_SOURCES,
+      default: 'APP',
+      index: true,
+    },
+    walkInDetails: {
+      bookedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+      bookedByName: { type: String, trim: true, default: '' },
+      notes: { type: String, trim: true, default: '' },
     },
     cancellation: {
       cancelledAt: { type: Date, default: null },

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -65,6 +66,9 @@ export const BookingsManagement = ({
   const { user } = useSelector((state) => state.auth);
   const gymId = user?.gymId?._id || user?.gymId || user?._id;
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sourceFilter, setSourceFilter] = useState('ALL'); // 'ALL' | 'APP' | 'WALK_IN'
+
   const [bookings, setBookings] = useState(initialData);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [nameSearch, setNameSearch] = useState('');
@@ -81,6 +85,15 @@ export const BookingsManagement = ({
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [tempDateRange, setTempDateRange] = useState(null);
 
+  // Auto-open modal if navigated with ?action=walkin
+  useEffect(() => {
+    if (searchParams.get('action') === 'walkin') {
+      setIsAddModalOpen(true);
+      searchParams.delete('action');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   // Reschedule Review States
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [reviewTarget, setReviewTarget] = useState(null); // { booking, sessionIndex, session }
@@ -88,25 +101,31 @@ export const BookingsManagement = ({
   const [reviewNotes, setReviewNotes] = useState('');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
-  const loadBookings = async () => {
+  const loadBookings = async (activeSource = sourceFilter) => {
     if (!gymId) return;
     try {
       setIsLoadingBookings(true);
-      const res = await apiClient.get(`/bookings/gym/${gymId}`);
+      const params = {};
+      if (activeSource && activeSource !== 'ALL') {
+        params.source = activeSource;
+      }
+      const res = await apiClient.get(`/bookings/gym/${gymId}`, { params });
       if (res.data?.success && Array.isArray(res.data.data)) {
         const mapped = res.data.data.map((b) => {
           const startDateStr = b.startDate
             ? new Date(b.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
             : (b.date || 'Today');
+          const isWalkIn = b.source === 'WALK_IN' || b.bookingType === 'WALK_IN';
           return {
             key: String(b._id || b.bookingId),
             _id: b._id,
             bookingId: b.bookingId || b._id,
             customerId: b.userId?.customerId || b.customerId || 'CID0001',
-            customerName: b.userId?.name || b.customerName || 'Customer',
+            customerName: b.userId?.name || b.userId?.fullName || b.customerName || 'Customer',
             phone: b.userId?.phone || b.phone || '-',
-            avatar: b.userId?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
-            type: b.bookingType === 'WALK_IN' ? 'Walk-in' : 'App Booking',
+            avatar: b.userId?.avatar || b.userId?.profilePicture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
+            type: b.bookingType === 'GROUP_CLASS' ? 'Group Class' : (b.bookingType === 'GYM_SESSION' ? 'Gym Session' : (isWalkIn ? 'Walk-in' : 'App Booking')),
+            source: b.source || (isWalkIn ? 'WALK_IN' : 'APP'),
             date: startDateStr,
             time: b.timeSlot || b.time || '07:00 AM',
             amount: `₹${b.pricing?.totalAmount ?? b.amountPaid ?? 0}`,
@@ -187,7 +206,8 @@ export const BookingsManagement = ({
     const matchCustomerId = !customerIdSearch || item.customerId.toLowerCase().includes(customerIdSearch.toLowerCase());
     const matchType = bookingType === 'ALL' || item.type === bookingType;
     const matchStatus = bookingStatus === 'ALL' || item.status === bookingStatus;
-    return matchName && matchBookingId && matchCustomerId && matchType && matchStatus;
+    const matchSource = sourceFilter === 'ALL' || (item.source || 'APP') === sourceFilter;
+    return matchName && matchBookingId && matchCustomerId && matchType && matchStatus && matchSource;
   });
 
   const clearFilters = () => {
@@ -196,8 +216,10 @@ export const BookingsManagement = ({
     setCustomerIdSearch('');
     setBookingType('ALL');
     setBookingStatus('ALL');
+    setSourceFilter('ALL');
     setSelectedDateRange('21 Jul 2025 - 21 Jul 2025');
     message.info('Filters cleared');
+    loadBookings('ALL');
   };
 
   const handleCheckIn = (record) => {
@@ -214,28 +236,32 @@ export const BookingsManagement = ({
     setIsViewModalOpen(true);
   };
 
-  const handleAddWalkIn = (values) => {
-    const newBooking = {
-      key: Date.now().toString(),
-      bookingId: `BKG250721${Math.floor(100 + Math.random() * 900)}`,
-      customerId: `CID${Math.floor(1000 + Math.random() * 9000)}`,
-      customerName: values.customerName,
-      phone: values.phone,
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
-      type: 'Walk-in',
-      date: values.date ? values.date.format('DD MMM YYYY') : '21 Jul 2025',
-      time: values.time ? values.time.format('hh:mm A') : '07:00 AM',
-      amount: `₹${values.amount || 150}`,
-      status: values.status || 'Checked-in',
-      payment: values.payment || 'Cash',
-    };
-
-    const updated = [newBooking, ...bookings];
-    setBookings(updated);
-    setIsAddModalOpen(false);
-    form.resetFields();
-    message.success(`Walk-in booking created for ${values.customerName}!`);
-    if (onAddBooking) onAddBooking(newBooking);
+  const handleAddWalkIn = async (values) => {
+    try {
+      setIsLoadingBookings(true);
+      const payload = {
+        customerName: values.customerName,
+        phone: values.phone,
+        email: values.email || undefined,
+        bookingType: values.bookingType || 'GYM_SESSION',
+        date: values.date ? values.date.format('YYYY-MM-DD') : new Date().toISOString().split('T')[0],
+        timeSlot: values.time ? values.time.format('hh:mm A') : '07:00 AM',
+        amount: Number(values.amount || 150),
+        paymentMethod: values.payment || 'Cash',
+        checkInNow: values.status === 'Checked-in',
+      };
+      const res = await apiClient.post(`/bookings/gym/${gymId}/walk-in`, payload);
+      if (res.data?.success) {
+        message.success(`Walk-in booking created successfully for ${values.customerName}!`);
+        setIsAddModalOpen(false);
+        form.resetFields();
+        await loadBookings();
+      }
+    } catch (err) {
+      message.error(err.response?.data?.message || err.message || 'Failed to create walk-in booking.');
+    } finally {
+      setIsLoadingBookings(false);
+    }
   };
 
   // Date Range Quick Menu
@@ -366,6 +392,27 @@ export const BookingsManagement = ({
             }}
           >
             {type}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: 'Source',
+      dataIndex: 'source',
+      key: 'source',
+      render: (source) => {
+        const isWalkIn = source === 'WALK_IN';
+        return (
+          <Tag
+            color={isWalkIn ? 'purple' : 'blue'}
+            style={{
+              fontWeight: 700,
+              fontSize: 11,
+              borderRadius: 'var(--radius-base)',
+              padding: '2px 8px',
+            }}
+          >
+            {isWalkIn ? 'WALK-IN' : 'APP'}
           </Tag>
         );
       },
@@ -738,7 +785,7 @@ export const BookingsManagement = ({
         {/* Row 2: Filter Selectors & Action Buttons */}
         <Row gutter={[16, 16]} align="bottom">
           {/* Date Range Filter */}
-          <Col xs={24} sm={12} lg={7}>
+          <Col xs={24} sm={12} lg={5}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
               Date Range
             </div>
@@ -769,7 +816,7 @@ export const BookingsManagement = ({
           </Col>
 
           {/* Booking Type */}
-          <Col xs={24} sm={12} lg={7}>
+          <Col xs={24} sm={12} lg={5}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
               Booking Type
             </div>
@@ -778,9 +825,30 @@ export const BookingsManagement = ({
               onChange={setBookingType}
               style={{ width: '100%', height: 42 }}
             >
-              <Option value="ALL">All Bookings</Option>
+              <Option value="ALL">All Types</Option>
+              <Option value="Gym Session">Gym Session</Option>
+              <Option value="Group Class">Group Class</Option>
               <Option value="App Booking">App Booking</Option>
               <Option value="Walk-in">Walk-in</Option>
+            </Select>
+          </Col>
+
+          {/* Source Filter */}
+          <Col xs={24} sm={12} lg={4}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
+              Source
+            </div>
+            <Select
+              value={sourceFilter}
+              onChange={(val) => {
+                setSourceFilter(val);
+                loadBookings(val);
+              }}
+              style={{ width: '100%', height: 42 }}
+            >
+              <Option value="ALL">All Sources</Option>
+              <Option value="APP">GYMEZY App</Option>
+              <Option value="WALK_IN">Front-Desk Walk-in</Option>
             </Select>
           </Col>
 
@@ -938,6 +1006,22 @@ export const BookingsManagement = ({
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
+              <Form.Item label="Email Address (Optional)" name="email">
+                <Input placeholder="customer@example.com" style={{ height: 42, borderRadius: 'var(--radius-base)' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item label="Booking Type" name="bookingType" initialValue="GYM_SESSION">
+                <Select style={{ height: 42 }}>
+                  <Option value="GYM_SESSION">Gym Session Access</Option>
+                  <Option value="GROUP_CLASS">Group Class Pass</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
               <Form.Item label="Booking Date" name="date">
                 <DatePicker style={{ width: '100%', height: 42, borderRadius: 'var(--radius-base)' }} />
               </Form.Item>
@@ -952,24 +1036,24 @@ export const BookingsManagement = ({
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item label="Pass Fee (Amount in ₹)" name="amount" initialValue={150}>
-                <Input prefix="₹" style={{ height: 42, borderRadius: 'var(--radius-base)' }} />
+                <Input prefix="₹" type="number" style={{ height: 42, borderRadius: 'var(--radius-base)' }} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item label="Payment Method" name="payment" initialValue="Cash">
                 <Select style={{ height: 42 }}>
-                  <Option value="Cash">Cash at Turnstile</Option>
-                  <Option value="UPI">UPI / QR (GPay / PhonePe)</Option>
-                  <Option value="Paid Online">Credit / Debit Card</Option>
+                  <Option value="Cash">Cash at Desk</Option>
+                  <Option value="UPI">Counter UPI / QR (GPay, PhonePe)</Option>
+                  <Option value="Card">Card / POS Swipe</Option>
                 </Select>
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item label="Initial Status" name="status" initialValue="Checked-in">
+          <Form.Item label="Entry Status" name="status" initialValue="Checked-in">
             <Radio.Group>
-              <Radio value="Checked-in">Check-in Now (Grant Gate Access)</Radio>
-              <Radio value="Upcoming">Upcoming Slot</Radio>
+              <Radio value="Checked-in">Check-in Now (Grant Gate Access Immediately)</Radio>
+              <Radio value="Upcoming">Upcoming Session (Check-in upon Arrival)</Radio>
             </Radio.Group>
           </Form.Item>
 

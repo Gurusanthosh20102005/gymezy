@@ -15,6 +15,8 @@ import {
 } from '../services/cancellationNegotiation.service.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { findOrCreateWalkInCustomer } from '../utils/walkInHelper.js';
+import { sanitizeDocument } from '../utils/responseTransformer.js';
 
 const TIER_DURATION_DAYS = {
   Monthly: 30,
@@ -513,7 +515,7 @@ export const getMembershipById = async (req, res, next) => {
 export const getGymMemberships = async (req, res, next) => {
   try {
     const { gymId } = req.params;
-    const { status, tier, search, startDate, endDate, page = 1, limit = 50 } = req.query;
+    const { status, tier, search, source, startDate, endDate, page = 1, limit = 50 } = req.query;
 
     const isObjectId = mongoose.Types.ObjectId.isValid(gymId);
     const gym = await Gym.findOne(
@@ -531,6 +533,9 @@ export const getGymMemberships = async (req, res, next) => {
     }
     if (tier && tier !== 'All' && tier !== 'ALL') {
       filter.membershipTier = tier;
+    }
+    if (source && source !== 'All' && source !== 'ALL') {
+      filter.source = source.toUpperCase();
     }
     if (startDate || endDate) {
       filter.createdAt = {};
@@ -601,6 +606,124 @@ export const getGymMemberships = async (req, res, next) => {
       limit: Number(limit),
       totalPages: Math.ceil(total / Number(limit)) || 1,
     }, 'Gym memberships retrieved successfully.'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create Walk-in Membership at the Gym Counter (Desk POS)
+ * POST /api/v1/memberships/gym/:gymId/walk-in
+ */
+export const createWalkInMembership = async (req, res, next) => {
+  try {
+    const { gymId } = req.params;
+    const {
+      name,
+      phone,
+      email,
+      tier = 'Monthly',
+      trainerId = null,
+      trainerSlot = null,
+      startDate,
+      endDate,
+      price,
+      trainerFee = 0,
+      paymentMethod = 'Cash',
+      paymentStatus = 'Completed',
+      notes = '',
+    } = req.body;
+
+    if (!phone) {
+      throw ApiError.badRequest('Customer phone number is required for walk-in membership.');
+    }
+
+    const isObjectId = mongoose.Types.ObjectId.isValid(gymId);
+    const gym = await Gym.findOne(
+      isObjectId ? { $or: [{ _id: gymId }, { partnerId: gymId }] } : { partnerId: gymId }
+    );
+    if (!gym) {
+      throw ApiError.notFound('Gym not found.');
+    }
+
+    // Find or create User by phone
+    const user = await findOrCreateWalkInCustomer({ fullName: name, phone, email });
+
+    // Clean tier & duration
+    let cleanTier = 'Monthly';
+    let durationDays = 30;
+    const tierLower = String(tier).toLowerCase();
+    if (tierLower.includes('annual') || tierLower.includes('year')) {
+      cleanTier = 'Annual';
+      durationDays = 365;
+    } else if (tierLower.includes('half')) {
+      cleanTier = 'Half Yearly';
+      durationDays = 180;
+    } else if (tierLower.includes('quarter')) {
+      cleanTier = 'Quarterly';
+      durationDays = 90;
+    }
+
+    const start = startDate ? new Date(startDate) : new Date();
+    const end = endDate ? new Date(endDate) : new Date(start.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+    const basePrice = Math.max(0, Number(price) || 0);
+    const tFee = Math.max(0, Number(trainerFee) || 0);
+    const totalAmount = basePrice + tFee;
+
+    // Generate scoped membership ID: MEM00{counter}
+    const memSeq = await Counter.getNextSequence(`membership_${gym._id}`, 1);
+    const membershipId = `MEM00${memSeq}`;
+
+    // Generate entry OTP
+    const entryOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const membership = await Membership.create({
+      membershipId,
+      gymId: gym._id,
+      gymPartnerId: gym.partnerId,
+      userId: user._id,
+      trainerId: trainerId && mongoose.Types.ObjectId.isValid(trainerId) ? trainerId : null,
+      hasTrainer: Boolean(trainerId),
+      trainerSlot: trainerSlot || null,
+      membershipTier: cleanTier,
+      durationDays,
+      startDate: start,
+      endDate: end,
+      pricing: {
+        basePrice,
+        trainerFee: tFee,
+        totalAmount,
+        currency: 'INR',
+      },
+      payment: {
+        method: paymentMethod || 'Cash',
+        status: paymentStatus || 'Completed',
+        transactionId: `WALK-MEM-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        walletAmountApplied: 0,
+        paidAt: new Date(),
+      },
+      status: 'Active',
+      source: 'WALK_IN',
+      walkInDetails: {
+        bookedBy: req.user?._id || null,
+        bookedByName: req.user?.fullName || req.user?.name || 'Front Desk Staff',
+        notes: notes || '',
+      },
+      entryOtp,
+    });
+
+    const populated = await Membership.findById(membership._id)
+      .populate('userId', 'fullName name email phone avatar customerId')
+      .populate('trainerId', 'name specialty avatar')
+      .lean();
+
+    return res.status(201).json(
+      ApiResponse.success(
+        sanitizeDocument(populated),
+        'Walk-in membership created and activated successfully.'
+      )
+    );
   } catch (error) {
     next(error);
   }

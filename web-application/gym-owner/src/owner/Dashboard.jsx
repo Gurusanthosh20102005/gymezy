@@ -606,20 +606,35 @@ export const Dashboard = () => {
                   title: 'Type',
                   dataIndex: 'type',
                   key: 'type',
-                  render: (type) => (
-                    <Tag
-                      style={{
-                        backgroundColor: type === 'App Booking' ? 'var(--color-purple-bg)' : 'var(--color-success-bg)',
-                        color: type === 'App Booking' ? 'var(--color-purple)' : 'var(--color-success)',
-                        border: 'none',
-                        borderRadius: 6,
-                        fontWeight: 600,
-                        fontSize: 11,
-                        padding: '1px 8px',
-                      }}
-                    >
-                      {type}
-                    </Tag>
+                  render: (type, record) => (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Tag
+                        style={{
+                          backgroundColor: type === 'App Booking' ? 'var(--color-purple-bg)' : 'var(--color-success-bg)',
+                          color: type === 'App Booking' ? 'var(--color-purple)' : 'var(--color-success)',
+                          border: 'none',
+                          borderRadius: 6,
+                          fontWeight: 600,
+                          fontSize: 11,
+                          padding: '1px 8px',
+                          margin: 0,
+                        }}
+                      >
+                        {type}
+                      </Tag>
+                      <Tag
+                        color={record.source === 'WALK_IN' ? 'purple' : 'blue'}
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 10,
+                          borderRadius: 4,
+                          padding: '0 6px',
+                          margin: 0,
+                        }}
+                      >
+                        {record.source === 'WALK_IN' ? 'WALK-IN' : 'APP'}
+                      </Tag>
+                    </div>
                   ),
                 },
                 {
@@ -740,10 +755,24 @@ export const Dashboard = () => {
                   title: 'Membership Type',
                   dataIndex: 'plan',
                   key: 'plan',
-                  render: (plan) => (
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      {plan}
-                    </span>
+                  render: (plan, record) => (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        {plan}
+                      </span>
+                      <Tag
+                        color={record.source === 'WALK_IN' ? 'purple' : 'blue'}
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 10,
+                          borderRadius: 4,
+                          padding: '0 6px',
+                          margin: 0,
+                        }}
+                      >
+                        {record.source === 'WALK_IN' ? 'WALK-IN' : 'APP'}
+                      </Tag>
+                    </div>
                   ),
                 },
                 {
@@ -889,7 +918,99 @@ export const Dashboard = () => {
             </Card>
           </Col>
 
-          {/* Action 2: Add Employee */}
+          {/* Action 2: New Walk-in Booking */}
+          <Col xs={24} sm={12} lg={6}>
+            <Card
+              hoverable
+              onClick={() => navigate('/owner/bookings?action=walkin')}
+              style={{
+                backgroundColor: 'var(--bg-surface-elevated)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 'var(--radius-base)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              styles={{ body: { padding: '16px 18px' } }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 'var(--radius-base)',
+                      backgroundColor: 'var(--color-primary-bg)',
+                      color: 'var(--color-primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 20,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <PlusOutlined />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      New Walk-in Booking
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      Create pass or session for visitor
+                    </div>
+                  </div>
+                </div>
+                <ArrowRightOutlined style={{ color: 'var(--text-secondary)', fontSize: 13, marginLeft: 8 }} />
+              </div>
+            </Card>
+          </Col>
+
+          {/* Action 3: New Walk-in Member */}
+          <Col xs={24} sm={12} lg={6}>
+            <Card
+              hoverable
+              onClick={() => navigate('/owner/members?action=walkin')}
+              style={{
+                backgroundColor: 'var(--bg-surface-elevated)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 'var(--radius-base)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              styles={{ body: { padding: '16px 18px' } }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 'var(--radius-base)',
+                      backgroundColor: 'rgba(114, 46, 209, 0.12)',
+                      color: '#722ed1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 20,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <UsergroupAddOutlined />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      New Walk-in Member
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      Register offline walk-in member
+                    </div>
+                  </div>
+                </div>
+                <ArrowRightOutlined style={{ color: 'var(--text-secondary)', fontSize: 13, marginLeft: 8 }} />
+              </div>
+            </Card>
+          </Col>
+
+          {/* Action 4: Add Employee */}
           <Col xs={24} sm={12} lg={6}>
             <Card
               hoverable
