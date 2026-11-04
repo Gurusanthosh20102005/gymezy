@@ -325,3 +325,10 @@ In [`web-application/gym-owner/src/owner/components/EmployeeManagement.jsx`](../
    - `Pending Approval` badges highlight staff awaiting Gym Admin review.
 3. **Pending Approvals Drawer**:
    - Dedicated filter view for Gym Admin displaying manager submissions, diff comparison of requested edits, and 1-click **Approve** or **Reject** actions.
+4. **Role-Conditional Field Visibility**:
+   - **For Managers & Operational Roles (`Manager`, `Front Desk`, `Security`, etc.)**:
+     - Trainer-specific showcase fields (`About Me`, `Services Offered`, `Certifications`) and the `Trainer Certificate` table are **hidden**.
+     - Only managerial permissions (`requireStaffApproval`, `requirePlanSwitchApproval`, `requireCancellationApproval`, `requireProfileEditApproval`) and standard administrative employment/identity documents (`Aadhaar/ID Proof`, `Offer/Contract Letter`, `Resume`) are displayed.
+   - **For Trainers & Fitness Coaches (`Trainer`, `Coach`, `Yoga Instructor`, `Zumba Instructor`, `Fitness Trainer`)**:
+     - `Trainer Profile & Showcase` is displayed with bio, service offerings, and certification multi-select tags (preloaded with standard certifications such as ACE, ISSA, ACSM, NASM, CSCS, CPR/AED, Yoga Alliance, CrossFit).
+     - Dedicated `Trainer Certificate` document upload table is shown for fitness coaching credentials and licenses.
