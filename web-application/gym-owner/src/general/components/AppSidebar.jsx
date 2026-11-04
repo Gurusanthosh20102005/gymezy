@@ -75,6 +75,12 @@ export const DEFAULT_NAV_ITEMS = [
     roles: ['owner', 'admin', 'trainer', 'staff'],
   },
   {
+    key: '/owner/transactions',
+    icon: <DollarOutlined />,
+    label: 'Transactions & Payments',
+    roles: ['owner', 'admin'],
+  },
+  {
     key: '/owner/employees',
     icon: <UserSwitchOutlined />,
     label: 'Employees',

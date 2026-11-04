@@ -11,6 +11,7 @@ import BookingsManagement from './owner/components/BookingsManagement';
 import EmployeeManagement from './owner/components/EmployeeManagement';
 import GymProfileManagement from './owner/components/GymProfileManagement';
 import SectionsManagement from './owner/components/SectionsManagement';
+import TransactionsManagement from './owner/components/TransactionsManagement';
 
 export function App() {
   return (
@@ -33,6 +34,8 @@ export function App() {
           <Route path="members" element={<MembersManagement />} />
           <Route path="membership" element={<MembersManagement />} />
           <Route path="bookings" element={<BookingsManagement />} />
+          <Route path="transactions" element={<TransactionsManagement />} />
+          <Route path="payments" element={<Navigate to="/owner/transactions" replace />} />
           <Route path="trainers" element={<EmployeeManagement />} />
           <Route path="employees" element={<EmployeeManagement />} />
           <Route path="staff" element={<EmployeeManagement />} />
@@ -47,6 +50,8 @@ export function App() {
         <Route path="/members" element={<Navigate to="/owner/members" replace />} />
         <Route path="/membership" element={<Navigate to="/owner/members" replace />} />
         <Route path="/bookings" element={<Navigate to="/owner/bookings" replace />} />
+        <Route path="/transactions" element={<Navigate to="/owner/transactions" replace />} />
+        <Route path="/payments" element={<Navigate to="/owner/transactions" replace />} />
         <Route path="/trainers" element={<Navigate to="/owner/employees" replace />} />
         <Route path="/employees" element={<Navigate to="/owner/employees" replace />} />
         <Route path="/staff" element={<Navigate to="/owner/employees" replace />} />

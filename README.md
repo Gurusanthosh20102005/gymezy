@@ -125,13 +125,17 @@ Ensure you have the following installed on your machine:
    ```bash
    npm install
    ```
-3. Configure the `.env` file:
+3. Configure the `.env` file (copy from `.env.example`):
    ```env
    PORT=5001
    NODE_ENV=development
+   # Local MongoDB:
    MONGODB_URI=mongodb://localhost:27017/gymezy_dev
+   # Or Remote VPS Dev DB (Port 8443 bypasses ISP carrier blocks):
+   # MONGODB_URI=mongodb://gymezy_dev_user:GymezyDev%402026Pass%21@187.127.149.165:8443/gymezy_dev?authSource=gymezy_dev&directConnection=true&family=4
    JWT_SECRET=your_jwt_secret_key_here
    ```
+   *For detailed VPS DB setup, Compass GUI access, and ISP bypass architecture, see [VPS Database Access Guide](doc/VPS_DATABASE_ACCESS_GUIDE.md).*
 4. Run automated test suite:
    ```bash
    npm test

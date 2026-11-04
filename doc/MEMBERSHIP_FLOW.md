@@ -128,17 +128,21 @@ flowchart TD
 
 ---
 
-## 5. Two-Tier Approval & Atomic Execution Workflow
+## 5. Gym Admin Direct Approval & Manager Delegation Workflow
 
-To protect both gym owners and platform integrity, plan switch requests follow a strict two-tier approval lifecycle:
+Plan switch requests and proration executions are fully governed at the gym level:
+- **Gym Admin (Owner):** Reviewing and accepting a switch request triggers immediate ACID database execution via `ProrationEngine.executeApprovedSwitchTransaction`. **Super Admin approval is completely removed.**
+- **Gym Manager:** If a manager reviews a switch request:
+  - If manager has permission (`requirePlanSwitchApproval: false`), the switch executes directly.
+  - If manager requires approval (`requirePlanSwitchApproval: true`), the switch request transitions to `PENDING_GYM_ADMIN_APPROVAL` and alerts the Gym Admin via push notification, dashboard badge, and pending review queue.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Member as Customer (Mobile)
     participant API as Middleware API
-    actor Owner as Gym Owner (Portal / Mobile)
-    actor Admin as Super Admin (Portal)
+    actor Admin as Gym Admin (Owner)
+    actor Mgr as Gym Manager (Staff)
     participant DB as MongoDB Transaction
 
     Member->>API: POST /memberships/:id/preview-switch
@@ -148,34 +152,34 @@ sequenceDiagram
     API->>API: Clear current membership entryOtp (Freeze pending review)
     API-->>Member: Switch Request Submitted (REQ_SW_001)
 
-    Owner->>API: GET /memberships/gym/:id/switch-requests
-    API-->>Owner: List pending requests
-    Owner->>API: PATCH /switch-requests/:id/gym-action (action = 'ACCEPT')
-    API->>API: Update status -> PENDING_SUPER_ADMIN_APPROVAL
-
-    Admin->>API: GET /admin/membership-switch-requests
-    Admin->>API: PATCH /admin-action (action = 'APPROVE')
-
-    rect rgb(240, 253, 244)
-        Note over API,DB: ProrationEngine.executeApprovedSwitchTransaction (ACID)
-        API->>DB: Start MongoDB Session & Transaction
-        API->>DB: Mark Current Membership status = 'Switched'
-        API->>DB: Link switchMetadata (creditApplied, leftoverAction)
-        API->>DB: Create New Membership (MEM00{seq}, Active, New OTP)
-        opt If Downgrade & WALLET Policy
-            API->>DB: Credit leftoverCreditPaise to User Gym Wallet
+    alt Gym Admin Reviews & Accepts (Direct Execution)
+        Admin->>API: PATCH /switch-requests/:id/gym-action { action: 'ACCEPT' }
+        rect rgb(240, 253, 244)
+            Note over API,DB: ProrationEngine.executeApprovedSwitchTransaction (ACID)
+            API->>DB: Start MongoDB Session & Transaction
+            API->>DB: Mark Current Membership status = 'Switched'
+            API->>DB: Link switchMetadata (creditApplied, leftoverAction)
+            API->>DB: Create New Membership (MEM00{seq}, Active, New OTP)
+            opt If Downgrade & WALLET Policy
+                API->>DB: Credit leftoverCreditPaise to User Gym Wallet
+            end
+            API->>DB: Mark SwitchRequest status = 'APPROVED_AND_EXECUTED'
+            API->>DB: Commit Transaction
         end
-        API->>DB: Mark SwitchRequest status = 'APPROVED_AND_EXECUTED'
-        API->>DB: Commit Transaction
+        API-->>Admin: Switch Approved & Executed Directly
+        API-->>Member: Push Notification & New Active Membership available
+    else Manager Reviews (requirePlanSwitchApproval = true)
+        Mgr->>API: PATCH /switch-requests/:id/gym-action { action: 'ACCEPT' }
+        API->>API: Manager lacks direct permission -> Update status to PENDING_GYM_ADMIN_APPROVAL
+        API-->>Mgr: Request forwarded for Gym Admin confirmation
+        Admin->>API: PATCH /switch-requests/:id/gym-action { action: 'ACCEPT' }
+        API->>DB: Execute ACID Proration Switch Transaction
+        API-->>Admin: Switch Approved & Executed
     end
 
-    API-->>Admin: Switch Approved & Executed
-    API-->>Member: Push Notification & New Active Membership available
-```
-
 ### Rejection Paths
-- **Gym Owner Rejection:** Request status set to `REJECTED_BY_GYM`. Current membership remains Active with entry OTP restored.
-- **Super Admin Rejection:** Request status set to `REJECTED_BY_SUPER_ADMIN`. Current membership remains Active.
+- **Gym Admin Rejection:** Request status set to `REJECTED_BY_GYM`. Current membership remains Active with entry OTP restored.
+- **Gym Manager Rejection:** Request status set to `REJECTED_BY_GYM`. Current membership remains Active.
 
 ---
 

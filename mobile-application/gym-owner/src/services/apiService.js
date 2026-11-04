@@ -305,7 +305,7 @@ class ApiService {
     }
     return {
       data: result.data,
-      message: result.message || 'Employee submitted successfully. Pending Super Admin approval.',
+      message: result.message || 'Employee created successfully.',
     };
   }
 
@@ -323,7 +323,7 @@ class ApiService {
     }
     return {
       data: result.data,
-      message: result.message || 'Employee edits submitted successfully. Pending Super Admin approval.',
+      message: result.message || 'Employee updated successfully.',
     };
   }
 
@@ -340,8 +340,23 @@ class ApiService {
     }
     return {
       data: result.data,
-      message: result.message || 'Employee deactivation requested. Pending Super Admin approval.',
+      message: result.message || 'Employee deactivated successfully.',
     };
+  }
+
+  async reviewEmployeeApproval(id, action, rejectionReason = '') {
+    if (!id) throw new Error('Employee ID is required.');
+    const response = await this.executeFetch(`/employees/${id}/approval`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ action, rejectionReason }),
+    });
+
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || `Failed to ${action} employee.`);
+    }
+    return result;
   }
 
   // --- ATTENDANCE METHODS ---

@@ -21,6 +21,7 @@ import { apiService } from '../services/apiService';
 import { pickImageFromDevice, capturePhotoFromCamera } from '../utils/filePickerUtils';
 
 export const ROLE_OPTIONS = [
+  'Manager',
   'Trainer',
   'Front Desk Manager',
   'Customer Support',
@@ -120,6 +121,12 @@ export const AddEmployeeModal = ({
   const [accessType, setAccessType] = useState('Admin');
   const [avatar, setAvatar] = useState(null);
 
+  // Manager Delegation Permissions
+  const [requireStaffApproval, setRequireStaffApproval] = useState(true);
+  const [requirePlanSwitchApproval, setRequirePlanSwitchApproval] = useState(true);
+  const [requireCancellationApproval, setRequireCancellationApproval] = useState(true);
+  const [requireProfileEditApproval, setRequireProfileEditApproval] = useState(true);
+
   // Trainer Profile & Showcase
   const [aboutMe, setAboutMe] = useState(
     'Certified fitness trainer with 8+ years of experience helping clients achieve their fitness goals through personalized training and nutrition guidance.'
@@ -173,6 +180,10 @@ export const AddEmployeeModal = ({
     setEmail('');
     setAccessType('Admin');
     setAvatar(null);
+    setRequireStaffApproval(true);
+    setRequirePlanSwitchApproval(true);
+    setRequireCancellationApproval(true);
+    setRequireProfileEditApproval(true);
     setAboutMe(
       'Certified fitness trainer with 8+ years of experience helping clients achieve their fitness goals through personalized training and nutrition guidance.'
     );
@@ -351,7 +362,12 @@ export const AddEmployeeModal = ({
         status: 'Active',
         attendance: 'Present',
         accessType,
-        approvalStatus: 'Pending Approval',
+        managerPermissions: {
+          requireStaffApproval,
+          requirePlanSwitchApproval,
+          requireCancellationApproval,
+          requireProfileEditApproval,
+        },
         previousEmployments: prevEmployments.filter(
           (p) => p.companyName?.trim() || p.designation?.trim()
         ),
@@ -397,7 +413,11 @@ export const AddEmployeeModal = ({
 
       const res = await apiService.createEmployee(payload);
       showToast({
-        message: res.message || `Employee "${name.trim()}" submitted for Super Admin approval!`,
+        message:
+          res.message ||
+          (res.data?.approvalStatus === 'Approved'
+            ? `Employee "${name.trim()}" added successfully!`
+            : `Employee "${name.trim()}" submitted for Gym Admin approval!`),
         isSuccess: true,
       });
 
@@ -596,6 +616,60 @@ export const AddEmployeeModal = ({
                   );
                 })}
               </ScrollView>
+
+              {/* Manager Delegation Permissions */}
+              {role === 'Manager' && (
+                <View
+                  style={{
+                    backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',
+                    borderRadius: 12,
+                    padding: 14,
+                    marginBottom: 16,
+                    borderWidth: 1,
+                    borderColor: isDark ? '#4338CA' : '#C7D2FE',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 }}>
+                    <MaterialIcons name="security" size={18} color="#4F46E5" />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#4F46E5' }}>
+                      Manager Delegation Permissions
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: isDark ? '#C7D2FE' : '#475569', marginBottom: 10 }}>
+                    Require Admin approval for operations performed by this manager:
+                  </Text>
+
+                  {[
+                    { label: 'Staff & Trainers (Add/Edit/Remove)', val: requireStaffApproval, set: setRequireStaffApproval },
+                    { label: 'Plan Switches & Upgrades', val: requirePlanSwitchApproval, set: setRequirePlanSwitchApproval },
+                    { label: 'Cancellations & Refunds', val: requireCancellationApproval, set: setRequireCancellationApproval },
+                    { label: 'Gym Profile & Timings', val: requireProfileEditApproval, set: setRequireProfileEditApproval },
+                  ].map((perm, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingVertical: 7,
+                        borderBottomWidth: idx < 3 ? 1 : 0,
+                        borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : '#E0E7FF',
+                      }}
+                      onPress={() => perm.set(!perm.val)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? '#E2E8F0' : '#1E293B', flex: 1, marginRight: 8 }}>
+                        {perm.label}
+                      </Text>
+                      <MaterialIcons
+                        name={perm.val ? 'check-box' : 'check-box-outline-blank'}
+                        size={20}
+                        color={perm.val ? '#4F46E5' : isDark ? '#64748B' : '#94A3B8'}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               {/* Access Level */}
               <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
