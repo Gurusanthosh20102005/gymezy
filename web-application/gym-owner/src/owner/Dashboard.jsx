@@ -391,7 +391,50 @@ export const Dashboard = () => {
           </Card>
         </Col>
 
-        {/* 4. Total Active Users */}
+        {/* 4. App Count */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card
+            style={{
+              backgroundColor: 'var(--bg-surface-elevated)',
+              borderColor: 'var(--border-color)',
+              borderRadius: 'var(--radius-base)',
+              boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
+            }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--color-purple-bg)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--color-purple)',
+                  fontSize: 20,
+                  flexShrink: 0,
+                }}
+              >
+                <MobileOutlined />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                  App Count
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
+                  {dashboardStats?.metrics?.appCount ?? 0}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                  Active App Passes & Bookings
+                </div>
+              </div>
+            </div>
+          </Card>
+        </Col>
+
+        {/* 5. Total Active Users (Moved to center) */}
         <Col xs={24} sm={12} lg={8}>
           <Card
             style={{
@@ -427,14 +470,14 @@ export const Dashboard = () => {
                   {dashboardStats?.metrics?.totalActiveUsers ?? 0}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Active App Customers
+                  Active Registered Customers
                 </div>
               </div>
             </div>
           </Card>
         </Col>
 
-        {/* 5. Members */}
+        {/* 6. Walk-in Count (Replaced Completed Sessions) */}
         <Col xs={24} sm={12} lg={8}>
           <Card
             style={{
@@ -464,56 +507,13 @@ export const Dashboard = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Members
+                  Walk-in Count
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {dashboardStats?.metrics?.activeMembersCount ?? (members || []).length}
+                  {dashboardStats?.metrics?.walkInCount ?? 0}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Active Gym Passes
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
-
-        {/* 6. App Booking Number */}
-        <Col xs={24} sm={12} lg={8}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px 24px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-danger-bg)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--color-danger)',
-                  fontSize: 20,
-                  flexShrink: 0,
-                }}
-              >
-                <MobileOutlined />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Completed Sessions
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {dashboardStats?.metrics?.completedBookingsCount ?? (checkIns || []).length}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Classes & Session Passes
+                  Counter & Desk Walk-ins
                 </div>
               </div>
             </div>

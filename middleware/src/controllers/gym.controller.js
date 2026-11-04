@@ -2304,12 +2304,19 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
   // Aggregate metrics
   let memberRevenue = 0;
   let activeMembersCount = 0;
+  let walkInCount = 0;
+  let appCount = 0;
   const userIdsSet = new Set();
 
   for (const m of memberships) {
     if (m.userId) {
       const uId = m.userId._id || m.userId.id || m.userId;
       if (uId) userIdsSet.add(String(uId));
+    }
+    if (m.source === 'WALK_IN') {
+      walkInCount++;
+    } else {
+      appCount++;
     }
     // Only active plan subscriptions (excludes Switched and Cancelled)
     if (['Active', 'Upcoming', 'Expiring Soon'].includes(m.status)) {
@@ -2328,6 +2335,11 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
     if (b.userId) {
       const uId = b.userId._id || b.userId.id || b.userId;
       if (uId) userIdsSet.add(String(uId));
+    }
+    if (b.source === 'WALK_IN') {
+      walkInCount++;
+    } else {
+      appCount++;
     }
     if (b.payment?.status !== 'Failed' && b.payment?.status !== 'Refunded' && b.status !== 'Cancelled') {
       const amt = Number(b.pricing?.totalAmount || b.totalAmount || 0);
@@ -2427,6 +2439,8 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
           memberRevenue,
           appBookingRevenue,
           totalActiveUsers,
+          appCount,
+          walkInCount,
           activeMembersCount,
           completedBookingsCount,
           totalBookingsCount: bookings.length,
