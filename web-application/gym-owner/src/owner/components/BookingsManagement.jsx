@@ -183,9 +183,9 @@ export const BookingsManagement = ({
           return {
             key: String(b._id || b.bookingId),
             _id: b._id,
-            bookingId: b.bookingId || b._id,
-            customerId: b.userId?.customerId || b.customerId || 'CID0001',
-            customerName: b.userId?.name || b.userId?.fullName || b.customerName || 'Customer',
+            bookingId: b.bookingId || (b._id ? `BK${String(b._id).slice(-4).toUpperCase()}` : '-'),
+            customerId: b.userId?.customerId || b.customerId || (b.userId?._id ? `CUST${String(b.userId._id).slice(-4).toUpperCase()}` : '-'),
+            customerName: b.userId?.fullName || b.userId?.name || b.customerName || 'Guest Visitor',
             phone: b.userId?.phone || b.phone || '-',
             avatar: b.userId?.avatar || b.userId?.profilePicture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
             type: b.bookingType === 'GROUP_CLASS' ? 'Group Class' : (b.bookingType === 'GYM_SESSION' ? 'Gym Session' : (isWalkIn ? 'Walk-in' : 'App Booking')),
@@ -576,6 +576,27 @@ export const BookingsManagement = ({
       dataIndex: 'status',
       key: 'status',
       render: (status) => {
+        if (status === 'Active') {
+          return (
+            <Tag
+              icon={<CheckCircleOutlined style={{ fontSize: 11 }} />}
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.15)' : '#eaf8ef',
+                color: '#00bf62',
+                border: 'none',
+                borderRadius: 'var(--radius-base)',
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '2px 10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              Active
+            </Tag>
+          );
+        }
         if (status === 'Checked-in') {
           return (
             <Tag
@@ -686,7 +707,7 @@ export const BookingsManagement = ({
       dataIndex: 'payment',
       key: 'payment',
       render: (payment) => {
-        if (payment === 'Paid Online') {
+        if (payment === 'Paid Online' || payment === 'Online' || payment === 'Card' || payment === 'POS') {
           return (
             <Tag
               style={{
@@ -699,11 +720,11 @@ export const BookingsManagement = ({
                 padding: '2px 10px',
               }}
             >
-              Paid Online
+              {payment === 'Card' || payment === 'POS' ? 'Card / POS' : 'Online'}
             </Tag>
           );
         }
-        if (payment === 'Cash') {
+        if (payment === 'Cash' || payment === 'COD') {
           return (
             <Tag
               style={{
@@ -720,7 +741,7 @@ export const BookingsManagement = ({
             </Tag>
           );
         }
-        if (payment === 'UPI') {
+        if (payment === 'UPI' || payment === 'GPay') {
           return (
             <Tag
               style={{
@@ -734,6 +755,40 @@ export const BookingsManagement = ({
               }}
             >
               UPI
+            </Tag>
+          );
+        }
+        if (payment === 'Wallet') {
+          return (
+            <Tag
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(250, 140, 22, 0.15)' : '#fef4e8',
+                color: '#fa8c16',
+                border: 'none',
+                borderRadius: 'var(--radius-base)',
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '2px 10px',
+              }}
+            >
+              Wallet
+            </Tag>
+          );
+        }
+        if (payment === 'Net Banking') {
+          return (
+            <Tag
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(22, 119, 255, 0.15)' : '#edf4fe',
+                color: '#1677ff',
+                border: 'none',
+                borderRadius: 'var(--radius-base)',
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '2px 10px',
+              }}
+            >
+              Net Banking
             </Tag>
           );
         }

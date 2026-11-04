@@ -493,8 +493,9 @@ export const createBooking = asyncHandler(async (req, res) => {
 /**
  * Enrich booking with custom dates daily schedule, next session date, and OTP status
  */
-export const enrichBookingWithCustomSchedule = (b) => {
-  if (!b) return b;
+export const enrichBookingWithCustomSchedule = (rawB) => {
+  if (!rawB) return rawB;
+  const b = rawB.toObject ? rawB.toObject() : (rawB._doc ? { ...rawB._doc } : { ...rawB });
   const isCustom = Boolean(b.isCustomDates || (Array.isArray(b.customDates) && b.customDates.length > 0));
   if (!isCustom) {
     return { ...b, isTodayValid: true };
@@ -653,7 +654,8 @@ export const getGymBookings = asyncHandler(async (req, res) => {
 
   const bookings = await Booking.find(filter)
     .populate('userId', 'fullName name email phone avatar customerId')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean();
 
   const enriched = bookings.map((b) => enrichBookingWithCustomSchedule(b));
   return res.status(200).json(ApiResponse.success(enriched, 'Gym bookings retrieved successfully'));
