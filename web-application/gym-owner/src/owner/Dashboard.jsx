@@ -571,7 +571,7 @@ export const Dashboard = () => {
               size="middle"
               scroll={{ x: 'max-content' }}
               loading={loadingStats}
-              dataSource={dashboardStats?.recentBookings || bookings || []}
+              dataSource={(dashboardStats?.recentBookings || bookings || []).slice(0, 4)}
               locale={{ emptyText: 'No recent bookings recorded today' }}
               columns={[
                 {
@@ -720,7 +720,7 @@ export const Dashboard = () => {
               size="middle"
               scroll={{ x: 'max-content' }}
               loading={loadingStats}
-              dataSource={dashboardStats?.recentMembers || members || []}
+              dataSource={(dashboardStats?.recentMembers || members || []).slice(0, 4)}
               locale={{ emptyText: 'No registered active members found' }}
               columns={[
                 {

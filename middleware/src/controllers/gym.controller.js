@@ -2342,8 +2342,8 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
 
   const defaultAvatar = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop';
 
-  // Map Recent Bookings (top 10)
-  const recentBookings = bookings.slice(0, 10).map((b) => {
+  // Map Recent Bookings (top 4)
+  const recentBookings = bookings.slice(0, 4).map((b) => {
     const user = b.userId || {};
     const userName = user.fullName || user.name || 'Member';
     const userPhone = user.phone || '—';
@@ -2377,8 +2377,8 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
     };
   });
 
-  // Map Recent Memberships (top 10)
-  const recentMembers = memberships.slice(0, 10).map((m) => {
+  // Map Recent Memberships (top 4)
+  const recentMembers = memberships.slice(0, 4).map((m) => {
     const user = m.userId || {};
     const userName = user.fullName || user.name || 'Member';
     const avatar = user.avatar || user.profilePicture || defaultAvatar;
