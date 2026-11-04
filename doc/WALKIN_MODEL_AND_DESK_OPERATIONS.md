@@ -373,4 +373,22 @@ Front-desk staff can register walk-ins for open floor workout or direct enrollme
 - Selecting a section automatically populates `sectionId`, slot time, sets `bookingType: 'GROUP_CLASS'`, and updates the pass fee.
 - All interface labels are standardized with clean typography and Ant Design icons without decorative emojis.
 
+---
+
+### 8.4 Payment Method Alignment and Session State Integrity
+To ensure walk-in modal submissions never trigger `422 Unprocessable Entity` or Mongoose `ValidationError`:
+1. **SSOT Payment Methods**:
+   - Both `booking.model.js` and `membership.model.js` share the synchronized enum:
+     `PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Cash', 'Wallet', 'Online', 'GPay', 'POS', 'COD']`.
+   - Controllers implement `normalizePayment(method)` to canonicalize incoming values:
+     - `'Online'`, `'Card'`, `'POS'`, `'Card / POS Swipe'` $\rightarrow$ `'Card'`
+     - `'GPay'`, `'UPI'`, `'Counter UPI / QR'` $\rightarrow$ `'UPI'`
+     - `'Cash'`, `'COD'`, `'Cash at Desk'` $\rightarrow$ `'Cash'`
+2. **Custom Dates Status Integrity**:
+   - Schema `customDates.status` enum supports `['Scheduled', 'Upcoming', 'Attended', 'Missed', 'Reschedule_Requested', 'Reschedule_Proposed', 'Rescheduled']`.
+   - New walk-in multi-date sessions are created with initial status `'Scheduled'`.
+3. **Explanatory Frontend Error Messages**:
+   - If a validation constraint fails, frontend modals extract detailed field violations from `err.response?.data?.errors?.join(', ')` rather than displaying a generic `"Validation failed"` notification.
+
+
 
