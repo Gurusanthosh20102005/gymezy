@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, StatusBar, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
@@ -9,11 +9,17 @@ import { MembersTab } from './tabs/MembersTab';
 import { EmployeesTab } from './tabs/EmployeesTab';
 import { AnalyticsTab } from './tabs/AnalyticsTab';
 import { SettingsTab } from './tabs/SettingsTab';
+import { notificationService } from '../services/notificationService';
 
 export const DashboardScreen = ({ navigation }) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [currentTab, setCurrentTab] = useState(0);
+
+  // Request native notification permission on initial dashboard entry
+  useEffect(() => {
+    notificationService.requestNotificationPermission();
+  }, []);
 
   const topInset = Math.max(
     insets.top,
@@ -75,4 +81,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-

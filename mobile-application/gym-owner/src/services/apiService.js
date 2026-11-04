@@ -456,10 +456,14 @@ class ApiService {
 
   async respondToSwitchRequest(requestId, payload) {
     if (!requestId) throw new Error('Request ID is required.');
+    const cleanPayload = {
+      action: payload.action,
+      remarks: payload.remarks || payload.rejectionReason || '',
+    };
     const response = await this.executeFetch(`/memberships/switch-requests/${requestId}/gym-action`, {
       method: 'PATCH',
       headers: this.getHeaders(),
-      body: JSON.stringify(payload),
+      body: JSON.stringify(cleanPayload),
     });
     const result = await response.json();
     if (!response.ok || !result.success) {
@@ -509,6 +513,33 @@ class ApiService {
     const result = await response.json();
     if (!response.ok || !result.success) {
       throw new Error(result.message || 'Failed to accept cancellation.');
+    }
+    return result.data;
+  }
+
+  async rejectCancellation(requestId) {
+    if (!requestId) throw new Error('Request ID is required.');
+    const response = await this.executeFetch(`/memberships/cancellation-negotiations/${requestId}/gym-reject`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to reject cancellation.');
+    }
+    return result.data;
+  }
+
+  async requestCancellation(membershipId, reason = 'Cancelled by gym owner') {
+    if (!membershipId) throw new Error('Membership ID is required.');
+    const response = await this.executeFetch(`/memberships/${membershipId}/cancellation-negotiation`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to request cancellation.');
     }
     return result.data;
   }

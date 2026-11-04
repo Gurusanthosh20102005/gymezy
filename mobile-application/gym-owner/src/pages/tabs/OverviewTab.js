@@ -15,6 +15,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { AppColors } from '../../theme/appTheme';
 import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../services/apiService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getGymLogoUri } from '../../utils/mediaUtils';
 
 export const OverviewTab = ({
@@ -24,6 +25,7 @@ export const OverviewTab = ({
   onNavigateToEmployees,
 }) => {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { user, gym, refreshGymProfile } = useAuth();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -211,7 +213,7 @@ export const OverviewTab = ({
         styles.scrollContent,
         {
           paddingTop: topInset + 12,
-          paddingBottom: 110,
+          paddingBottom: 170 + Math.max(insets.bottom, 24),
         },
       ]}
       showsVerticalScrollIndicator={false}
@@ -330,7 +332,7 @@ export const OverviewTab = ({
                     {card.textIcon}
                   </Text>
                 ) : (
-                  <MaterialIcons name={card.iconName} size={20} color={card.iconColor} />
+                  <MaterialIcons name={card.iconName} size={18} color={card.iconColor} />
                 )}
               </View>
               <View style={styles.metricTextCol}>
@@ -345,6 +347,8 @@ export const OverviewTab = ({
                 </Text>
                 <Text
                   numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
                   style={[
                     styles.metricNum,
                     { color: isDark ? '#FFFFFF' : '#0F172A' },
@@ -369,17 +373,7 @@ export const OverviewTab = ({
         })}
       </View>
 
-      {/* 4. Quick Actions */}
-      <View style={styles.actionButtonsRow}>
-        <TouchableOpacity
-          style={styles.primaryActionBtn}
-          onPress={() => navigation?.navigate('CheckIn', { initialMode: 'QR' })}
-          activeOpacity={0.88}
-        >
-          <MaterialIcons name="qr-code-scanner" size={22} color="#FFFFFF" />
-          <Text style={styles.primaryActionText}>Scan QR Entry</Text>
-        </TouchableOpacity>
-      </View>
+
 
       {/* Staff Attendance Quick Access Card */}
       <TouchableOpacity
@@ -621,18 +615,19 @@ const styles = StyleSheet.create({
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
     marginBottom: 20,
   },
   metricCard: {
-    width: '48.5%',
+    width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 16,
     borderWidth: 1,
     gap: 8,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.03,
@@ -640,15 +635,15 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   metricIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   metricTextIcon: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
   },
   metricTextCol: {
@@ -656,12 +651,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   metricLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '600',
     marginBottom: 2,
   },
   metricNum: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     letterSpacing: -0.3,
     marginBottom: 1,

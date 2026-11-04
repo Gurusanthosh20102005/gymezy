@@ -361,7 +361,7 @@ export const CheckInScreen = ({ navigation, route }) => {
   /* -------------------------------------------------------------------------- */
   const renderHubView = () => (
     <ScrollView
-      contentContainerStyle={[styles.scrollContent, { paddingTop: topInset + 12, paddingBottom: 40 }]}
+      contentContainerStyle={[styles.scrollContent, { paddingTop: topInset + 12, paddingBottom: 40 + Math.max(insets.bottom, 20) }]}
       showsVerticalScrollIndicator={false}
     >
       {/* Top Header */}
@@ -637,7 +637,7 @@ export const CheckInScreen = ({ navigation, route }) => {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.searchScrollContent, { paddingBottom: 40 }]}
+        contentContainerStyle={[styles.searchScrollContent, { paddingBottom: 40 + Math.max(insets.bottom, 20) }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
@@ -915,7 +915,7 @@ export const CheckInScreen = ({ navigation, route }) => {
         </View>
 
         <ScrollView
-          contentContainerStyle={[styles.detailsScrollContent, { paddingBottom: 40 }]}
+          contentContainerStyle={[styles.detailsScrollContent, { paddingBottom: 40 + Math.max(insets.bottom, 20) }]}
           showsVerticalScrollIndicator={false}
         >
           {/* Member Profile Header Card */}
@@ -1266,7 +1266,7 @@ export const CheckInScreen = ({ navigation, route }) => {
       <ScrollView
         contentContainerStyle={[
           styles.successScrollContent,
-          { paddingTop: topInset + 20, paddingBottom: 40 },
+          { paddingTop: topInset + 20, paddingBottom: 40 + Math.max(insets.bottom, 20) },
         ]}
         showsVerticalScrollIndicator={false}
       >

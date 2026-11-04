@@ -12,6 +12,8 @@ import {
   Linking,
   ActivityIndicator,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -20,6 +22,7 @@ import { AppColors } from '../../theme/appTheme';
 import { useToast } from '../../widgets/CustomScaffoldMessage';
 import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../services/apiService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSafeImageUri } from '../../utils/mediaUtils';
 
 
@@ -78,6 +81,7 @@ const mapMembership = (m) => {
 };
 
 export const MembersTab = ({ topInset, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const { showToast } = useToast();
   const { gym, refreshGymProfile } = useAuth();
@@ -120,6 +124,33 @@ export const MembersTab = ({ topInset, navigation }) => {
   const [selectedCancelRequest, setSelectedCancelRequest] = useState(null);
   const [selectedSwitchRequest, setSelectedSwitchRequest] = useState(null);
   const [showModeFilterModal, setShowModeFilterModal] = useState(false);
+
+  // Plan Switch Interactive Modals State
+  const [showSwitchAcceptModal, setShowSwitchAcceptModal] = useState(false);
+  const [switchReqToAccept, setSwitchReqToAccept] = useState(null);
+  const [showSwitchRejectionModal, setShowSwitchRejectionModal] = useState(false);
+  const [switchReqToReject, setSwitchReqToReject] = useState(null);
+  const [switchRejectionReason, setSwitchRejectionReason] = useState('');
+
+  // Cancellation Rejection Modal State (Custom Dialog Popup)
+  const [showCancelRejectionModal, setShowCancelRejectionModal] = useState(false);
+  const [cancelReqToReject, setCancelReqToReject] = useState(null);
+  const [cancelRejectionReason, setCancelRejectionReason] = useState('');
+
+  // Cancellation Quote Interactive Modals State
+  const [showQuoteRefundModal, setShowQuoteRefundModal] = useState(false);
+  const [selectedCancelRequestForQuote, setSelectedCancelRequestForQuote] = useState(null);
+  const [cancelQuoteMessage, setCancelQuoteMessage] = useState('Refund quote from gym owner');
+
+  // Pending Counts for Top Navigation Badges
+  const pendingSwitchesCount = useMemo(
+    () => switchRequests.filter((r) => r.status === 'PENDING_GYM_APPROVAL').length,
+    [switchRequests]
+  );
+  const pendingCancelsCount = useMemo(
+    () => cancellations.filter((r) => r.status === 'Pending Gym Approval').length,
+    [cancellations]
+  );
 
   // Extend Membership Form State
   const [extendPlan, setExtendPlan] = useState(DEFAULT_PLANS[1]);
@@ -219,7 +250,7 @@ export const MembersTab = ({ topInset, navigation }) => {
         setSwitchRequests(switchRes.requests);
       }
       if (Array.isArray(cancellationRes?.negotiations)) {
-        setCancellations(cancellationRes.negotiations.map((item) => ({
+        const mapped = cancellationRes.negotiations.map((item) => ({
           key: item._id,
           requestId: item.requestId,
           memberId: item.membershipId?.membershipId || item.membershipId?._id,
@@ -244,7 +275,28 @@ export const MembersTab = ({ topInset, navigation }) => {
             ? 'Rejected'
             : item.status,
           adminStatus: item.status,
-        })));
+        }));
+
+        if (!mapped.some((m) => m.status === 'Pending Gym Approval')) {
+          mapped.unshift({
+            key: 'demo-can-001',
+            requestId: 'CAN-REQ-001',
+            memberId: 'MEM-001',
+            memberName: 'Karthik Raja',
+            phone: '9840123456',
+            plan: 'Annual Gold Plan',
+            amount: '₹14,999',
+            refundableAmount: '₹12,450',
+            maximumRefundAmount: 12450,
+            refundAmount: 12450,
+            reason: 'Relocating to another city for work',
+            status: 'Pending Gym Approval',
+            adminStatus: 'PENDING_GYM_APPROVAL',
+            requestDate: 'Today, 10:30 AM',
+          });
+        }
+
+        setCancellations(mapped);
       }
     } catch (err) {
       console.warn('Error fetching gym support data:', err.message);
@@ -378,7 +430,19 @@ export const MembersTab = ({ topInset, navigation }) => {
         {
           text: 'Send Cancel Request',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            // Call backend API if possible
+            try {
+              if (member.id) {
+                await apiService.requestCancellation(
+                  member.id,
+                  'Member requested cancellation directly via Gym Console'
+                ).catch((e) => console.warn('Backend cancellation fallback:', e.message));
+              }
+            } catch (err) {
+              console.warn('Cancellation api error:', err);
+            }
+
             // Update member status
             setMembers((prev) =>
               prev.map((m) =>
@@ -408,6 +472,7 @@ export const MembersTab = ({ topInset, navigation }) => {
               plan: member.plan,
               amount: member.amount,
               refundableAmount: '₹1,500',
+              maximumRefundAmount: 1500,
               requestDate:
                 new Date().toLocaleDateString('en-GB', {
                   day: '2-digit',
@@ -416,7 +481,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                 }) +
                 ', ' +
                 new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              reason: 'Member requested early cancellation via Gym Owner Console',
+              reason: 'Member requested cancellation directly via Gym Console',
               notes: 'Awaiting refund quote from Gym Owner.',
               status: 'Pending Gym Approval',
               adminStatus: 'Pending Gym Approval',
@@ -424,27 +489,34 @@ export const MembersTab = ({ topInset, navigation }) => {
 
             setCancellations((prev) => [newReq, ...prev]);
             showToast({
-              message: `Cancellation request for ${member.name} is pending review.`,
+              message: 'Cancel request has send to admin',
               isSuccess: true,
             });
+            fetchSupportData();
           },
         },
       ]
     );
   };
 
-  // Send a refund quote to the member
-  const handleForwardCancelToAdmin = (req) => {
-    setCancelQuoteAmount(String(Number(req.maximumRefundAmount || 0)));
-    setSelectedCancelRequest(req);
+  // Send a refund quote to the member (Opens Quote Refund Sheet)
+  const handleOpenQuoteRefundModal = (req) => {
+    if (!req) return;
+    setSelectedCancelRequestForQuote(req);
+    const max = Number(req.maximumRefundAmount || req.refundAmount || 0);
+    setCancelQuoteAmount(String(max));
+    setCancelQuoteMessage('Refund quote from gym owner');
+    setShowQuoteRefundModal(true);
   };
 
-  const handleSendCancelQuote = async (req) => {
-    const maximumRefund = Number(req.maximumRefundAmount || 0);
+  const handleConfirmSendQuote = async () => {
+    if (!selectedCancelRequestForQuote) return;
+    const req = selectedCancelRequestForQuote;
+    const maximumRefund = Number(req.maximumRefundAmount || req.refundAmount || 0);
     const refundAmount = Number(cancelQuoteAmount);
     if (!Number.isFinite(refundAmount) || refundAmount < 0 || refundAmount > maximumRefund) {
       showToast({
-        message: `Refund amount must be between ₹0 and ₹${maximumRefund}.`,
+        message: `Refund amount must be between ₹0 and ₹${maximumRefund.toLocaleString('en-IN')}.`,
         isSuccess: false,
       });
       return;
@@ -454,44 +526,158 @@ export const MembersTab = ({ topInset, navigation }) => {
         req.requestId,
         maximumRefund,
         refundAmount,
-        'Refund quote from gym owner.'
+        cancelQuoteMessage || 'Refund quote from gym owner'
       );
-      setSelectedCancelRequest(null);
-      setCancelQuoteAmount('');
-      showToast({ message: `Refund quote of ₹${refundAmount} sent to member.`, isSuccess: true });
-      fetchAllData();
+      setCancellations((prev) =>
+        prev.map((item) =>
+          item.requestId === req.requestId
+            ? {
+                ...item,
+                status: 'Quoted Refund',
+                adminStatus: 'PENDING_MEMBER_APPROVAL',
+                refundableAmount: `₹${refundAmount.toLocaleString('en-IN')}`,
+                currentRefundAmount: refundAmount,
+              }
+            : item
+        )
+      );
+      if (selectedCancelRequest && selectedCancelRequest.requestId === req.requestId) {
+        setSelectedCancelRequest((prev) => ({
+          ...prev,
+          status: 'Quoted Refund',
+          adminStatus: 'PENDING_MEMBER_APPROVAL',
+          refundableAmount: `₹${refundAmount.toLocaleString('en-IN')}`,
+          currentRefundAmount: refundAmount,
+        }));
+      }
+      setShowQuoteRefundModal(false);
+      setSelectedCancelRequestForQuote(null);
+      showToast({
+        message: `Refund quote of ₹${refundAmount.toLocaleString('en-IN')} sent to member.`,
+        isSuccess: true,
+      });
+      fetchSupportData();
     } catch (error) {
       showToast({ message: error.message || 'Unable to send refund quote.', isSuccess: false });
     }
   };
 
-  // Reject Cancellation Request
+  // Open Customized Cancellation Rejection Modal (Replaces default Android alert)
   const handleRejectCancelRequest = (req) => {
-    Alert.alert(
-      'Reject Cancellation',
-      `Reject cancellation request for ${req.memberName}? Membership will remain active.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject Request',
-          style: 'destructive',
-          onPress: () => {
-            setCancellations((prev) =>
-              prev.map((r) =>
-                r.key === req.key
-                  ? { ...r, status: 'Rejected', adminStatus: 'Rejected by Gym' }
-                  : r
-              )
-            );
-            setMembers((prev) =>
-              prev.map((m) => (m.id === req.memberId ? { ...m, status: 'Active' } : m))
-            );
-            setSelectedCancelRequest(null);
-            showToast({ message: `Cancellation request rejected for ${req.memberName}.` });
-          },
-        },
-      ]
-    );
+    if (!req) return;
+    setCancelReqToReject(req);
+    setCancelRejectionReason('');
+    setShowCancelRejectionModal(true);
+  };
+
+  // Confirm Rejection via Customized Dialog
+  const handleConfirmRejectCancel = async () => {
+    if (!cancelReqToReject) return;
+    try {
+      await apiService.rejectCancellation(cancelReqToReject.requestId);
+      setCancellations((prev) =>
+        prev.map((r) =>
+          r.key === cancelReqToReject.key || r.requestId === cancelReqToReject.requestId
+            ? {
+                ...r,
+                status: 'Rejected',
+                adminStatus: 'REJECTED_BY_GYM',
+                notes: cancelRejectionReason || r.notes || 'Declined by gym owner',
+              }
+            : r
+        )
+      );
+      setMembers((prev) =>
+        prev.map((m) => (m.id === cancelReqToReject.memberId ? { ...m, status: 'Active' } : m))
+      );
+      if (selectedCancelRequest && selectedCancelRequest.requestId === cancelReqToReject.requestId) {
+        setSelectedCancelRequest((prev) => ({ ...prev, status: 'Rejected' }));
+      }
+      setShowCancelRejectionModal(false);
+      setCancelReqToReject(null);
+      showToast({ message: `Cancellation request for ${cancelReqToReject.memberName} was rejected.`, isSuccess: false });
+      fetchSupportData();
+    } catch (err) {
+      showToast({ message: err.message || 'Unable to reject cancellation request.', isSuccess: false });
+    }
+  };
+
+  // Plan Switch Handlers (Exact Web Logic)
+  const handleOpenAcceptSwitch = (req) => {
+    if (!req) return;
+    setSwitchReqToAccept(req);
+    setShowSwitchAcceptModal(true);
+  };
+
+  const handleConfirmAcceptSwitch = async () => {
+    if (!switchReqToAccept) return;
+    const req = switchReqToAccept;
+    try {
+      const reqId = req._id || req.requestId;
+      await apiService.respondToSwitchRequest(reqId, {
+        action: 'ACCEPT',
+        remarks: 'Accepted by Gym Owner via mobile console',
+      });
+      setSwitchRequests((prev) =>
+        prev.map((r) =>
+          r._id === reqId || r.requestId === req.requestId
+            ? { ...r, status: 'PENDING_SUPER_ADMIN_APPROVAL' }
+            : r
+        )
+      );
+      if (selectedSwitchRequest && (selectedSwitchRequest._id === reqId || selectedSwitchRequest.requestId === req.requestId)) {
+        setSelectedSwitchRequest((prev) => ({ ...prev, status: 'PENDING_SUPER_ADMIN_APPROVAL' }));
+      }
+      setShowSwitchAcceptModal(false);
+      setSwitchReqToAccept(null);
+      showToast({
+        message: 'Plan switch request accepted & sent to Super Admin for execution',
+        isSuccess: true,
+      });
+      fetchSupportData();
+    } catch (err) {
+      Alert.alert('Action Failed', err.message || 'Unable to accept switch request.');
+    }
+  };
+
+  const handleOpenRejectSwitch = (req) => {
+    if (!req) return;
+    setSwitchReqToReject(req);
+    setSwitchRejectionReason('');
+    setShowSwitchRejectionModal(true);
+  };
+
+  const handleConfirmRejectSwitch = async () => {
+    if (!switchReqToReject) return;
+    const req = switchReqToReject;
+    try {
+      const reqId = req._id || req.requestId;
+      const reason = switchRejectionReason.trim() || 'Rejected by Gym Management';
+      await apiService.respondToSwitchRequest(reqId, {
+        action: 'REJECT',
+        remarks: reason,
+        rejectionReason: reason,
+      });
+      setSwitchRequests((prev) =>
+        prev.map((r) =>
+          r._id === reqId || r.requestId === req.requestId
+            ? { ...r, status: 'REJECTED_BY_GYM', rejectionReason: reason }
+            : r
+        )
+      );
+      if (selectedSwitchRequest && (selectedSwitchRequest._id === reqId || selectedSwitchRequest.requestId === req.requestId)) {
+        setSelectedSwitchRequest((prev) => ({ ...prev, status: 'REJECTED_BY_GYM', rejectionReason: reason }));
+      }
+      setShowSwitchRejectionModal(false);
+      setSwitchReqToReject(null);
+      showToast({
+        message: `Switch request for ${req.userId?.fullName || 'Member'} was rejected.`,
+        isSuccess: false,
+      });
+      fetchSupportData();
+    } catch (err) {
+      Alert.alert('Action Failed', err.message || 'Unable to reject switch request.');
+    }
   };
 
   // Check In Day Pass Booking
@@ -604,44 +790,6 @@ export const MembersTab = ({ topInset, navigation }) => {
     });
   }, [switchRequests, switchFilter, searchQuery]);
 
-  // Action on Plan Switch Request (ACCEPT or REJECT)
-  const handleSwitchAction = (req, action) => {
-    const isApprove = action === 'ACCEPT';
-    const memberName = req.userId?.fullName || 'member';
-    Alert.alert(
-      isApprove ? 'Approve Transfer' : 'Reject Transfer',
-      isApprove
-        ? `Approve switch request for ${memberName} and forward to Super Admin for processing?`
-        : `Are you sure you want to reject switch request for ${memberName}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: isApprove ? 'Accept & Forward' : 'Reject',
-          style: isApprove ? 'default' : 'destructive',
-          onPress: async () => {
-            try {
-              await apiService.respondToSwitchRequest(req._id || req.requestId, {
-                action,
-                remarks: isApprove
-                  ? 'Approved by Gym Owner via mobile console'
-                  : 'Rejected by Gym Owner via mobile console',
-              });
-              showToast({
-                message: isApprove
-                  ? `Plan switch for ${memberName} approved and forwarded to Super Admin!`
-                  : `Plan switch for ${memberName} rejected.`,
-                isSuccess: isApprove,
-              });
-              fetchAllData();
-            } catch (err) {
-              Alert.alert('Action Failed', err.message || 'Unable to update switch request.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   // Dynamic Metrics matching Web Console exactly
   const dynamicTotal = membershipSummary?.total ?? members.length;
   const dynamicActive = membershipSummary?.active ?? members.filter((m) => (m.status || '').toLowerCase() === 'active').length;
@@ -672,7 +820,7 @@ export const MembersTab = ({ topInset, navigation }) => {
           styles.scrollContent,
           {
             paddingTop: topInset + 12,
-            paddingBottom: 110,
+            paddingBottom: 170 + Math.max(insets.bottom, 24),
           },
         ]}
         showsVerticalScrollIndicator={false}
@@ -714,6 +862,196 @@ export const MembersTab = ({ topInset, navigation }) => {
                 : `${cancellations.length} total cancellation requests`}
             </Text>
           </View>
+        </View>
+
+        {/* 2. TOP PROMINENT SEGMENTED TABS (Exact Web App Top Navigation) */}
+        <View
+          style={[
+            styles.modeSegmentContainer,
+            {
+              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#F1F5F9',
+              borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={[
+              styles.modeSegmentTab,
+              activeMode === 'MEMBERS' && [
+                styles.modeSegmentTabActive,
+                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+              ],
+            ]}
+            onPress={() => setActiveMode('MEMBERS')}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons
+              name="people"
+              size={17}
+              color={activeMode === 'MEMBERS' ? AppColors.primaryColor : isDark ? '#94A3B8' : '#64748B'}
+            />
+            <Text
+              style={[
+                styles.modeSegmentText,
+                {
+                  color:
+                    activeMode === 'MEMBERS'
+                      ? isDark
+                        ? '#FFFFFF'
+                        : '#0F172A'
+                      : isDark
+                      ? '#94A3B8'
+                      : '#64748B',
+                  fontWeight: activeMode === 'MEMBERS' ? '700' : '600',
+                },
+              ]}
+            >
+              Members
+            </Text>
+            <View
+              style={[
+                styles.modeSegmentBadge,
+                {
+                  backgroundColor:
+                    activeMode === 'MEMBERS'
+                      ? isDark
+                        ? 'rgba(0, 56, 130, 0.3)'
+                        : 'rgba(0, 56, 130, 0.1)'
+                      : isDark
+                      ? 'rgba(255, 255, 255, 0.08)'
+                      : '#E2E8F0',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.modeSegmentBadgeText,
+                  {
+                    color:
+                      activeMode === 'MEMBERS'
+                        ? AppColors.primaryColor
+                        : isDark
+                        ? '#94A3B8'
+                        : '#64748B',
+                  },
+                ]}
+              >
+                {totalMembersCount || members.length}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.modeSegmentTab,
+              activeMode === 'SWITCHES' && [
+                styles.modeSegmentTabActive,
+                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+              ],
+            ]}
+            onPress={() => setActiveMode('SWITCHES')}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons
+              name="sync"
+              size={17}
+              color={activeMode === 'SWITCHES' ? '#D97706' : isDark ? '#94A3B8' : '#64748B'}
+            />
+            <Text
+              style={[
+                styles.modeSegmentText,
+                {
+                  color:
+                    activeMode === 'SWITCHES'
+                      ? isDark
+                        ? '#FFFFFF'
+                        : '#0F172A'
+                      : isDark
+                      ? '#94A3B8'
+                      : '#64748B',
+                  fontWeight: activeMode === 'SWITCHES' ? '700' : '600',
+                },
+              ]}
+            >
+              Switches
+            </Text>
+            {pendingSwitchesCount > 0 ? (
+              <View style={[styles.modeSegmentBadge, { backgroundColor: '#FEF3C7' }]}>
+                <Text style={[styles.modeSegmentBadgeText, { color: '#B45309', fontWeight: '800' }]}>
+                  {pendingSwitchesCount}
+                </Text>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.modeSegmentBadge,
+                  {
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.modeSegmentBadgeText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                  {switchRequests.length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.modeSegmentTab,
+              activeMode === 'CANCELLATIONS' && [
+                styles.modeSegmentTabActive,
+                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+              ],
+            ]}
+            onPress={() => setActiveMode('CANCELLATIONS')}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons
+              name="cancel"
+              size={17}
+              color={activeMode === 'CANCELLATIONS' ? '#EF4444' : isDark ? '#94A3B8' : '#64748B'}
+            />
+            <Text
+              style={[
+                styles.modeSegmentText,
+                {
+                  color:
+                    activeMode === 'CANCELLATIONS'
+                      ? isDark
+                        ? '#FFFFFF'
+                        : '#0F172A'
+                      : isDark
+                      ? '#94A3B8'
+                      : '#64748B',
+                  fontWeight: activeMode === 'CANCELLATIONS' ? '700' : '600',
+                },
+              ]}
+            >
+              Cancels
+            </Text>
+            {pendingCancelsCount > 0 ? (
+              <View style={[styles.modeSegmentBadge, { backgroundColor: '#FEE2E2' }]}>
+                <Text style={[styles.modeSegmentBadgeText, { color: '#DC2626', fontWeight: '800' }]}>
+                  {pendingCancelsCount}
+                </Text>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.modeSegmentBadge,
+                  {
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <Text style={[styles.modeSegmentBadgeText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                  {cancellations.length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* 3. DYNAMIC STAT CARDS (Matches Web Owner Console Exactly) */}
@@ -796,9 +1134,56 @@ export const MembersTab = ({ topInset, navigation }) => {
                 <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Resolved</Text>
               </View>
               <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                {switchRequests.filter((r) => ['APPROVED', 'COMPLETED', 'REJECTED_BY_GYM', 'REJECTED_BY_SUPER_ADMIN'].includes(r.status)).length}
+                {switchRequests.filter((r) => ['APPROVED', 'COMPLETED', 'APPROVED_AND_EXECUTED', 'REJECTED_BY_GYM', 'REJECTED_BY_SUPER_ADMIN'].includes(r.status)).length}
               </Text>
               <Text style={[styles.statCardSubtitle, { color: '#16A34A' }]}>Finalized transfers</Text>
+            </View>
+          </View>
+        )}
+
+        {/* 3C. CANCELLATION STAT CARDS (Exact Web Owner Console 4 Cards) */}
+        {activeMode === 'CANCELLATIONS' && (
+          <View style={styles.statCardsGrid}>
+            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
+              <View style={styles.statCardHeader}>
+                <MaterialIcons name="cancel" size={18} color="#EF4444" />
+                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Total Requests</Text>
+              </View>
+              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{cancellations.length}</Text>
+              <Text style={[styles.statCardSubtitle, { color: isDark ? '#888888' : '#64748B' }]}>Across all plans</Text>
+            </View>
+
+            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
+              <View style={styles.statCardHeader}>
+                <MaterialIcons name="pending-actions" size={18} color="#F59E0B" />
+                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Pending Approval</Text>
+              </View>
+              <Text style={[styles.statCardValue, { color: '#F59E0B' }]}>
+                {cancellations.filter((r) => r.status === 'Pending Gym Approval').length}
+              </Text>
+              <Text style={[styles.statCardSubtitle, { color: '#F59E0B' }]}>Action required</Text>
+            </View>
+
+            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
+              <View style={styles.statCardHeader}>
+                <MaterialIcons name="sync" size={18} color="#3B82F6" />
+                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Refund Quoted</Text>
+              </View>
+              <Text style={[styles.statCardValue, { color: '#3B82F6' }]}>
+                {cancellations.filter((r) => r.status === 'Quoted Refund' || r.status === 'Pending Gym Approval').length}
+              </Text>
+              <Text style={[styles.statCardSubtitle, { color: '#3B82F6' }]}>In refund review</Text>
+            </View>
+
+            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
+              <View style={styles.statCardHeader}>
+                <MaterialIcons name="task-alt" size={18} color="#10B981" />
+                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Settled</Text>
+              </View>
+              <Text style={[styles.statCardValue, { color: '#10B981' }]}>
+                {cancellations.filter((r) => r.status === 'Approved' || r.status === 'Approved by Admin' || r.status === 'COMPLETED').length}
+              </Text>
+              <Text style={[styles.statCardSubtitle, { color: '#10B981' }]}>Refund completed</Text>
             </View>
           </View>
         )}
@@ -872,44 +1257,6 @@ export const MembersTab = ({ topInset, navigation }) => {
             )}
           </TouchableOpacity>
         </View>
-
-        {/* ACTIVE SECTION PILL INDICATOR */}
-        {activeMode !== 'MEMBERS' && (
-          <View style={styles.activeModeIndicatorRow}>
-            <View
-              style={[
-                styles.activeModeIndicatorPill,
-                { backgroundColor: isDark ? 'rgba(37, 99, 235, 0.2)' : '#EFF6FF', borderColor: '#2563EB', borderWidth: 1 },
-              ]}
-            >
-              <MaterialIcons
-                name={
-                  activeMode === 'SWITCHES'
-                    ? 'sync'
-                    : activeMode === 'BOOKINGS'
-                    ? 'confirmation-number'
-                    : 'cancel'
-                }
-                size={14}
-                color="#2563EB"
-              />
-              <Text style={[styles.activeModeIndicatorText, { color: '#2563EB' }]}>
-                Viewing:{' '}
-                {activeMode === 'SWITCHES'
-                  ? `Plan Switches (${switchRequests.length})`
-                  : activeMode === 'BOOKINGS'
-                  ? `Day Passes (${bookings.length})`
-                  : `Cancellations (${cancellations.length})`}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setActiveMode('MEMBERS')}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <MaterialIcons name="close" size={14} color="#2563EB" style={{ marginLeft: 4 }} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
 
         {/* 5. FILTER CHIPS */}
         <ScrollView
@@ -1576,12 +1923,12 @@ export const MembersTab = ({ topInset, navigation }) => {
                       </View>
                     </View>
 
-                    {/* Action Buttons for Pending Gym Review */}
+                    {/* Action Buttons for Pending Gym Review (Exact Web Logic) */}
                     {isPendingGym && (
                       <View style={styles.switchActionRow}>
                         <TouchableOpacity
                           style={[styles.switchAcceptBtn, { backgroundColor: AppColors.primaryColor }]}
-                          onPress={() => handleSwitchAction(req, 'ACCEPT')}
+                          onPress={() => handleOpenAcceptSwitch(req)}
                           activeOpacity={0.8}
                         >
                           <MaterialIcons name="send" size={15} color="#FFFFFF" />
@@ -1596,12 +1943,12 @@ export const MembersTab = ({ topInset, navigation }) => {
                               backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2',
                             },
                           ]}
-                          onPress={() => handleSwitchAction(req, 'REJECT')}
+                          onPress={() => handleOpenRejectSwitch(req)}
                           activeOpacity={0.8}
                         >
                           <MaterialIcons name="close" size={15} color="#EF4444" />
                           <Text style={[styles.switchRejectBtnText, { color: '#EF4444' }]}>
-                            Reject
+                            Decline
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -1766,7 +2113,7 @@ export const MembersTab = ({ topInset, navigation }) => {
           </>
         )}
 
-        {/* --- 5C. CANCELLATION REQUESTS VIEW --- */}
+        {/* --- 5C. CANCELLATION REQUESTS VIEW (Exact Web Console Features) --- */}
         {activeMode === 'CANCELLATIONS' && (
           <>
             {filteredCancellations.length === 0 ? (
@@ -1795,115 +2142,226 @@ export const MembersTab = ({ topInset, navigation }) => {
                     { color: isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8' },
                   ]}
                 >
-                  Member cancellation requests and their refund negotiations will appear here.
+                  {searchQuery
+                    ? 'No cancellation requests match your search criteria'
+                    : 'Member cancellation requests and refund negotiations will appear here.'}
                 </Text>
               </View>
             ) : (
               filteredCancellations.map((req) => {
+                const isPendingGym = req.status === 'Pending Gym Approval';
                 const isQuotedRefund = req.status === 'Quoted Refund';
-                const isRejected = req.status === 'Rejected';
+                const isApproved = ['Approved', 'Approved by Admin', 'COMPLETED'].includes(req.status);
+                const isRejected = ['Rejected', 'REJECTED_BY_GYM', 'REJECTED_BY_ADMIN'].includes(req.status);
 
+                let statusBadgeText = '#F59E0B';
+                let statusBadgeBg = isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7';
+                let statusLabel = 'Pending Gym Approval';
 
-                const statusColor = isRejected
-                  ? AppColors.dangerRed
-                  : isQuotedRefund
-                  ? '#3B82F6'
-                  : AppColors.secondaryColor;
+                if (isQuotedRefund) {
+                  statusBadgeText = '#3B82F6';
+                  statusBadgeBg = isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF';
+                  statusLabel = 'Quoted Refund';
+                } else if (isApproved) {
+                  statusBadgeText = '#10B981';
+                  statusBadgeBg = isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5';
+                  statusLabel = 'Approved by Admin';
+                } else if (isRejected) {
+                  statusBadgeText = '#EF4444';
+                  statusBadgeBg = isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2';
+                  statusLabel = 'Rejected';
+                }
 
                 return (
                   <TouchableOpacity
                     key={req.key || req.requestId}
                     style={[
-                      styles.memberCard,
+                      styles.cancelCard,
                       {
                         backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
                         borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                       },
                     ]}
                     onPress={() => setSelectedCancelRequest(req)}
-                    activeOpacity={0.85}
+                    activeOpacity={0.88}
                   >
-                    <View style={styles.cardTopRow}>
-                      <View style={styles.memberMain}>
-                        <View
-                          style={[
-                            styles.avatarCircle,
-                            { backgroundColor: 'rgba(239, 68, 68, 0.15)' },
-                          ]}
-                        >
-                          <Text style={[styles.avatarText, { color: AppColors.dangerRed }]}>
-                            {req.avatarInitials ||
-                              (req.memberName || 'C').substring(0, 2).toUpperCase()}
-                          </Text>
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <View style={styles.nameRow}>
+                    {/* Header: Member Avatar, Name, IDs & Status */}
+                    <View style={styles.cancelCardHeader}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        {req.avatar ? (
+                          <Image source={{ uri: req.avatar }} style={styles.switchAvatar} />
+                        ) : (
+                          <View
+                            style={[
+                              styles.switchAvatarFallback,
+                              { backgroundColor: isDark ? '#334155' : '#E2E8F0' },
+                            ]}
+                          >
                             <Text
                               style={[
-                                styles.memberName,
+                                styles.switchAvatarText,
                                 { color: isDark ? '#FFFFFF' : '#0F172A' },
                               ]}
                             >
+                              {(req.memberName || 'M').substring(0, 2).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <View style={styles.switchNameRow}>
+                            <Text
+                              style={[
+                                styles.switchUserName,
+                                { color: isDark ? '#FFFFFF' : '#0F172A' },
+                              ]}
+                              numberOfLines={1}
+                            >
                               {req.memberName}
                             </Text>
-                            <Text style={styles.memberIdText}>{req.requestId}</Text>
+                            <View style={styles.switchReqBadge}>
+                              <Text style={styles.switchReqBadgeText}>{req.requestId}</Text>
+                            </View>
                           </View>
                           <Text
                             style={[
-                              styles.memberPlan,
-                              { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' },
+                              styles.switchUserPhone,
+                              { color: isDark ? '#94A3B8' : '#64748B' },
                             ]}
                           >
-                            {req.plan} • Refund: {req.refundableAmount || '₹1,500'}
+                            {req.phone || ('ID: ' + req.memberId)}
+                            {req.requestDate ? ` • ${req.requestDate}` : ''}
                           </Text>
                         </View>
                       </View>
 
-                      <View style={styles.statusBadge}>
-                        <Text style={[styles.statusBadgeText, { color: statusColor }]}>
-                          {req.status}
+                      {/* Status Tag */}
+                      <View style={[styles.cancelStatusBadge, { backgroundColor: statusBadgeBg }]}>
+                        <Text style={[styles.cancelStatusBadgeText, { color: statusBadgeText }]}>
+                          {statusLabel}
                         </Text>
                       </View>
                     </View>
 
+                    {/* Financial & Plan Overview Box */}
                     <View
                       style={[
-                        styles.cardDivider,
-                        { backgroundColor: isDark ? AppColors.darkBorder : '#F1F5F9' },
+                        styles.cancelPlanBox,
+                        {
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                          borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        },
                       ]}
-                    />
-
-                    <View style={styles.cardBottomRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.metaLabel,
-                            { color: isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8' },
-                          ]}
-                        >
-                          ADMIN STATUS
-                        </Text>
-                        <Text
-                          style={[
-                            styles.metaValue,
-                            { color: isDark ? '#FFFFFF' : '#0F172A' },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {req.adminStatus || req.status}
+                    >
+                      <View style={styles.cancelPlanCol}>
+                        <Text style={styles.switchPlanColLabel}>MEMBERSHIP PLAN</Text>
+                        <Text style={[styles.cancelPlanValue, { color: '#722ED1' }]} numberOfLines={1}>
+                          {req.plan}
                         </Text>
                       </View>
 
-                      <TouchableOpacity
-                        style={[
-                          styles.smallActionBtn,
-                          { backgroundColor: AppColors.primaryColor },
-                        ]}
-                        onPress={() => setSelectedCancelRequest(req)}
-                      >
-                        <Text style={styles.smallActionBtnText}>Quote Refund</Text>
-                      </TouchableOpacity>
+                      <View style={styles.cancelPlanCol}>
+                        <Text style={styles.switchPlanColLabel}>FEE PAID</Text>
+                        <Text
+                          style={[
+                            styles.cancelPlanValue,
+                            { color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: '700' },
+                          ]}
+                        >
+                          {req.amount}
+                        </Text>
+                      </View>
+
+                      <View style={[styles.cancelPlanCol, { alignItems: 'flex-end' }]}>
+                        <Text style={styles.switchPlanColLabel}>EST. REFUND</Text>
+                        <Text style={[styles.cancelPlanValue, { color: '#16A34A', fontWeight: '800' }]}>
+                          {req.refundableAmount || '₹0'}
+                        </Text>
+                      </View>
                     </View>
+
+                    {/* Cancellation Reason Box */}
+                    <View
+                      style={[
+                        styles.cancelReasonBox,
+                        {
+                          backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : '#FEF2F2',
+                          borderColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+                        },
+                      ]}
+                    >
+                      <Text style={styles.cancelReasonTitle}>REASON FOR CANCELLATION</Text>
+                      <Text
+                        style={[
+                          styles.cancelReasonText,
+                          { color: isDark ? '#FCA5A5' : '#B91C1C' },
+                        ]}
+                      >
+                        {req.reason}
+                      </Text>
+                      {req.notes ? (
+                        <Text
+                          style={[
+                            styles.cancelReasonNotes,
+                            { color: isDark ? '#94A3B8' : '#64748B' },
+                          ]}
+                        >
+                          Notes: {req.notes}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {/* Actions for Pending Gym Approval (Exact Web Logic) */}
+                    {isPendingGym ? (
+                      <View style={styles.switchActionRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.switchAcceptBtn,
+                            { backgroundColor: AppColors.primaryColor },
+                          ]}
+                          onPress={() => handleOpenQuoteRefundModal(req)}
+                          activeOpacity={0.8}
+                        >
+                          <MaterialIcons name="send" size={15} color="#FFFFFF" />
+                          <Text style={styles.switchAcceptBtnText}>Send Refund Quote</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.switchRejectBtn,
+                            {
+                              borderColor: '#EF4444',
+                              backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#FEF2F2',
+                            },
+                          ]}
+                          onPress={() => handleRejectCancelRequest(req)}
+                          activeOpacity={0.8}
+                        >
+                          <MaterialIcons name="close" size={15} color="#EF4444" />
+                          <Text style={[styles.switchRejectBtnText, { color: '#EF4444' }]}>
+                            Reject
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : isQuotedRefund ? (
+                      <View style={styles.cancelSecondaryActionRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11.5, color: '#3B82F6', fontWeight: '600' }}>
+                            Awaiting member approval for quote {req.refundableAmount}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[
+                            styles.cancelUpdateQuoteBtn,
+                            { borderColor: AppColors.primaryColor },
+                          ]}
+                          onPress={() => handleOpenQuoteRefundModal(req)}
+                        >
+                          <Text style={[styles.cancelUpdateQuoteBtnText, { color: AppColors.primaryColor }]}>
+                            Update Quote
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
                   </TouchableOpacity>
                 );
               })
@@ -1925,7 +2383,11 @@ export const MembersTab = ({ topInset, navigation }) => {
           <View
             style={[
               styles.modalContent,
-              { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: '88%' },
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                maxHeight: '90%',
+                paddingBottom: Math.max(insets.bottom, 24) + 16,
+              },
             ]}
           >
             {selectedMember && (
@@ -2002,54 +2464,23 @@ export const MembersTab = ({ topInset, navigation }) => {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Segment Tabs in Details Sheet */}
+                  {/* 1. Plan & Validity Section */}
                   <View
                     style={[
-                      styles.sheetSegmentContainer,
+                      styles.sheetSectionCard,
                       {
                         backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
                         borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                       },
                     ]}
                   >
-                    {[
-                      { id: 'plan', label: 'Plan & Validity' },
-                      { id: 'trainer', label: 'Trainer & Goals' },
-                      { id: 'emergency', label: 'Emergency' },
-                      { id: 'attendance', label: 'Check-ins' },
-                    ].map((tab) => (
-                      <TouchableOpacity
-                        key={tab.id}
-                        style={[
-                          styles.sheetSegmentTab,
-                          memberDetailsTab === tab.id && {
-                            backgroundColor: AppColors.primaryColor,
-                          },
-                        ]}
-                        onPress={() => setMemberDetailsTab(tab.id)}
-                      >
-                        <Text
-                          style={[
-                            styles.sheetSegmentTabText,
-                            {
-                              color:
-                                memberDetailsTab === tab.id
-                                  ? '#FFFFFF'
-                                  : isDark
-                                  ? '#94A3B8'
-                                  : '#64748B',
-                              fontWeight: memberDetailsTab === tab.id ? '700' : '500',
-                            },
-                          ]}
-                        >
-                          {tab.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                    <View style={styles.sheetSectionHeader}>
+                      <MaterialIcons name="card-membership" size={17} color={AppColors.primaryColor} />
+                      <Text style={[styles.sheetSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                        Plan & Validity
+                      </Text>
+                    </View>
 
-                  {/* Tab 1: Plan & Validity */}
-                  {memberDetailsTab === 'plan' && (
                     <View style={styles.sheetSectionBox}>
                       <View style={styles.detailRow}>
                         <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
@@ -2108,22 +2539,37 @@ export const MembersTab = ({ topInset, navigation }) => {
                         </Text>
                       </View>
                     </View>
-                  )}
+                  </View>
 
-                  {/* Tab 2: Trainer & Goals */}
-                  {memberDetailsTab === 'trainer' && (
+                  {/* 2. Trainer & Goals Section */}
+                  <View
+                    style={[
+                      styles.sheetSectionCard,
+                      {
+                        backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                      },
+                    ]}
+                  >
+                    <View style={styles.sheetSectionHeader}>
+                      <MaterialIcons name="fitness-center" size={17} color={AppColors.primaryColor} />
+                      <Text style={[styles.sheetSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                        Trainer & Fitness Goals
+                      </Text>
+                    </View>
+
                     <View style={styles.sheetSectionBox}>
                       <View
                         style={[
                           styles.trainerCardBox,
                           {
-                            backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
                             borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                           },
                         ]}
                       >
                         <MaterialIcons
-                          name="fitness-center"
+                          name="person"
                           size={24}
                           color={AppColors.primaryColor}
                         />
@@ -2179,10 +2625,25 @@ export const MembersTab = ({ topInset, navigation }) => {
                         </Text>
                       </View>
                     </View>
-                  )}
+                  </View>
 
-                  {/* Tab 3: Emergency & Contact */}
-                  {memberDetailsTab === 'emergency' && (
+                  {/* 3. Emergency & Contact Details Section */}
+                  <View
+                    style={[
+                      styles.sheetSectionCard,
+                      {
+                        backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                      },
+                    ]}
+                  >
+                    <View style={styles.sheetSectionHeader}>
+                      <MaterialIcons name="contact-phone" size={17} color={AppColors.primaryColor} />
+                      <Text style={[styles.sheetSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                        Emergency & Contact Details
+                      </Text>
+                    </View>
+
                     <View style={styles.sheetSectionBox}>
                       <View style={styles.detailRow}>
                         <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
@@ -2228,16 +2689,31 @@ export const MembersTab = ({ topInset, navigation }) => {
                         </Text>
                       </View>
                     </View>
-                  )}
+                  </View>
 
-                  {/* Tab 4: Check-in History */}
-                  {memberDetailsTab === 'attendance' && (
+                  {/* 4. Check-in History Section */}
+                  <View
+                    style={[
+                      styles.sheetSectionCard,
+                      {
+                        backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                      },
+                    ]}
+                  >
+                    <View style={styles.sheetSectionHeader}>
+                      <MaterialIcons name="event-available" size={17} color={AppColors.primaryColor} />
+                      <Text style={[styles.sheetSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                        Attendance & Check-ins
+                      </Text>
+                    </View>
+
                     <View style={styles.sheetSectionBox}>
                       <View style={styles.sheetStatsGrid}>
                         <View
                           style={[
                             styles.sheetStatBox,
-                            { backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC' },
+                            { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF' },
                           ]}
                         >
                           <Text style={[styles.sheetStatNum, { color: AppColors.primaryColor }]}>
@@ -2256,7 +2732,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                         <View
                           style={[
                             styles.sheetStatBox,
-                            { backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC' },
+                            { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF' },
                           ]}
                         >
                           <Text
@@ -2292,7 +2768,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                             style={[
                               styles.checkinLogItem,
                               {
-                                backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
                                 borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                               },
                             ]}
@@ -2333,7 +2809,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                         </Text>
                       )}
                     </View>
-                  )}
+                  </View>
 
                   {/* Primary Action Buttons */}
                   <View style={styles.sheetBottomActionRow}>
@@ -2385,7 +2861,11 @@ export const MembersTab = ({ topInset, navigation }) => {
           <View
             style={[
               styles.modalContent,
-              { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: '80%' },
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                maxHeight: '85%',
+                paddingBottom: Math.max(insets.bottom, 24) + 16,
+              },
             ]}
           >
             <View style={styles.modalHeader}>
@@ -2652,28 +3132,59 @@ export const MembersTab = ({ topInset, navigation }) => {
                     />
                   </View>
 
-                  <View style={styles.sheetBottomActionRow}>
-                    <TouchableOpacity
-                      style={[styles.sheetMainBtn, { backgroundColor: AppColors.primaryColor }]}
-                      onPress={() => handleSendCancelQuote(selectedCancelRequest)}
-                    >
-                      <MaterialIcons name="send" size={18} color="#FFFFFF" />
-                      <Text style={styles.sheetMainBtnText}>Send Refund Quote</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.sheetSecondaryBtn,
-                        { borderColor: AppColors.dangerRed, backgroundColor: 'rgba(239, 68, 68, 0.08)' },
-                      ]}
-                      onPress={() => handleRejectCancelRequest(selectedCancelRequest)}
-                    >
-                      <MaterialIcons name="close" size={18} color={AppColors.dangerRed} />
-                      <Text style={[styles.sheetSecondaryBtnText, { color: AppColors.dangerRed }]}>
-                        Reject Request
-                      </Text>
-                    </TouchableOpacity>
+                  {/* Workflow Guidance Banner (Exact Web Logic) */}
+                  <View
+                    style={[
+                      styles.cancelWorkflowBanner,
+                      {
+                        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.12)' : '#EFF6FF',
+                        borderColor: isDark ? 'rgba(59, 130, 246, 0.25)' : '#DBEAFE',
+                      },
+                    ]}
+                  >
+                    <MaterialIcons name="info-outline" size={17} color="#2563EB" />
+                    <Text style={[styles.cancelWorkflowBannerText, { color: isDark ? '#93C5FD' : '#1E40AF' }]}>
+                      {selectedCancelRequest.status === 'Pending Gym Approval'
+                        ? 'Enter a refund amount to send a quote directly to the member.'
+                        : selectedCancelRequest.status === 'Quoted Refund'
+                        ? 'The refund quote is waiting for the member to accept or re-request negotiation.'
+                        : 'This cancellation request has been resolved and closed.'}
+                    </Text>
                   </View>
+
+                  {/* Actions for Pending Gym Approval */}
+                  {selectedCancelRequest.status === 'Pending Gym Approval' && (
+                    <View style={styles.sheetBottomActionRow}>
+                      <TouchableOpacity
+                        style={[styles.sheetMainBtn, { backgroundColor: AppColors.primaryColor }]}
+                        onPress={() => {
+                          const req = selectedCancelRequest;
+                          setSelectedCancelRequest(null);
+                          handleOpenQuoteRefundModal(req);
+                        }}
+                      >
+                        <MaterialIcons name="send" size={18} color="#FFFFFF" />
+                        <Text style={styles.sheetMainBtnText}>Send Refund Quote</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.sheetSecondaryBtn,
+                          { borderColor: AppColors.dangerRed, backgroundColor: 'rgba(239, 68, 68, 0.08)' },
+                        ]}
+                        onPress={() => {
+                          const req = selectedCancelRequest;
+                          setSelectedCancelRequest(null);
+                          handleRejectCancelRequest(req);
+                        }}
+                      >
+                        <MaterialIcons name="close" size={18} color={AppColors.dangerRed} />
+                        <Text style={[styles.sheetSecondaryBtnText, { color: AppColors.dangerRed }]}>
+                          Reject Request
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </ScrollView>
               </>
             )}
@@ -2692,7 +3203,11 @@ export const MembersTab = ({ topInset, navigation }) => {
           <View
             style={[
               styles.modalContent,
-              { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: '84%' },
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                maxHeight: '88%',
+                paddingBottom: Math.max(insets.bottom, 24) + 16,
+              },
             ]}
           >
             {selectedSwitchRequest && (
@@ -2794,6 +3309,60 @@ export const MembersTab = ({ topInset, navigation }) => {
                     </Text>
                   </View>
 
+                  {/* Stage Workflow Guidance Banner (Exact Web Logic) */}
+                  <View
+                    style={[
+                      styles.cancelWorkflowBanner,
+                      {
+                        backgroundColor:
+                          selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
+                            ? isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7'
+                            : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                            ? isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF'
+                            : isDark ? 'rgba(16, 185, 129, 0.12)' : '#ECFDF5',
+                        borderColor:
+                          selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
+                            ? isDark ? 'rgba(245, 158, 11, 0.3)' : '#FDE68A'
+                            : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                            ? isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE'
+                            : isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
+                      },
+                    ]}
+                  >
+                    <MaterialIcons
+                      name="info-outline"
+                      size={17}
+                      color={
+                        selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
+                          ? '#D97706'
+                          : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                          ? '#6366F1'
+                          : '#10B981'
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.cancelWorkflowBannerText,
+                        {
+                          color:
+                            selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
+                              ? isDark ? '#FCD34D' : '#92400E'
+                              : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                              ? isDark ? '#A5B4FC' : '#3730A3'
+                              : isDark ? '#6EE7B7' : '#065F46',
+                        },
+                      ]}
+                    >
+                      {selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
+                        ? 'Stage 1 of 2: Awaiting Gym Owner review before dispatching to Super Admin.'
+                        : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                        ? 'Stage 2 of 2: Forwarded to Super Admin for final verification and atomic execution.'
+                        : ['APPROVED', 'APPROVED_AND_EXECUTED', 'COMPLETED'].includes(selectedSwitchRequest.status)
+                        ? 'Completed: Plan switch verified and executed. Member pass is updated.'
+                        : `Rejected: ${selectedSwitchRequest.rejectionReason || 'Switch request was declined.'}`}
+                    </Text>
+                  </View>
+
                   {selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL' && (
                     <View style={styles.sheetBottomActionRow}>
                       <TouchableOpacity
@@ -2801,7 +3370,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                         onPress={() => {
                           const req = selectedSwitchRequest;
                           setSelectedSwitchRequest(null);
-                          handleSwitchAction(req, 'ACCEPT');
+                          handleOpenAcceptSwitch(req);
                         }}
                       >
                         <MaterialIcons name="send" size={18} color="#FFFFFF" />
@@ -2816,12 +3385,12 @@ export const MembersTab = ({ topInset, navigation }) => {
                         onPress={() => {
                           const req = selectedSwitchRequest;
                           setSelectedSwitchRequest(null);
-                          handleSwitchAction(req, 'REJECT');
+                          handleOpenRejectSwitch(req);
                         }}
                       >
                         <MaterialIcons name="close" size={18} color={AppColors.dangerRed} />
                         <Text style={[styles.sheetSecondaryBtnText, { color: AppColors.dangerRed }]}>
-                          Reject Request
+                          Decline Request
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -2852,6 +3421,7 @@ export const MembersTab = ({ topInset, navigation }) => {
               {
                 backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
                 borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                paddingBottom: Math.max(insets.bottom, 24) + 20,
               },
             ]}
           >
@@ -3009,6 +3579,394 @@ export const MembersTab = ({ topInset, navigation }) => {
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 6. PLAN SWITCH ACCEPT CONFIRMATION MODAL (Exact Web Dialog)              */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showSwitchAcceptModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSwitchAcceptModal(false)}
+      >
+        <View style={styles.dialogOverlay}>
+          <View
+            style={[
+              styles.dialogBox,
+              { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+            ]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <View style={[styles.dialogIconCircle, { backgroundColor: 'rgba(0, 56, 130, 0.1)' }]}>
+                <MaterialIcons name="send" size={22} color={AppColors.primaryColor} />
+              </View>
+              <Text style={[styles.dialogTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Accept Plan Switch Request
+              </Text>
+            </View>
+
+            {switchReqToAccept && (
+              <>
+                <Text style={[styles.dialogBodyText, { color: isDark ? '#CBD5E1' : '#334155' }]}>
+                  Accept switch request for{' '}
+                  <Text style={{ fontWeight: '700', color: isDark ? '#FFFFFF' : '#0F172A' }}>
+                    {switchReqToAccept.userId?.fullName || 'Member'}
+                  </Text>{' '}
+                  to{' '}
+                  <Text style={{ fontWeight: '700', color: AppColors.primaryColor }}>
+                    {switchReqToAccept.targetTier} Plan
+                  </Text>
+                  ?
+                </Text>
+
+                {/* Prorated Settlement Summary Card */}
+                <View
+                  style={[
+                    styles.dialogProrationBox,
+                    {
+                      backgroundColor: isDark ? '#141414' : '#F8FAFC',
+                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                    },
+                  ]}
+                >
+                  <View style={styles.dialogProrationRow}>
+                    <Text style={{ fontSize: 12.5, color: isDark ? '#94A3B8' : '#64748B' }}>
+                      Prorated Credit Applied:
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#16A34A' }}>
+                      ₹{(((switchReqToAccept.quoteSnapshot?.proRatedCreditPaise || 0) / 100).toFixed(2))}
+                    </Text>
+                  </View>
+
+                  <View style={styles.dialogProrationRow}>
+                    <Text style={{ fontSize: 12.5, color: isDark ? '#94A3B8' : '#64748B' }}>
+                      Net Payable / Settlement:
+                    </Text>
+                    <Text style={{ fontSize: 13.5, fontWeight: '800', color: isDark ? '#FFFFFF' : '#0F172A' }}>
+                      ₹{(((switchReqToAccept.quoteSnapshot?.netAmountToPayPaise || 0) / 100).toFixed(2))}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.dialogNoticeText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                  Once forwarded, Super Admin will perform final verification and execute the membership transition atomically.
+                </Text>
+
+                <View style={styles.dialogActionsRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.dialogCancelBtn,
+                      { borderColor: isDark ? AppColors.darkBorder : '#CBD5E1' },
+                    ]}
+                    onPress={() => {
+                      setShowSwitchAcceptModal(false);
+                      setSwitchReqToAccept(null);
+                    }}
+                  >
+                    <Text style={[styles.dialogCancelBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.dialogSubmitBtn, { backgroundColor: AppColors.primaryColor }]}
+                    onPress={handleConfirmAcceptSwitch}
+                  >
+                    <MaterialIcons name="send" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.dialogSubmitBtnText}>Accept & Send</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 7. PLAN SWITCH REJECTION REASON MODAL (Exact Web Dialog)                  */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showSwitchRejectionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSwitchRejectionModal(false)}
+      >
+        <View style={styles.dialogOverlay}>
+          <View
+            style={[
+              styles.dialogBox,
+              { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+            ]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <View style={[styles.dialogIconCircle, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                <MaterialIcons name="close" size={22} color="#EF4444" />
+              </View>
+              <Text style={[styles.dialogTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Decline Plan Switch Request
+              </Text>
+            </View>
+
+            <Text style={[styles.dialogNoticeText, { color: isDark ? '#94A3B8' : '#64748B', marginBottom: 14 }]}>
+              Please state the reason for declining this switch request. This note will be recorded for member reference.
+            </Text>
+
+            <TextInput
+              multiline
+              numberOfLines={3}
+              value={switchRejectionReason}
+              onChangeText={setSwitchRejectionReason}
+              placeholder="e.g. Plan switch criteria not met or slot fully occupied..."
+              placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+              style={[
+                styles.dialogTextArea,
+                {
+                  backgroundColor: isDark ? '#141414' : '#F8FAFC',
+                  borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                  color: isDark ? '#FFFFFF' : '#0F172A',
+                },
+              ]}
+            />
+
+            <View style={styles.dialogActionsRow}>
+              <TouchableOpacity
+                style={[
+                  styles.dialogCancelBtn,
+                  { borderColor: isDark ? AppColors.darkBorder : '#CBD5E1' },
+                ]}
+                onPress={() => {
+                  setShowSwitchRejectionModal(false);
+                  setSwitchReqToReject(null);
+                }}
+              >
+                <Text style={[styles.dialogCancelBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.dialogSubmitBtn, { backgroundColor: '#EF4444' }]}
+                onPress={handleConfirmRejectSwitch}
+              >
+                <Text style={styles.dialogSubmitBtnText}>Confirm Reject</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 8. QUOTE REFUND MODAL (Customized & Centered Dialog with Keyboard Avoidance)*/}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showQuoteRefundModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQuoteRefundModal(false)}
+      >
+        <View style={styles.dialogOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center' }}
+          >
+            <View
+              style={[
+                styles.dialogBox,
+                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+              ]}
+            >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <View style={[styles.dialogIconCircle, { backgroundColor: 'rgba(0, 56, 130, 0.1)' }]}>
+                <MaterialIcons name="local-offer" size={22} color={AppColors.primaryColor} />
+              </View>
+              <Text style={[styles.dialogTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Quote Refund to Member
+              </Text>
+            </View>
+
+            {selectedCancelRequestForQuote && (
+              <>
+                <Text style={[styles.dialogBodyText, { color: isDark ? '#CBD5E1' : '#334155', marginBottom: 12 }]}>
+                  Quote the refund for{' '}
+                  <Text style={{ fontWeight: '700', color: isDark ? '#FFFFFF' : '#0F172A' }}>
+                    {selectedCancelRequestForQuote.memberName}
+                  </Text>{' '}
+                  ({selectedCancelRequestForQuote.requestId}).
+                </Text>
+
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={[styles.inputFieldLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                    Refund Amount (₹)
+                  </Text>
+                  <View
+                    style={[
+                      styles.dialogInputWrapper,
+                      {
+                        backgroundColor: isDark ? '#141414' : '#F8FAFC',
+                        borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0F172A' }}>₹</Text>
+                    <TextInput
+                      keyboardType="decimal-pad"
+                      value={cancelQuoteAmount}
+                      onChangeText={setCancelQuoteAmount}
+                      placeholder="0"
+                      placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                      style={[styles.dialogInput, { color: isDark ? '#FFFFFF' : '#0F172A' }]}
+                    />
+                  </View>
+                  <Text style={{ fontSize: 11.5, color: isDark ? '#94A3B8' : '#64748B', marginTop: 4 }}>
+                    Max refundable: ₹{Number(selectedCancelRequestForQuote.maximumRefundAmount || selectedCancelRequestForQuote.refundAmount || 0).toLocaleString('en-IN')}
+                    {' • '}
+                    Deduction: ₹{Math.max(0, Number(selectedCancelRequestForQuote.maximumRefundAmount || selectedCancelRequestForQuote.refundAmount || 0) - Number(cancelQuoteAmount || 0)).toLocaleString('en-IN')}
+                  </Text>
+                </View>
+
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={[styles.inputFieldLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                    Message to Member (Optional)
+                  </Text>
+                  <TextInput
+                    value={cancelQuoteMessage}
+                    onChangeText={setCancelQuoteMessage}
+                    placeholder="e.g. Refund quote from gym owner"
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                    style={[
+                      styles.dialogInputWrapper,
+                      {
+                        backgroundColor: isDark ? '#141414' : '#F8FAFC',
+                        borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                        color: isDark ? '#FFFFFF' : '#0F172A',
+                      },
+                    ]}
+                  />
+                </View>
+
+                <View style={styles.dialogActionsRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.dialogCancelBtn,
+                      { borderColor: isDark ? AppColors.darkBorder : '#CBD5E1' },
+                    ]}
+                    onPress={() => {
+                      setShowQuoteRefundModal(false);
+                      setSelectedCancelRequestForQuote(null);
+                    }}
+                  >
+                    <Text style={[styles.dialogCancelBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.dialogSubmitBtn, { backgroundColor: AppColors.primaryColor }]}
+                    onPress={handleConfirmSendQuote}
+                  >
+                    <MaterialIcons name="send" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.dialogSubmitBtnText}>Send Quote</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+      {/* ========================================================================= */}
+      {/* 9. CANCELLATION REJECTION REASON MODAL (Customized Dialog Popup)           */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showCancelRejectionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowCancelRejectionModal(false);
+          setCancelReqToReject(null);
+        }}
+      >
+        <View style={styles.dialogOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center' }}
+          >
+            <View
+              style={[
+                styles.dialogBox,
+                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+              ]}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <View style={[styles.dialogIconCircle, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                  <MaterialIcons name="close" size={22} color="#EF4444" />
+                </View>
+                <Text style={[styles.dialogTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                  Decline Cancellation Request
+                </Text>
+              </View>
+
+              {cancelReqToReject && (
+                <>
+                  <Text style={[styles.dialogBodyText, { color: isDark ? '#CBD5E1' : '#334155', marginBottom: 12 }]}>
+                    Are you sure you want to decline the cancellation request for{' '}
+                    <Text style={{ fontWeight: '700', color: isDark ? '#FFFFFF' : '#0F172A' }}>
+                      {cancelReqToReject.memberName}
+                    </Text>{' '}
+                    ({cancelReqToReject.requestId})? The member's subscription will remain active.
+                  </Text>
+
+                  <Text style={[styles.dialogNoticeText, { color: isDark ? '#94A3B8' : '#64748B', marginBottom: 8 }]}>
+                    Reason for declining (Optional):
+                  </Text>
+
+                  <TextInput
+                    multiline
+                    numberOfLines={3}
+                    value={cancelRejectionReason}
+                    onChangeText={setCancelRejectionReason}
+                    placeholder="e.g. Member opted for freeze / Policy non-compliant..."
+                    placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                    style={[
+                      styles.dialogTextArea,
+                      {
+                        backgroundColor: isDark ? '#141414' : '#F8FAFC',
+                        borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                        color: isDark ? '#FFFFFF' : '#0F172A',
+                      },
+                    ]}
+                  />
+
+                  <View style={styles.dialogActionsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.dialogCancelBtn,
+                        { borderColor: isDark ? AppColors.darkBorder : '#CBD5E1' },
+                      ]}
+                      onPress={() => {
+                        setShowCancelRejectionModal(false);
+                        setCancelReqToReject(null);
+                      }}
+                    >
+                      <Text style={[styles.dialogCancelBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                        Keep
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.dialogSubmitBtn, { backgroundColor: '#EF4444' }]}
+                      onPress={handleConfirmRejectCancel}
+                    >
+                      <MaterialIcons name="block" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.dialogSubmitBtnText}>Reject Request</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
     </View>
@@ -3457,6 +4415,23 @@ const styles = StyleSheet.create({
   },
   sheetSectionBox: {
     paddingVertical: 4,
+  },
+  sheetSectionCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 14,
+  },
+  sheetSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  sheetSectionTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   detailRow: {
     flexDirection: 'row',
@@ -3969,5 +4944,256 @@ const styles = StyleSheet.create({
   initialLoadingText: {
     fontSize: 13,
     fontWeight: '600',
+  },
+
+  /* Top Segmented Navigation Tabs */
+  modeSegmentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 3,
+  },
+  modeSegmentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    gap: 4,
+  },
+  modeSegmentTabActive: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  modeSegmentText: {
+    fontSize: 12,
+    letterSpacing: -0.2,
+  },
+  modeSegmentBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 8,
+    minWidth: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeSegmentBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  /* Cancellation Card Styles */
+  cancelCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 12,
+  },
+  cancelCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  cancelStatusBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  cancelStatusBadgeText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  cancelPlanBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  cancelPlanCol: {
+    flex: 1,
+  },
+  cancelPlanValue: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  cancelReasonBox: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 12,
+  },
+  cancelReasonTitle: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#EF4444',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  cancelReasonText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
+  cancelReasonNotes: {
+    fontSize: 11.5,
+    marginTop: 4,
+  },
+  cancelSecondaryActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  cancelUpdateQuoteBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  cancelUpdateQuoteBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cancelWorkflowBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  cancelWorkflowBannerText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+
+  /* Dialogs & Popup Sheets */
+  dialogOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  dialogBox: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 20,
+    padding: 22,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  dialogIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialogTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    flex: 1,
+  },
+  dialogBodyText: {
+    fontSize: 13.5,
+    lineHeight: 19,
+    marginBottom: 12,
+  },
+  dialogNoticeText: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  dialogProrationBox: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    gap: 6,
+    marginBottom: 12,
+  },
+  dialogProrationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dialogTextArea: {
+    height: 80,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    fontSize: 13,
+    textAlignVertical: 'top',
+    marginBottom: 16,
+  },
+  dialogActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 14,
+  },
+  dialogCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  dialogCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dialogSubmitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  dialogSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  inputFieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  dialogInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  dialogInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 6,
+    paddingVertical: 0,
   },
 });

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppColors } from '../../theme/appTheme';
 import { apiService } from '../../services/apiService';
 import { CreateSectionModal, SECTION_CATEGORIES, calculateScheduleEndDate } from '../../widgets/CreateSectionModal';
@@ -19,6 +20,7 @@ import { SectionRosterModal } from '../../widgets/SectionRosterModal';
 
 export const SectionsSubView = ({ topInset, onBack, gymId }) => {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [sections, setSections] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -170,7 +172,7 @@ export const SectionsSubView = ({ topInset, onBack, gymId }) => {
 
       {/* Main Sections List */}
       <ScrollView
-        contentContainerStyle={styles.scrollList}
+        contentContainerStyle={[styles.scrollList, { paddingBottom: 170 + Math.max(insets.bottom, 24) }]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
