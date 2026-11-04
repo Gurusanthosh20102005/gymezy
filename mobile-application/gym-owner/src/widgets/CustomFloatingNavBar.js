@@ -27,22 +27,22 @@ const NAV_ITEMS = [
     outlineIcon: 'people-outline',
   },
   {
+    label: 'Bookings',
+    iconName: 'confirmation-number',
+    iconFamily: 'MaterialIcons',
+    outlineIcon: 'confirmation-number',
+  },
+  {
     label: 'Employee',
     iconName: 'badge',
     iconFamily: 'MaterialIcons',
     outlineIcon: 'badge',
   },
   {
-    label: 'Analytics',
-    iconName: 'bar-chart',
+    label: 'Sections',
+    iconName: 'fitness-center',
     iconFamily: 'MaterialIcons',
-    outlineIcon: 'analytics-outline',
-  },
-  {
-    label: 'Settings',
-    iconName: 'settings',
-    iconFamily: 'MaterialIcons',
-    outlineIcon: 'settings-outline',
+    outlineIcon: 'fitness-center',
   },
 ];
 
@@ -90,13 +90,13 @@ const AnimatedNavItem = ({ item, isSelected, onTap, isDark }) => {
         {item.iconFamily === 'MaterialIcons' ? (
           <MaterialIcons
             name={item.iconName}
-            size={23}
+            size={22}
             color={isSelected ? activeColor : inactiveColor}
           />
         ) : (
           <Ionicons
             name={isSelected ? item.iconName : item.outlineIcon}
-            size={23}
+            size={22}
             color={isSelected ? activeColor : inactiveColor}
           />
         )}
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
   container: {
-    marginHorizontal: 16,
+    marginHorizontal: 12,
     borderRadius: 30,
     borderWidth: 1.2,
     shadowColor: '#000',

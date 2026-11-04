@@ -24,6 +24,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../services/apiService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSafeImageUri } from '../../utils/mediaUtils';
+import { AddWalkInMemberModal } from '../../widgets/AddWalkInMemberModal';
 
 
 const MEMBER_FILTER_TABS = ['All', 'Active', 'Expiring Soon', 'Expired', 'Cancelled'];
@@ -124,6 +125,7 @@ export const MembersTab = ({ topInset, navigation }) => {
   const [selectedCancelRequest, setSelectedCancelRequest] = useState(null);
   const [selectedSwitchRequest, setSelectedSwitchRequest] = useState(null);
   const [showModeFilterModal, setShowModeFilterModal] = useState(false);
+  const [showWalkInMemberModal, setShowWalkInMemberModal] = useState(false);
 
   // Plan Switch Interactive Modals State
   const [showSwitchAcceptModal, setShowSwitchAcceptModal] = useState(false);
@@ -837,14 +839,12 @@ export const MembersTab = ({ topInset, navigation }) => {
       >
         {/* 1. HEADER BAR */}
         <View style={styles.headerRow}>
-          <View>
+          <View style={{ flex: 1, marginRight: 10 }}>
             <Text style={[styles.pageTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
               {activeMode === 'MEMBERS'
                 ? 'Members Management'
                 : activeMode === 'SWITCHES'
                 ? 'Plan Switch Requests'
-                : activeMode === 'BOOKINGS'
-                ? 'Day Pass Bookings'
                 : 'Cancellation Requests'}
             </Text>
             <Text
@@ -857,11 +857,17 @@ export const MembersTab = ({ topInset, navigation }) => {
                 ? `${totalMembersCount || members.length} registered members in gym roster`
                 : activeMode === 'SWITCHES'
                 ? `${switchRequests.length} plan switch requests from members`
-                : activeMode === 'BOOKINGS'
-                ? `${bookings.length} passes and session bookings`
                 : `${cancellations.length} total cancellation requests`}
             </Text>
           </View>
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={() => setShowWalkInMemberModal(true)}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="person-add" size={17} color="#FFFFFF" />
+            <Text style={styles.headerActionBtnText}>+ Walk-in Member</Text>
+          </TouchableOpacity>
         </View>
 
         {/* 2. TOP PROMINENT SEGMENTED TABS (Exact Web App Top Navigation) */}
@@ -3969,6 +3975,16 @@ export const MembersTab = ({ topInset, navigation }) => {
         </View>
       </Modal>
 
+      {/* Front-Desk Walk-in Member Registration Modal */}
+      <AddWalkInMemberModal
+        visible={showWalkInMemberModal}
+        onClose={() => setShowWalkInMemberModal(false)}
+        onSuccess={() => {
+          fetchMembersPage(1, false);
+          fetchSupportData();
+        }}
+      />
+
     </View>
   );
 };
@@ -3979,6 +3995,25 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
+  },
+  headerActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#003882',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    shadowColor: '#003882',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   headerRow: {
     flexDirection: 'row',
