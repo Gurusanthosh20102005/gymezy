@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import mongoose from 'mongoose';
 import gymRoutes from '../src/routes/gym.routes.js';
+import { computeAccessTypeFromRole } from '../src/controllers/employee.controller.js';
 
 test('Gym Owner Scoped Dashboard Stats & Access Architecture Tests', async (t) => {
   await t.test('1. Gym routes expose scoped /:id/dashboard-stats endpoint', () => {
@@ -61,19 +62,18 @@ test('Gym Owner Scoped Dashboard Stats & Access Architecture Tests', async (t) =
     assert.strictEqual(completedBookingsCount, 1, 'Completed bookings count must match');
   });
 
-  await t.test('3. Employee access level is automated by role without manual accessLevel input', () => {
-    const computeAccessType = (role) =>
-      role === 'Manager'
-        ? 'Admin'
-        : ['Trainer', 'Front Desk Manager', 'Customer Support'].includes(role)
-        ? 'Employee'
-        : 'None';
-
-    assert.strictEqual(computeAccessType('Manager'), 'Admin');
-    assert.strictEqual(computeAccessType('Trainer'), 'Employee');
-    assert.strictEqual(computeAccessType('Front Desk Manager'), 'Employee');
-    assert.strictEqual(computeAccessType('Customer Support'), 'Employee');
-    assert.strictEqual(computeAccessType('Housekeeping'), 'None');
-    assert.strictEqual(computeAccessType('Security'), 'None');
+  await t.test('3. Employee access level is automated by role without manual accessLevel input (Automatic RBAC)', () => {
+    assert.strictEqual(computeAccessTypeFromRole('Manager'), 'Admin');
+    assert.strictEqual(computeAccessTypeFromRole('General Manager'), 'Admin');
+    assert.strictEqual(computeAccessTypeFromRole('Trainer'), 'Employee');
+    assert.strictEqual(computeAccessTypeFromRole('Head Trainer'), 'Employee');
+    assert.strictEqual(computeAccessTypeFromRole('Front Desk Manager'), 'Employee');
+    assert.strictEqual(computeAccessTypeFromRole('Customer Support'), 'Employee');
+    assert.strictEqual(computeAccessTypeFromRole('Physiotherapist'), 'Employee');
+    assert.strictEqual(computeAccessTypeFromRole('Nutritionist'), 'Employee');
+    assert.strictEqual(computeAccessTypeFromRole('Housekeeping'), 'None');
+    assert.strictEqual(computeAccessTypeFromRole('Security'), 'None');
+    assert.strictEqual(computeAccessTypeFromRole('Maintenance'), 'None');
   });
 });
+

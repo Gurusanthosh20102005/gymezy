@@ -93,6 +93,28 @@ export const syncGymTrainersFromEmployees = async (gymIdentifier) => {
 };
 
 /**
+ * Compute system access level automatically based on employee role (Automatic RBAC)
+ * Manager -> Admin
+ * Trainer / Front Desk / Support / Head Trainer / Physio / Nutritionist -> Employee
+ * Housekeeping / Maintenance / Security -> None
+ */
+export const computeAccessTypeFromRole = (role) => {
+  if (!role) return 'Employee';
+  const norm = String(role).trim().toLowerCase();
+  if (norm.includes('front desk') || norm.includes('reception')) return 'Employee';
+  if (norm.includes('manager')) return 'Admin';
+  if (
+    norm.includes('trainer') ||
+    norm.includes('support') ||
+    norm.includes('physio') ||
+    norm.includes('nutrition')
+  ) {
+    return 'Employee';
+  }
+  return 'None';
+};
+
+/**
  * Deep-clean objects and subdocuments to remove internal Mongoose fields (_id, __v, dates) for accurate diffing
  */
 const cleanForDiff = (val) => {
@@ -311,7 +333,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
     gender: gender || 'All',
     joinDate: joinDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     type: type || 'Full-Time',
-    accessType: accessType || 'Employee',
+    accessType: computeAccessTypeFromRole(role || 'Trainer'),
     managerPermissions: {
       requireStaffApproval: req.body.managerPermissions?.requireStaffApproval !== false,
       requirePlanSwitchApproval: req.body.managerPermissions?.requirePlanSwitchApproval !== false,
@@ -610,6 +632,11 @@ export const updateEmployee = asyncHandler(async (req, res) => {
       updatedFieldsPayload[field] = req.body[field];
     }
   });
+
+  // Automatic RBAC: if role is updated, synchronize system access level accordingly
+  if (req.body.role) {
+    updatedFieldsPayload.accessType = computeAccessTypeFromRole(req.body.role);
+  }
 
   // Calculate detailed diff of changed fields
   const editedDiff = calculateFieldDiff(previousSnapshot, updatedFieldsPayload);
