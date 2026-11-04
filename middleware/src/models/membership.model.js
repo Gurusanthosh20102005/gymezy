@@ -12,7 +12,7 @@ export const MEMBERSHIP_STATUS = [
   'Switched',
   'PendingDowngrade',
 ];
-export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Cash', 'Wallet'];
+export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Cash', 'Wallet', 'Online', 'GPay', 'POS', 'COD'];
 export const PAYMENT_STATUS = ['Completed', 'Pending', 'Failed', 'Refunded'];
 
 const pauseHistorySchema = new mongoose.Schema(

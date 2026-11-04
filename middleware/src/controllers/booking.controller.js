@@ -727,10 +727,21 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
   const parsedCustomDates = Array.isArray(customDates)
     ? customDates.map((d) => ({
         date: typeof d === 'string' ? new Date(d) : (d.date ? new Date(d.date) : new Date()),
-        status: 'Upcoming',
+        status: 'Scheduled',
         dailyOtp: Math.floor(100000 + Math.random() * 900000).toString(),
       }))
     : [];
+
+  const normalizePayment = (method) => {
+    if (!method) return 'Cash';
+    const s = String(method).toLowerCase();
+    if (s.includes('card') || s === 'pos' || s === 'online') return 'Card';
+    if (s.includes('upi') || s === 'gpay') return 'UPI';
+    if (s.includes('cash') || s === 'cod') return 'Cash';
+    if (s.includes('wallet')) return 'Wallet';
+    if (s.includes('net') || s.includes('bank')) return 'Net Banking';
+    return method;
+  };
 
   const newBooking = await Booking.create({
     bookingId,
@@ -752,7 +763,7 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
       currency: 'INR',
     },
     payment: {
-      method: paymentMethod || 'Cash',
+      method: normalizePayment(paymentMethod),
       status: paymentStatus || 'Completed',
       transactionId: `WALK-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
       paidAt: now,

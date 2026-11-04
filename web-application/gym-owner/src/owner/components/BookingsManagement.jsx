@@ -385,7 +385,10 @@ export const BookingsManagement = ({
         await loadBookings();
       }
     } catch (err) {
-      message.error(err.response?.data?.message || err.message || 'Failed to create walk-in booking.');
+      const errMsg = err.response?.data?.errors?.length
+        ? err.response.data.errors.join(', ')
+        : (err.response?.data?.message || err.message || 'Failed to create walk-in booking.');
+      message.error(errMsg);
     } finally {
       setIsLoadingBookings(false);
     }

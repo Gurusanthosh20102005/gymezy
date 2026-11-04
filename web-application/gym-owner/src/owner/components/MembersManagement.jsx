@@ -604,7 +604,11 @@ export const MembersManagement = ({
         endDate: end.toISOString().split('T')[0],
         trainerId: activeSelectedTrainer ? (activeSelectedTrainer._id || activeSelectedTrainer.id) : undefined,
         trainerFee: trainerFee,
-        paymentMethod: selectedPaymentType || values.paymentType || 'Cash',
+        paymentMethod: ['Online', 'Card', 'POS'].includes(selectedPaymentType)
+          ? 'Card'
+          : ['GPay', 'UPI'].includes(selectedPaymentType)
+          ? 'UPI'
+          : selectedPaymentType || values.paymentType || 'Cash',
       };
 
       const res = await apiClient.post(`/memberships/gym/${gymId}/walk-in`, payload);
@@ -646,7 +650,10 @@ export const MembersManagement = ({
         if (onAddMember) onAddMember(newMember);
       }
     } catch (err) {
-      message.error(err.response?.data?.message || err.message || 'Failed to create walk-in member.');
+      const errMsg = err.response?.data?.errors?.length
+        ? err.response.data.errors.join(', ')
+        : (err.response?.data?.message || err.message || 'Failed to create walk-in member.');
+      message.error(errMsg);
     } finally {
       setIsMembersLoading(false);
     }

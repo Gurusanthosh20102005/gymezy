@@ -682,6 +682,17 @@ export const createWalkInMembership = async (req, res, next) => {
     // Generate entry OTP
     const entryOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
+    const normalizePayment = (method) => {
+      if (!method) return 'Cash';
+      const s = String(method).toLowerCase();
+      if (s.includes('card') || s === 'pos' || s === 'online') return 'Card';
+      if (s.includes('upi') || s === 'gpay') return 'UPI';
+      if (s.includes('cash') || s === 'cod') return 'Cash';
+      if (s.includes('wallet')) return 'Wallet';
+      if (s.includes('net') || s.includes('bank')) return 'Net Banking';
+      return method;
+    };
+
     const membership = await Membership.create({
       membershipId,
       gymId: gym._id,
@@ -701,7 +712,7 @@ export const createWalkInMembership = async (req, res, next) => {
         currency: 'INR',
       },
       payment: {
-        method: paymentMethod || 'Cash',
+        method: normalizePayment(paymentMethod),
         status: paymentStatus || 'Completed',
         transactionId: `WALK-MEM-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
         walletAmountApplied: 0,
