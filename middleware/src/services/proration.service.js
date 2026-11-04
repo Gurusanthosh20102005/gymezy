@@ -226,7 +226,7 @@ export class ProrationEngine {
   /**
    * Execute atomic transaction on Super Admin Approval
    */
-  static async executeApprovedSwitchTransaction({ switchRequestId, superAdminUser, remarks = '' }) {
+  static async executeApprovedSwitchTransaction({ switchRequestId, superAdminUser, approvedByUser, remarks = '' }) {
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -240,9 +240,9 @@ export class ProrationEngine {
       if (!request) {
         throw ApiError.notFound('Switch request not found.');
       }
-      if (request.status !== 'PENDING_SUPER_ADMIN_APPROVAL') {
+      if (!['PENDING_GYM_APPROVAL', 'PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL'].includes(request.status)) {
         throw ApiError.badRequest(
-          `Cannot execute switch. Request is in status '${request.status}', expected 'PENDING_SUPER_ADMIN_APPROVAL'.`
+          `Cannot execute switch. Request is in status '${request.status}', expected pending approval status.`
         );
       }
 
@@ -400,12 +400,21 @@ export class ProrationEngine {
       request.status = 'APPROVED_AND_EXECUTED';
       request.executedNewMembershipId = newMembership._id;
       request.executedAt = new Date();
+      const reviewerId = approvedByUser?._id || approvedByUser?.id || superAdminUser?._id || superAdminUser?.id || null;
+      const reviewerName = approvedByUser?.fullName || approvedByUser?.name || superAdminUser?.fullName || 'Gym Admin';
+      request.gymApproval = {
+        status: 'APPROVED',
+        reviewedBy: reviewerId,
+        reviewerName,
+        reviewedAt: new Date(),
+        remarks: remarks || 'Approved and executed by Gym Admin',
+      };
       request.superAdminApproval = {
         status: 'APPROVED',
-        reviewedBy: superAdminUser?._id || superAdminUser?.id || null,
-        reviewerName: superAdminUser?.fullName || 'Super Admin',
+        reviewedBy: reviewerId,
+        reviewerName,
         reviewedAt: new Date(),
-        remarks: remarks || 'Approved and executed by Super Admin',
+        remarks: remarks || 'Approved and executed',
       };
       await request.save({ session });
 

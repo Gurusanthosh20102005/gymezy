@@ -288,63 +288,59 @@ sequenceDiagram
 
 ---
 
-### 4.5 Workflow 5: Gym Owner Operations & Live Staff/Employee Management with Super Admin Approval & Edit Diff Tracking
+### 4.5 Workflow 5: Gym Admin Autonomous Operations & Manager Delegation Architecture
+
+In GYMEZY, operational management is fully decentralized: **Super Admin approval is strictly reserved for initial Gym Partner Onboarding and KYC verification.** All day-to-day operations—staff additions/edits, membership switches, proration execution, cancellations, and profile adjustments—are executed autonomously by the **Gym Admin (Owner)** without Super Admin approval.
+
+When a Gym Admin creates or updates an Employee with the role `Manager`, the Gym Admin configures 4 granular delegation permissions:
+1. `requireStaffApproval`: Adding/editing/deactivating trainers and staff.
+2. `requirePlanSwitchApproval`: Approving membership switches and proration upgrades/downgrades.
+3. `requireCancellationApproval`: Accepting member cancellations and refund settlements.
+4. `requireProfileEditApproval`: Modifying gym operating timings, facilities, pricing, or description.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Owner as Authenticated Gym Owner
-    participant Web as Gym Owner Portal (/owner/employees)
-    participant API as Middleware API (/api/v1/employees)
-    participant DB as MongoDB (Employee Collection & Audit Logs)
-    actor Admin as Super Admin (/admin/gyms)
+    actor Admin as Gym Admin (Owner)
+    actor Mgr as Gym Manager (Staff)
+    participant Web as Gym Owner Portal / Mobile App
+    participant API as Middleware API (/api/v1)
+    participant DB as MongoDB (Employees, Gyms, Memberships)
+    participant FCM as Firebase Cloud Messaging
 
-    Owner->>Web: Accesses Employee Management Screen
-    Web->>API: GET /api/v1/employees?gymId=:id
-    API->>DB: Query employees for this Gym ID
-    DB-->>API: Return employee records + approval statuses
-    API-->>Web: 200 OK { employees }
-    Web-->>Owner: Displays live Stat Cards & Employees Table with Approval Badges
+    Admin->>Web: Adds Employee with Role = 'Manager' & sets granular permissions
+    Web->>API: POST /api/v1/employees { name, role: 'Manager', managerPermissions: { requireStaffApproval: true, ... } }
+    API->>DB: Store Employee with managerPermissions & approvalStatus = 'Approved'
+    DB-->>API: Saved Manager Profile
+    API-->>Web: 201 Created (Manager configured)
 
-    alt Add New Full-Time / Part-Time Employee
-        Owner->>Web: Clicks "Add New Employee" / "Add Temp Staff"
-        Owner->>Web: Inputs Name, Role, Phone, Docs, Pay, Gym ID
-        Owner->>Web: Submits Form
-        Web->>API: POST /api/v1/employees { gymId, gymPartnerId, gymName, ...payload }
-        Note over API: Sets approvalStatus = 'Pending Approval'<br/>Saves gymId & initial audit log
-        API->>DB: Insert new Employee document with Pending Approval
+    rect rgb(238, 242, 255)
+        Note over Mgr,Web: Case A: Manager performs operation WITHOUT direct permission
+        Mgr->>Web: Submits New Trainer / Plan Switch / Timings Edit
+        Web->>API: POST /employees (or /memberships/:id/gym-action or /gyms/:id)
+        API->>API: Evaluates managerPermissions flag (e.g. requireStaffApproval == true)
+        API->>DB: Staged as 'Pending Approval' (submittedByManager: { managerId, managerName })
+        API->>FCM: Dispatch push notification alert to Gym Admin device
+        API-->>Web: 201 Created (Pending Gym Admin Approval)
+        Web-->>Mgr: Notification: "Submitted for Gym Admin Approval"
+
+        Admin->>Web: Receives push notification & views Dashboard pending count badge
+        Admin->>Web: Navigates to Staff / Members / Profile tab -> Clicks "Approve"
+        Web->>API: PUT /api/v1/employees/:id/approval { action: 'approve' }
+        API->>DB: Updates approvalStatus = 'Approved' & applies changes directly
+        DB-->>API: Updated Record
+        API-->>Web: 200 OK (Changes live immediately)
+    end
+
+    rect rgb(240, 253, 244)
+        Note over Admin,Web: Case B: Gym Admin performs operation directly
+        Admin->>Web: Creates Trainer / Updates Timings / Approves Switch
+        Web->>API: POST /employees or PUT /gyms/:id or PATCH /switch-requests/:id/gym-action
+        API->>API: Caller role is GYM_OWNER -> Direct Execution
+        API->>DB: Apply changes immediately with approvalStatus = 'Approved'
         DB-->>API: Saved Record
-        API-->>Web: 201 Created (Pending Approval)
-        Web-->>Owner: Trigger Confetti Popper + "Pending Super Admin Approval"
-    else Edit Existing Employee Details
-        Owner->>Web: Opens "Employee Details" Drawer & modifies fields (Role, Phone, Salary, Docs)
-        Owner->>Web: Clicks "Save Changes"
-        Web->>API: PUT /api/v1/employees/:id { gymId, gymPartnerId, ...updates }
-        Note over API: 1. Calculates exact field diff (oldValue vs newValue)<br/>2. Appends audit log storing gymId, timestamp & diffs<br/>3. Flags approvalStatus = 'Pending Approval'
-        API->>DB: Save Employee & update auditHistory
-        DB-->>API: Updated Employee
-        API-->>Web: 200 OK (Pending Approval)
-        Web-->>Owner: Toast: "Changes submitted for Super Admin review"
+        API-->>Web: 200 OK (Instant Live Application)
     end
-
-    opt Super Admin Review & Approval
-        Admin->>Admin: Navigates to Gym Details -> "Staff & Employee Approvals" Tab
-        Admin->>API: GET /api/v1/employees?gymId=:id
-        API-->>Admin: Return pending employees
-        Admin->>Admin: Clicks "View Diff" to inspect modified fields (Original vs New)
-        alt Decision: Approve
-            Admin->>API: PATCH /api/v1/employees/:id/approval { decision: 'Approved' }
-            API->>DB: Apply changes permanently & set approvalStatus = 'Approved'
-            DB-->>API: Updated Record
-            API-->>Admin: 200 OK
-        else Decision: Reject
-            Admin->>API: PATCH /api/v1/employees/:id/approval { decision: 'Rejected', adminRemarks }
-            API->>DB: Set approvalStatus = 'Rejected' & record admin remarks
-            DB-->>API: Updated Record
-            API-->>Admin: 200 OK
-        end
-    end
-```
 
 ---
 

@@ -276,9 +276,27 @@ export const createEmployee = asyncHandler(async (req, res) => {
   const generatedEmpId = await generateSequentialEmpId(gymId, gymPartnerId, role);
 
   const isSuperAdmin = req.user?.role === USER_ROLES.SUPER_ADMIN;
+  const isGymOwner = req.user?.role === USER_ROLES.GYM_OWNER || req.user?.accessType === 'Admin';
   const isPartTimeOrTemp = type === 'Part-Time' || type === 'Temporary';
-  const initialApprovalStatus = isSuperAdmin || isPartTimeOrTemp ? 'Approved' : 'Pending Approval';
-  const initialPendingAction = isSuperAdmin || isPartTimeOrTemp ? 'NONE' : 'NEW_EMPLOYEE';
+
+  // Check if caller is a Manager with delegated staff permissions
+  let isManagerWithoutApproval = false;
+  if (!isSuperAdmin && !isGymOwner) {
+    const callerEmployee = await Employee.findOne({
+      $or: [{ phone: req.user?.phone }, { email: req.user?.email }, { userId: req.user?._id }],
+      gymId,
+    });
+    if (callerEmployee?.managerPermissions?.requireStaffApproval === false) {
+      isManagerWithoutApproval = true;
+    }
+  }
+
+  const initialApprovalStatus = (isSuperAdmin || isGymOwner || isPartTimeOrTemp || isManagerWithoutApproval)
+    ? 'Approved'
+    : 'Pending Approval';
+  const initialPendingAction = (isSuperAdmin || isGymOwner || isPartTimeOrTemp || isManagerWithoutApproval)
+    ? 'NONE'
+    : 'NEW_EMPLOYEE';
 
   const newEmployeeData = {
     gymId,
@@ -294,10 +312,21 @@ export const createEmployee = asyncHandler(async (req, res) => {
     joinDate: joinDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     type: type || 'Full-Time',
     accessType: accessType || 'Employee',
+    managerPermissions: {
+      requireStaffApproval: req.body.managerPermissions?.requireStaffApproval !== false,
+      requirePlanSwitchApproval: req.body.managerPermissions?.requirePlanSwitchApproval !== false,
+      requireCancellationApproval: req.body.managerPermissions?.requireCancellationApproval !== false,
+      requireProfileEditApproval: req.body.managerPermissions?.requireProfileEditApproval !== false,
+    },
     status: status || 'Active',
     attendance: attendance || 'Present',
     approvalStatus: initialApprovalStatus,
     pendingAction: initialPendingAction,
+    submittedByManager: initialApprovalStatus === 'Pending Approval' ? {
+      managerId: req.user?._id || null,
+      managerName: req.user?.fullName || req.user?.name || req.user?.email || 'Gym Manager',
+      submittedAt: new Date(),
+    } : null,
     specialty: specialty || '',
     experienceYears: Number(experienceYears) || 1,
     experience: experience || (experienceYears ? `${experienceYears}+ Years` : ''),
@@ -316,8 +345,8 @@ export const createEmployee = asyncHandler(async (req, res) => {
     notes: notes || '',
     documents: Array.isArray(documents) ? documents : [],
     trainerCerts: Array.isArray(trainerCerts) ? trainerCerts : [],
-    approvedBy: isSuperAdmin ? req.user.email : '',
-    approvedAt: isSuperAdmin ? new Date() : null,
+    approvedBy: (isSuperAdmin || isGymOwner) ? (req.user?.fullName || req.user?.name || req.user?.email || 'Gym Admin') : '',
+    approvedAt: (isSuperAdmin || isGymOwner) ? new Date() : null,
   };
 
   // Build initial Audit History Entry (clean non-circular snapshot)
@@ -355,9 +384,9 @@ export const createEmployee = asyncHandler(async (req, res) => {
   return res.status(201).json(
     ApiResponse.created(
       createdEmployee,
-      isSuperAdmin
-        ? 'Employee created and auto-approved successfully.'
-        : 'Employee submitted successfully. Pending approval by Super Admin.'
+      createdEmployee.approvalStatus === 'Approved'
+        ? 'Employee created and active.'
+        : 'Employee submitted successfully. Pending approval by Gym Admin.'
     )
   );
 });
@@ -589,21 +618,36 @@ export const updateEmployee = asyncHandler(async (req, res) => {
     return res.status(200).json(ApiResponse.success(employee, 'No changes detected.'));
   }
 
-  const changedByName = req.user?.fullName || req.user?.name || req.user?.email || 'Gym Owner';
+  const isGymOwner = req.user?.role === USER_ROLES.GYM_OWNER || req.user?.accessType === 'Admin';
 
-  if (isSuperAdmin) {
-    // Super Admin direct update: instantly apply changes
+  // Check if caller is a Manager with delegated staff permissions
+  let isManagerWithoutApproval = false;
+  if (!isSuperAdmin && !isGymOwner) {
+    const callerEmployee = await Employee.findOne({
+      $or: [{ phone: req.user?.phone }, { email: req.user?.email }, { userId: req.user?._id }],
+      gymId: employee.gymId,
+    });
+    if (callerEmployee?.managerPermissions?.requireStaffApproval === false) {
+      isManagerWithoutApproval = true;
+    }
+  }
+
+  const shouldDirectApply = isSuperAdmin || isGymOwner || isManagerWithoutApproval;
+  const changedByName = req.user?.fullName || req.user?.name || req.user?.email || (isGymOwner ? 'Gym Admin' : 'Gym Manager');
+
+  if (shouldDirectApply) {
+    // Direct update: instantly apply changes
     Object.assign(employee, updatedFieldsPayload);
     employee.approvalStatus = 'Approved';
     employee.pendingAction = 'NONE';
     employee.pendingChanges = null;
-    employee.approvedBy = req.user.email;
+    employee.approvedBy = changedByName;
     employee.approvedAt = new Date();
 
     employee.auditHistory.push({
       changeType: 'EDIT_EMPLOYEE',
       changedBy: changedByName,
-      changedByRole: req.user.role,
+      changedByRole: req.user?.role || (isGymOwner ? 'GYM_OWNER' : 'MANAGER'),
       changedAt: new Date(),
       gymId: employee.gymId,
       gymPartnerId: employee.gymPartnerId,
@@ -612,11 +656,11 @@ export const updateEmployee = asyncHandler(async (req, res) => {
       previousSnapshot,
       newSnapshot: employee.toObject(),
       approvalStatus: 'Approved',
-      reviewedBy: req.user.email,
+      reviewedBy: changedByName,
       reviewedAt: new Date(),
     });
   } else {
-    // Gym Owner update: record proposed changes and set to Pending Approval
+    // Manager update requiring Gym Admin approval
     const onlyChangedFields = {};
     Object.entries(editedDiff).forEach(([field, diffItem]) => {
       onlyChangedFields[field] = diffItem.newValue;
@@ -625,11 +669,16 @@ export const updateEmployee = asyncHandler(async (req, res) => {
     employee.approvalStatus = 'Pending Approval';
     employee.pendingAction = 'EDIT_DETAILS';
     employee.pendingChanges = onlyChangedFields;
+    employee.submittedByManager = {
+      managerId: req.user?._id || null,
+      managerName: changedByName,
+      submittedAt: new Date(),
+    };
 
     employee.auditHistory.push({
       changeType: 'EDIT_EMPLOYEE',
       changedBy: changedByName,
-      changedByRole: 'GYM_OWNER',
+      changedByRole: 'MANAGER',
       changedAt: new Date(),
       gymId: employee.gymId,
       gymPartnerId: employee.gymPartnerId,
@@ -646,9 +695,9 @@ export const updateEmployee = asyncHandler(async (req, res) => {
   return res.status(200).json(
     ApiResponse.success(
       employee,
-      isSuperAdmin
-        ? 'Employee details updated and approved.'
-        : 'Employee edits submitted successfully. Pending Super Admin approval.'
+      shouldDirectApply
+        ? 'Employee details updated and applied successfully.'
+        : 'Employee edits submitted successfully. Pending Gym Admin approval.'
     )
   );
 });
@@ -671,7 +720,14 @@ export const reviewEmployeeApproval = asyncHandler(async (req, res) => {
     throw ApiError.notFound('Employee not found.');
   }
 
-  const reviewerName = req.user?.fullName || req.user?.name || req.user?.email || 'Super Admin';
+  const isSuperAdmin = req.user?.role === USER_ROLES.SUPER_ADMIN;
+  const isGymOwner = req.user?.role === USER_ROLES.GYM_OWNER || req.user?.accessType === 'Admin';
+
+  if (!isSuperAdmin && !isGymOwner) {
+    throw ApiError.forbidden('Only Gym Admin or Super Admin can review staff approvals.');
+  }
+
+  const reviewerName = req.user?.fullName || req.user?.name || req.user?.email || (isGymOwner ? 'Gym Admin' : 'Super Admin');
 
   if (decision === 'Approved') {
     if (employee.pendingChanges && typeof employee.pendingChanges === 'object') {

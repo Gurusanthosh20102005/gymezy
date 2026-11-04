@@ -13,11 +13,9 @@ import {
 import {
   sanitizeDocument,
 } from '../utils/responseTransformer.js';
-import {
-  normalizeOpeningHours,
-  getGymTimingStatus,
-} from '../utils/gymTimingHelper.js';
+import { normalizeOpeningHours, getGymTimingStatus } from '../utils/gymTimingHelper.js';
 import { computeTimeAgo } from './gymReviews.controller.js';
+import { fetchTransactionsFleet } from './admin.controller.js';
 
 
 /**
@@ -1656,119 +1654,76 @@ export const updateGym = asyncHandler(async (req, res) => {
     }
   }
 
+  const isGymOwner =
+    (gym.ownerId && String(gym.ownerId) === String(req.user._id)) ||
+    (req.user.gymId && String(gym._id) === String(req.user.gymId)) ||
+    req.user.role === USER_ROLES.GYM_OWNER ||
+    req.user.accessType === 'Admin';
+
+  // Check if caller is a Manager with delegated profile edit permissions
+  let isManagerWithoutApproval = false;
+  if (!isSuperAdmin && !isGymOwner) {
+    const callerEmployee = await Employee.findOne({
+      $or: [{ phone: req.user?.phone }, { email: req.user?.email }, { userId: req.user?._id }],
+      gymId: gym._id,
+    });
+    if (callerEmployee?.managerPermissions?.requireProfileEditApproval === false) {
+      isManagerWithoutApproval = true;
+    }
+  }
+
+  const shouldDirectApply = isSuperAdmin || isGymOwner || isManagerWithoutApproval;
   const updates = req.body;
   const currentSnapshot = gym.toObject();
 
-  if (isSuperAdmin) {
-    // Super Admin direct edit: apply changes immediately and mark approved
+  if (shouldDirectApply) {
+    // Direct edit: apply changes immediately and preserve Approved status
     await applyChangesToGymDocument(gym, updates);
     gym.pendingChanges = null;
     gym.approvalStatus = 'Approved';
-    gym.status = 'Active';
+    gym.status = gym.status || 'Active';
     gym.changesCount = 0;
 
-    const sanitizedPrev = sanitizeSnapshotForAudit(currentSnapshot);
-    const sanitizedNew = sanitizeSnapshotForAudit(gym.toObject());
+    const changedByName = req.user.fullName || req.user.name || (isSuperAdmin ? 'Super Admin' : 'Gym Admin');
 
     if (!gym.auditHistory) gym.auditHistory = [];
     gym.auditHistory.unshift({
-      changeType: 'SUPER_ADMIN_DIRECT_EDIT',
-      changedBy: req.user.fullName || req.user.name || req.user.email || 'Super Admin',
-      changedByRole: 'SUPER_ADMIN',
+      changeType: isSuperAdmin ? 'SUPER_ADMIN_DIRECT_EDIT' : 'GYM_ADMIN_DIRECT_EDIT',
+      changedBy: changedByName,
+      changedByRole: req.user.role || 'GYM_OWNER',
       changedAt: new Date(),
       requestedOn: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      field: 'Direct Super Admin Profile Update',
-      editedFields: { directUpdate: { oldValue: null, newValue: 'Updated directly by Super Administrator' } },
+      field: 'Direct Gym Profile Update',
+      editedFields: { directUpdate: { oldValue: null, newValue: `Updated directly by ${changedByName}` } },
       previousSnapshot: {},
       newSnapshot: {},
       approvalStatus: 'Approved',
-      reviewedBy: req.user.email,
+      reviewedBy: req.user.email || changedByName,
       reviewedAt: new Date(),
-      adminRemarks: 'Directly applied and approved by Super Administrator',
+      adminRemarks: `Directly applied by ${changedByName}`,
     });
     gym.auditHistory = gym.auditHistory.slice(0, 10);
 
     await gym.save();
+    clearFleetCache();
 
     return res.status(200).json(
-      ApiResponse.success(sanitizeDocument(gym), 'Gym details updated and approved successfully.')
+      ApiResponse.success(sanitizeDocument(gym), 'Gym details updated successfully.')
     );
   }
 
-  // Gym Owner edit: process media & schedule in proposed updates, calculate diff, and set to Pending Approval
+  // Manager edit requiring Gym Admin approval
   const proposedChanges = { ...updates };
+  const changedByName = req.user.fullName || req.user.name || 'Gym Manager';
 
-  // If new logo/cover/gallery was passed as Base64 by gym owner, pre-compress for pending changes
-  if (updates.logo && typeof updates.logo === 'string' && updates.logo.startsWith('data:')) {
-    proposedChanges.logo = await formatAndCompressFile(gym.name, 'logo', updates.logo);
-  }
-  if (updates.coverPhoto && typeof updates.coverPhoto === 'string' && updates.coverPhoto.startsWith('data:')) {
-    proposedChanges.coverPhoto = await formatAndCompressFile(gym.name, 'cover', updates.coverPhoto);
-  }
-  if (updates.galleryPhotos && Array.isArray(updates.galleryPhotos)) {
-    proposedChanges.galleryPhotos = (
-      await Promise.all(
-        updates.galleryPhotos.map((img, i) => {
-          if (typeof img === 'object' && img.fileData) return img;
-          if (typeof img === 'string' && img.startsWith('data:')) {
-            return formatAndCompressFile(gym.name, `gallery_${i + 1}`, img);
-          }
-          return img;
-        })
-      )
-    ).filter(Boolean);
-  }
-
-  const editedDiff = calculateGymFieldDiff(currentSnapshot, proposedChanges);
-
-  if (Object.keys(editedDiff).length === 0 && !updates.resubmit) {
-    return res.status(200).json(ApiResponse.success(sanitizeDocument(gym), 'No changes detected.'));
-  }
-
-  const onlyChangedFields = {};
-  Object.entries(editedDiff).forEach(([field, diffItem]) => {
-    onlyChangedFields[field] = diffItem.newValue;
-  });
-
-  // Store proposed changes in pendingChanges without overriding live active fields
-  gym.pendingChanges = {
-    ...(gym.pendingChanges || {}),
-    ...onlyChangedFields,
+  gym.pendingManagerEdits = {
+    submittedBy: req.user._id,
+    submittedByName: changedByName,
+    submittedAt: new Date(),
+    edits: proposedChanges,
+    status: 'PENDING_ADMIN_APPROVAL',
+    adminRemarks: '',
   };
-  gym.approvalStatus = 'Pending Approval';
-  gym.changesCount = Object.keys(gym.pendingChanges).length;
-
-  // Operational pass settings can be applied immediately to live gym document
-  if (proposedChanges.enabledSessionCategories !== undefined) {
-    gym.enabledSessionCategories = Array.isArray(proposedChanges.enabledSessionCategories)
-      ? proposedChanges.enabledSessionCategories
-      : [];
-  }
-  if (proposedChanges.singleSessionPrice !== undefined) {
-    gym.singleSessionPrice = Number(proposedChanges.singleSessionPrice) || 0;
-    if (!gym.pricingPlans) gym.pricingPlans = {};
-    gym.pricingPlans.singleSession = gym.singleSessionPrice;
-  }
-  if (proposedChanges.singleSessionBookingEnabled !== undefined) {
-    gym.singleSessionBookingEnabled = Boolean(proposedChanges.singleSessionBookingEnabled);
-  }
-
-  const changedByName = req.user.fullName || req.user.name || gym.ownerName || 'Gym Owner';
-
-  if (!gym.auditHistory) gym.auditHistory = [];
-  gym.auditHistory.unshift({
-    changeType: 'EDIT_GYM_PROFILE',
-    changedBy: changedByName,
-    changedByRole: 'GYM_OWNER',
-    changedAt: new Date(),
-    requestedOn: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-    field: Object.keys(onlyChangedFields).join(', ') || 'General Profile Update',
-    editedFields: sanitizeSnapshotForAudit(editedDiff),
-    previousSnapshot: {},
-    newSnapshot: {},
-    approvalStatus: 'Pending Approval',
-  });
-  gym.auditHistory = gym.auditHistory.slice(0, 10);
 
   await gym.save();
   clearFleetCache();
@@ -1776,7 +1731,7 @@ export const updateGym = asyncHandler(async (req, res) => {
   return res.status(200).json(
     ApiResponse.success(
       sanitizeDocument(gym),
-      'Gym profile changes submitted successfully. Pending Super Admin review and approval.'
+      'Gym profile changes submitted successfully. Pending Gym Admin approval.'
     )
   );
 });
@@ -2236,6 +2191,63 @@ export const getGymOptions = asyncHandler(async (req, res) => {
         hasMore,
       },
       'Gym options retrieved successfully.'
+    )
+  );
+});
+
+/**
+ * Gym Owner: Scoped Financial Transactions & Payments Endpoint
+ * Retrieves paginated transactions & summary statistics for this gym alone.
+ */
+export const getGymTransactions = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { page, limit, search, paymentMode, status } = req.query;
+
+  let targetGym = null;
+
+  // Handle owner alias 'me' or 'my-gym' or 'profile'
+  if (id === 'me' || id === 'my-gym' || id === 'profile') {
+    if (req.user?.gymId) {
+      targetGym = await Gym.findById(req.user.gymId);
+    }
+    if (!targetGym && req.user?._id) {
+      targetGym = await Gym.findOne({ ownerId: req.user._id });
+    }
+  } else if (mongoose.Types.ObjectId.isValid(id)) {
+    targetGym = await Gym.findById(id);
+    if (!targetGym) {
+      targetGym = await Gym.findOne({ ownerId: id });
+    }
+  } else {
+    targetGym = await Gym.findOne({ partnerId: id });
+  }
+
+  const gymId = targetGym ? targetGym._id : (mongoose.Types.ObjectId.isValid(id) ? id : null);
+  if (!gymId) {
+    throw new ApiError(404, 'Gym partner not found');
+  }
+
+  const result = await fetchTransactionsFleet({
+    gymId,
+    page,
+    limit,
+    search,
+    paymentMode,
+    status,
+  });
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        ...result,
+        gym: {
+          id: targetGym?._id || gymId,
+          name: targetGym?.name || 'Partner Gym',
+          partnerId: targetGym?.partnerId || '',
+          city: targetGym?.city || '',
+        },
+      },
+      'Gym transactions retrieved successfully'
     )
   );
 });

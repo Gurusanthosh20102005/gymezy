@@ -169,6 +169,23 @@ export const EmployeesTab = ({ topInset, navigation }) => {
     );
   };
 
+  const handleReviewApproval = async (action) => {
+    if (!selectedEmployee) return;
+    try {
+      const empId = selectedEmployee._id || selectedEmployee.id;
+      await apiService.reviewEmployeeApproval(empId, action, action === 'reject' ? 'Rejected by Gym Admin' : '');
+      showToast({
+        message: action === 'approve' ? 'Employee approved successfully!' : 'Employee approval rejected.',
+        isSuccess: true,
+      });
+      setShowDetailModal(false);
+      setSelectedEmployee(null);
+      await fetchEmployees();
+    } catch (err) {
+      showToast({ message: err.message || `Failed to ${action} employee.`, isError: true });
+    }
+  };
+
   // Contact actions
   const handleCall = (phone) => {
     if (!phone) return;
@@ -805,9 +822,58 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                       },
                     ]}
                   >
-                    Super Admin Status: {selectedEmployee.approvalStatus || 'Approved'}
+                    Approval Status: {selectedEmployee.approvalStatus || 'Approved'}
                   </Text>
                 </View>
+
+                {selectedEmployee.approvalStatus === 'Pending Approval' && (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      gap: 10,
+                      marginBottom: 16,
+                      padding: 12,
+                      backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: isDark ? '#4338CA' : '#C7D2FE',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#1E1B4B' }}>
+                        Manager Submission
+                      </Text>
+                      <Text style={{ fontSize: 11, color: isDark ? '#C7D2FE' : '#64748B' }}>
+                        Review and approve this staff profile
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: AppColors.successGreen,
+                        paddingHorizontal: 14,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                      }}
+                      onPress={() => handleReviewApproval('approve')}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12 }}>Approve</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: 'transparent',
+                        borderWidth: 1,
+                        borderColor: AppColors.dangerRed,
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                      }}
+                      onPress={() => handleReviewApproval('reject')}
+                    >
+                      <Text style={{ color: AppColors.dangerRed, fontWeight: '700', fontSize: 12 }}>Reject</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 {/* Details Section */}
                 <View style={styles.sectionBlock}>

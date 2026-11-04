@@ -20,7 +20,6 @@ import {
   PictureOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../../theme/ThemeContext';
-import { employeeService } from '../../services/employeeService';
 import gymezyLogo from '../../assets/logo/gymezy.png';
 
 // Helper to render neatly proportioned sidebar count badges
@@ -60,14 +59,6 @@ export const AppSidebar = ({
 
   const gyms = useSelector((state) => state.gyms?.gyms || []);
   const stats = useSelector((state) => state.dashboard?.stats || {});
-  const [pendingTrainersCount, setPendingTrainersCount] = React.useState(0);
-
-  useEffect(() => {
-    employeeService
-      .getPendingApprovals()
-      .then((data) => setPendingTrainersCount(Array.isArray(data) ? data.length : 0))
-      .catch(() => {});
-  }, []);
 
   // Compute live dynamic counts directly from fleet data if loaded, or fallback to dashboard stats
   const totalGyms = gyms.length > 0 ? gyms.length : (stats.registeredGyms?.total || stats.totalGyms || 0);
@@ -86,7 +77,7 @@ export const AppSidebar = ({
     ? gyms.filter((g) => g.approvalStatus === 'Rejected' || g.status === 'Rejected').length
     : 0;
 
-  const totalActionRequired = pendingCount + pendingTrainersCount;
+  const totalActionRequired = pendingCount;
 
   const menuItems = [
     {
@@ -136,34 +127,6 @@ export const AppSidebar = ({
                   }}
                 >
                   {pendingCount}
-                </span>
-              )}
-            </div>
-          ),
-        },
-        {
-          key: '/admin/gyms?tab=trainer_requests',
-          label: (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 2 }}>
-              <span>Trainer Requests</span>
-              {pendingTrainersCount > 0 && (
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: 18,
-                    height: 18,
-                    padding: '0 5px',
-                    borderRadius: 9,
-                    fontSize: 10,
-                    fontWeight: 800,
-                    backgroundColor: '#f59e0b',
-                    color: '#ffffff',
-                    flexShrink: 0,
-                  }}
-                >
-                  {pendingTrainersCount}
                 </span>
               )}
             </div>
@@ -256,6 +219,21 @@ export const AppSidebar = ({
       ],
     },
     {
+      key: 'bookings-sub',
+      icon: <CalendarOutlined />,
+      label: 'Bookings',
+      children: [
+        {
+          key: '/admin/bookings?type=session',
+          label: 'Session Bookings',
+        },
+        {
+          key: '/admin/bookings?type=group_class',
+          label: 'Group Classes',
+        },
+      ],
+    },
+    {
       key: '/admin/payments',
       icon: <CreditCardOutlined />,
       label: 'Payments',
@@ -275,11 +253,14 @@ export const AppSidebar = ({
     }
     if (
       location.pathname === '/admin/memberships' ||
-      location.pathname === '/admin/membership' ||
-      location.pathname === '/admin/bookings'
+      location.pathname === '/admin/membership'
     ) {
       const search = location.search || '?tab=all';
       return `/admin/memberships${search}`;
+    }
+    if (location.pathname === '/admin/bookings') {
+      const search = location.search || '?type=session';
+      return `/admin/bookings${search}`;
     }
     return location.pathname;
   };

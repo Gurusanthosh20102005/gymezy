@@ -613,52 +613,11 @@ export const SubscriptionsManagement = () => {
       title: 'Action',
       key: 'action',
       align: 'right',
-      render: (_, record) => {
-        if (record.status === 'PENDING_SUPER_ADMIN_APPROVAL') {
-          return (
-            <Space size={6}>
-              <Button
-                type="primary"
-                size="small"
-                icon={<CheckCircleFilled />}
-                onClick={() => handleSuperAdminApprove(record)}
-                style={{
-                  backgroundColor: '#00bf62',
-                  borderColor: '#00bf62',
-                  borderRadius: 'var(--radius-base)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  height: 30,
-                  padding: '0 12px',
-                }}
-              >
-                Approve & Execute
-              </Button>
-              <Button
-                danger
-                size="small"
-                onClick={() => handleOpenAdminReject(record)}
-                style={{
-                  borderRadius: 'var(--radius-base)',
-                  fontSize: 12,
-                  height: 30,
-                }}
-              >
-                Reject
-              </Button>
-              <Button
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={() => {
-                  setSelectedAdminSwitchReq(record);
-                  setIsAdminSwitchModalOpen(true);
-                }}
-                style={{ borderRadius: 'var(--radius-base)', fontSize: 12, height: 30 }}
-              />
-            </Space>
-          );
-        }
-        return (
+      render: (_, record) => (
+        <Space size={6}>
+          <Tag color={record.status === 'APPROVED_AND_EXECUTED' ? 'success' : 'default'} style={{ borderRadius: 4, fontWeight: 600 }}>
+            {record.status === 'APPROVED_AND_EXECUTED' ? 'Executed' : 'Gym Managed'}
+          </Tag>
           <Button
             size="small"
             icon={<EyeOutlined />}
@@ -666,12 +625,10 @@ export const SubscriptionsManagement = () => {
               setSelectedAdminSwitchReq(record);
               setIsAdminSwitchModalOpen(true);
             }}
-            style={{ borderRadius: 'var(--radius-base)', fontSize: 12, fontWeight: 500, height: 30, padding: '0 14px' }}
-          >
-            View Details
-          </Button>
-        );
-      },
+            style={{ borderRadius: 'var(--radius-base)', fontSize: 12, height: 30 }}
+          />
+        </Space>
+      ),
     },
   ];
 

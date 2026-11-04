@@ -1427,52 +1427,23 @@ export const GymDetailsView = ({
                       ),
                     },
                     {
-                      title: 'Super Admin Actions',
+                      title: 'Actions',
                       key: 'actions',
-                      width: 200,
+                      width: 120,
                       fixed: 'right',
                       render: (_, record) => (
                         <Space size={6} wrap={false} style={{ whiteSpace: 'nowrap' }}>
-                          {record.approvalStatus === 'Pending Approval' ? (
-                            <>
-                              <Button
-                                size="small"
-                                type="primary"
-                                icon={<CheckOutlined />}
-                                loading={actionLoadingId === (record._id || record.id)}
-                                onClick={() => handleApproveEmployee(record)}
-                                style={{ backgroundColor: '#10b981', borderColor: '#10b981', fontWeight: 600, borderRadius: 6 }}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="small"
-                                danger
-                                icon={<CloseOutlined />}
-                                loading={actionLoadingId === (record._id || record.id)}
-                                onClick={() => {
-                                  setSelectedEmpForReject(record);
-                                  setEmpRejectRemarks('');
-                                  setIsEmpRejectModalOpen(true);
-                                }}
-                                style={{ fontWeight: 600, borderRadius: 6 }}
-                              >
-                                Reject
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              size="small"
-                              icon={<EyeOutlined />}
-                              onClick={() => {
-                                setSelectedEmpForDetails(record);
-                                setIsDetailsModalOpen(true);
-                              }}
-                              style={{ borderRadius: 6, fontWeight: 500 }}
-                            >
-                              Full Profile
-                            </Button>
-                          )}
+                          <Button
+                            size="small"
+                            icon={<EyeOutlined />}
+                            onClick={() => {
+                              setSelectedEmpForDetails(record);
+                              setIsDetailsModalOpen(true);
+                            }}
+                            style={{ borderRadius: 6, fontWeight: 500 }}
+                          >
+                            Full Profile
+                          </Button>
                         </Space>
                       ),
                     },
@@ -2110,33 +2081,7 @@ export const GymDetailsView = ({
 
             {/* Action Bar */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, borderTop: `1px solid ${isDarkMode ? '#333' : '#e2e8f0'}`, paddingTop: 16 }}>
-              <Button onClick={() => setIsDiffModalOpen(false)}>Close</Button>
-              {selectedEmpForDiff.approvalStatus === 'Pending Approval' && (
-                <>
-                  <Button
-                    danger
-                    icon={<CloseOutlined />}
-                    loading={actionLoadingId === (selectedEmpForDiff._id || selectedEmpForDiff.id)}
-                    onClick={() => {
-                      setSelectedEmpForReject(selectedEmpForDiff);
-                      setEmpRejectRemarks('');
-                      setIsEmpRejectModalOpen(true);
-                    }}
-                    style={{ fontWeight: 600 }}
-                  >
-                    Reject Changes
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<CheckOutlined />}
-                    loading={actionLoadingId === (selectedEmpForDiff._id || selectedEmpForDiff.id)}
-                    onClick={() => handleApproveEmployee(selectedEmpForDiff)}
-                    style={{ backgroundColor: '#10b981', borderColor: '#10b981', fontWeight: 600 }}
-                  >
-                    Approve & Apply Changes
-                  </Button>
-                </>
-              )}
+              <Button type="primary" onClick={() => setIsDiffModalOpen(false)}>Close</Button>
             </div>
           </div>
         )}

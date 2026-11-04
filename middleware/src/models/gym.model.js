@@ -445,6 +445,14 @@ const gymSchema = new mongoose.Schema(
 
     // Audit & Change Requests
     pendingChanges: { type: mongoose.Schema.Types.Mixed, default: null },
+    pendingManagerEdits: {
+      submittedBy: { type: mongoose.Schema.Types.Mixed, default: null },
+      submittedByName: { type: String, default: '' },
+      submittedAt: { type: Date, default: null },
+      edits: { type: mongoose.Schema.Types.Mixed, default: null },
+      status: { type: String, enum: ['NONE', 'PENDING_ADMIN_APPROVAL', 'APPROVED', 'REJECTED'], default: 'NONE' },
+      adminRemarks: { type: String, default: '' },
+    },
     auditHistory: [gymAuditLogSchema],
 
     // Platform State

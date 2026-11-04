@@ -16,17 +16,17 @@ const router = Router();
 // All employee routes require active JWT authentication
 router.use(authenticate);
 
-// Super Admin fleet-wide pending employee approvals
+// Gym Owner & Super Admin pending employee approvals
 router.get(
   '/approvals',
-  authorizeRoles(USER_ROLES.SUPER_ADMIN),
+  authorizeRoles(USER_ROLES.GYM_OWNER, USER_ROLES.SUPER_ADMIN),
   getPendingApprovals
 );
 
-// Super Admin decision (Approve / Reject) on employee addition or edit
+// Gym Owner & Super Admin decision (Approve / Reject) on manager submitted employee addition or edit
 router.patch(
   '/:id/approval',
-  authorizeRoles(USER_ROLES.SUPER_ADMIN),
+  authorizeRoles(USER_ROLES.GYM_OWNER, USER_ROLES.SUPER_ADMIN),
   reviewEmployeeApproval
 );
 
