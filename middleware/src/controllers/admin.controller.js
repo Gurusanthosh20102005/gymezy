@@ -687,16 +687,33 @@ export const getAdminBookings = asyncHandler(async (req, res) => {
  * GET /api/v1/admin/transactions
  * Super Admin Live Transactions & Payments Fleet with Server-Side Pagination & Filters
  */
-export const getAdminTransactions = asyncHandler(async (req, res) => {
-  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
-  const skip = (page - 1) * limit;
-
-  const { search, paymentMode, status } = req.query;
+/**
+ * Shared Engine to fetch unified transactions fleet (Bookings + Memberships)
+ * Can be platform-wide (Super Admin) or scoped to a specific gym (Gym Owner).
+ */
+export async function fetchTransactionsFleet({
+  gymId = null,
+  page = 1,
+  limit = 10,
+  search = '',
+  paymentMode = 'all',
+  status = 'all',
+}) {
+  const safePage = Math.max(1, parseInt(page, 10) || 1);
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+  const skip = (safePage - 1) * safeLimit;
 
   // Build query for Bookings and Memberships
   const bookingQuery = {};
   const membershipQuery = {};
+
+  // Scope to gymId if provided
+  let gymObjectId = null;
+  if (gymId) {
+    gymObjectId = mongoose.Types.ObjectId.isValid(gymId) ? new mongoose.Types.ObjectId(gymId) : gymId;
+    bookingQuery.gymId = gymObjectId;
+    membershipQuery.gymId = gymObjectId;
+  }
 
   // Status Filter
   if (status && status !== 'all' && status !== 'All') {
@@ -769,7 +786,9 @@ export const getAdminTransactions = asyncHandler(async (req, res) => {
     ];
   }
 
-  // Parallel fetch: Bookings, Memberships, and Platform-wide Stats
+  const gymMatchStage = gymObjectId ? [{ $match: { gymId: gymObjectId } }] : [];
+
+  // Parallel fetch: Bookings, Memberships, and Aggregation Stats
   const [
     matchingBookings,
     matchingMemberships,
@@ -787,6 +806,7 @@ export const getAdminTransactions = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .lean(),
     Booking.aggregate([
+      ...gymMatchStage,
       {
         $group: {
           _id: null,
@@ -807,6 +827,7 @@ export const getAdminTransactions = asyncHandler(async (req, res) => {
       },
     ]),
     Membership.aggregate([
+      ...gymMatchStage,
       {
         $group: {
           _id: null,
@@ -925,10 +946,10 @@ export const getAdminTransactions = asyncHandler(async (req, res) => {
   );
 
   const totalRecords = combined.length;
-  const paginatedTransactions = combined.slice(skip, skip + limit);
-  const totalPages = Math.ceil(totalRecords / limit) || 1;
+  const paginatedTransactions = combined.slice(skip, skip + safeLimit);
+  const totalPages = Math.ceil(totalRecords / safeLimit) || 1;
 
-  // Compute platform-wide stats
+  // Compute stats
   const bStat = bookingStats[0] || { totalCount: 0, completedCount: 0, pendingCount: 0, failedCount: 0, totalAmount: 0 };
   const mStat = membershipStats[0] || { totalCount: 0, completedCount: 0, pendingCount: 0, failedCount: 0, totalAmount: 0 };
 
@@ -949,20 +970,35 @@ export const getAdminTransactions = asyncHandler(async (req, res) => {
     totalAmount: totalRev,
   };
 
+  return {
+    transactions: paginatedTransactions,
+    stats,
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      totalRecords,
+      totalPages,
+      hasNextPage: safePage < totalPages,
+      hasPrevPage: safePage > 1,
+    },
+  };
+}
+
+export const getAdminTransactions = asyncHandler(async (req, res) => {
+  const { page, limit, search, paymentMode, status, gymId } = req.query;
+
+  const result = await fetchTransactionsFleet({
+    gymId,
+    page,
+    limit,
+    search,
+    paymentMode,
+    status,
+  });
+
   return res.status(200).json(
     ApiResponse.success(
-      {
-        transactions: paginatedTransactions,
-        stats,
-        pagination: {
-          page,
-          limit,
-          totalRecords,
-          totalPages,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1,
-        },
-      },
+      result,
       'Transactions retrieved successfully'
     )
   );

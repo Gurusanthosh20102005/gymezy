@@ -13,11 +13,9 @@ import {
 import {
   sanitizeDocument,
 } from '../utils/responseTransformer.js';
-import {
-  normalizeOpeningHours,
-  getGymTimingStatus,
-} from '../utils/gymTimingHelper.js';
+import { normalizeOpeningHours, getGymTimingStatus } from '../utils/gymTimingHelper.js';
 import { computeTimeAgo } from './gymReviews.controller.js';
+import { fetchTransactionsFleet } from './admin.controller.js';
 
 
 /**
@@ -2193,6 +2191,63 @@ export const getGymOptions = asyncHandler(async (req, res) => {
         hasMore,
       },
       'Gym options retrieved successfully.'
+    )
+  );
+});
+
+/**
+ * Gym Owner: Scoped Financial Transactions & Payments Endpoint
+ * Retrieves paginated transactions & summary statistics for this gym alone.
+ */
+export const getGymTransactions = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { page, limit, search, paymentMode, status } = req.query;
+
+  let targetGym = null;
+
+  // Handle owner alias 'me' or 'my-gym' or 'profile'
+  if (id === 'me' || id === 'my-gym' || id === 'profile') {
+    if (req.user?.gymId) {
+      targetGym = await Gym.findById(req.user.gymId);
+    }
+    if (!targetGym && req.user?._id) {
+      targetGym = await Gym.findOne({ ownerId: req.user._id });
+    }
+  } else if (mongoose.Types.ObjectId.isValid(id)) {
+    targetGym = await Gym.findById(id);
+    if (!targetGym) {
+      targetGym = await Gym.findOne({ ownerId: id });
+    }
+  } else {
+    targetGym = await Gym.findOne({ partnerId: id });
+  }
+
+  const gymId = targetGym ? targetGym._id : (mongoose.Types.ObjectId.isValid(id) ? id : null);
+  if (!gymId) {
+    throw new ApiError(404, 'Gym partner not found');
+  }
+
+  const result = await fetchTransactionsFleet({
+    gymId,
+    page,
+    limit,
+    search,
+    paymentMode,
+    status,
+  });
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        ...result,
+        gym: {
+          id: targetGym?._id || gymId,
+          name: targetGym?.name || 'Partner Gym',
+          partnerId: targetGym?.partnerId || '',
+          city: targetGym?.city || '',
+        },
+      },
+      'Gym transactions retrieved successfully'
     )
   );
 });
