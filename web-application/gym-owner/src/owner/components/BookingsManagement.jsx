@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Table,
@@ -21,6 +22,8 @@ import {
   Pagination,
   message,
   Tooltip,
+  Segmented,
+  Badge,
 } from 'antd';
 import { apiClient } from '../../services/apiClient';
 import {
@@ -65,6 +68,9 @@ export const BookingsManagement = ({
   const { user } = useSelector((state) => state.auth);
   const gymId = user?.gymId?._id || user?.gymId || user?._id;
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sourceFilter, setSourceFilter] = useState('ALL'); // 'ALL' | 'APP' | 'WALK_IN'
+
   const [bookings, setBookings] = useState(initialData);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [nameSearch, setNameSearch] = useState('');
@@ -81,6 +87,77 @@ export const BookingsManagement = ({
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [tempDateRange, setTempDateRange] = useState(null);
 
+  // Dynamic Catalog State for Walk-In Creation
+  const [gymSections, setGymSections] = useState([]);
+  const [gymTrainers, setGymTrainers] = useState([]);
+  const [gymSingleSessionPrice, setGymSingleSessionPrice] = useState(199);
+  const [sessionTier, setSessionTier] = useState('PER_DAY'); // 'PER_DAY' | 'WEEKLY' | 'CUSTOM'
+  const [selectedSectionId, setSelectedSectionId] = useState('general');
+  const [selectedTrainerId, setSelectedTrainerId] = useState('none');
+  const [customDatesList, setCustomDatesList] = useState([]);
+
+  // Trainers who offer Single Session pass (price > 0)
+  const availableSessionTrainers = useMemo(() => {
+    return (gymTrainers || []).filter((tr) => Number(tr.trainerPricing?.singleSession || 0) > 0);
+  }, [gymTrainers]);
+
+  // Auto-reset selectedTrainerId if they do not offer session passes
+  useEffect(() => {
+    if (selectedTrainerId !== 'none') {
+      const exists = availableSessionTrainers.some(
+        (tr) => String(tr._id || tr.id || tr.employeeId) === String(selectedTrainerId)
+      );
+      if (!exists) {
+        setSelectedTrainerId('none');
+      }
+    }
+  }, [availableSessionTrainers, selectedTrainerId]);
+
+  // Calculate total fee based on duration, activity/section, trainer, and custom dates
+  const calculateTotalFee = (tier, secId, trId, customDates) => {
+    const sec = gymSections.find((s) => String(s._id || s.id) === String(secId));
+    const baseRate = sec?.cost ? Number(sec.cost) : gymSingleSessionPrice;
+    const trObj = availableSessionTrainers.find((t) => String(t._id || t.id || t.employeeId) === String(trId));
+    const trainerDailyFee = trObj ? Number(trObj.trainerPricing?.singleSession || 0) : 0;
+
+    if (tier === 'PER_DAY') {
+      return baseRate + trainerDailyFee;
+    }
+    if (tier === 'WEEKLY') {
+      return (baseRate * 7) + (trainerDailyFee * 7);
+    }
+    if (tier === 'CUSTOM') {
+      const days = Math.max(1, customDates.length);
+      return (baseRate + trainerDailyFee) * days;
+    }
+    return baseRate;
+  };
+
+  useEffect(() => {
+    const total = calculateTotalFee(sessionTier, selectedSectionId, selectedTrainerId, customDatesList);
+    form.setFieldsValue({ amount: total });
+  }, [sessionTier, selectedSectionId, selectedTrainerId, customDatesList, gymSections, gymSingleSessionPrice, availableSessionTrainers]);
+
+  const handleSectionChange = (val) => {
+    setSelectedSectionId(val);
+    const sec = gymSections.find((s) => String(s._id || s.id) === String(val));
+    if (sec && sec.trainerId) {
+      const trId = String(sec.trainerId._id || sec.trainerId);
+      if (availableSessionTrainers.some((t) => String(t._id || t.id || t.employeeId) === trId)) {
+        setSelectedTrainerId(trId);
+      }
+    }
+  };
+
+  // Auto-open modal if navigated with ?action=walkin
+  useEffect(() => {
+    if (searchParams.get('action') === 'walkin') {
+      setIsAddModalOpen(true);
+      searchParams.delete('action');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   // Reschedule Review States
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [reviewTarget, setReviewTarget] = useState(null); // { booking, sessionIndex, session }
@@ -88,25 +165,31 @@ export const BookingsManagement = ({
   const [reviewNotes, setReviewNotes] = useState('');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
-  const loadBookings = async () => {
+  const loadBookings = async (activeSource = sourceFilter) => {
     if (!gymId) return;
     try {
       setIsLoadingBookings(true);
-      const res = await apiClient.get(`/bookings/gym/${gymId}`);
+      const params = {};
+      if (activeSource && activeSource !== 'ALL') {
+        params.source = activeSource;
+      }
+      const res = await apiClient.get(`/bookings/gym/${gymId}`, { params });
       if (res.data?.success && Array.isArray(res.data.data)) {
         const mapped = res.data.data.map((b) => {
           const startDateStr = b.startDate
             ? new Date(b.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
             : (b.date || 'Today');
+          const isWalkIn = b.source === 'WALK_IN' || b.bookingType === 'WALK_IN';
           return {
             key: String(b._id || b.bookingId),
             _id: b._id,
-            bookingId: b.bookingId || b._id,
-            customerId: b.userId?.customerId || b.customerId || 'CID0001',
-            customerName: b.userId?.name || b.customerName || 'Customer',
+            bookingId: b.bookingId || (b._id ? `BK${String(b._id).slice(-4).toUpperCase()}` : '-'),
+            customerId: b.userId?.customerId || b.customerId || (b.userId?._id ? `CUST${String(b.userId._id).slice(-4).toUpperCase()}` : '-'),
+            customerName: b.userId?.fullName || b.userId?.name || b.customerName || 'Guest Visitor',
             phone: b.userId?.phone || b.phone || '-',
-            avatar: b.userId?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
-            type: b.bookingType === 'WALK_IN' ? 'Walk-in' : 'App Booking',
+            avatar: b.userId?.avatar || b.userId?.profilePicture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
+            type: b.bookingType === 'GROUP_CLASS' ? 'Group Class' : (b.bookingType === 'GYM_SESSION' ? 'Gym Session' : (isWalkIn ? 'Walk-in' : 'App Booking')),
+            source: b.source || (isWalkIn ? 'WALK_IN' : 'APP'),
             date: startDateStr,
             time: b.timeSlot || b.time || '07:00 AM',
             amount: `₹${b.pricing?.totalAmount ?? b.amountPaid ?? 0}`,
@@ -126,9 +209,36 @@ export const BookingsManagement = ({
     }
   };
 
+  const loadGymCatalog = async () => {
+    if (!gymId) return;
+    try {
+      const [secRes, trRes, gymRes] = await Promise.allSettled([
+        apiClient.get('/sections', { params: { gymId } }),
+        apiClient.get('/employees', { params: { gymId, role: 'Trainer', approvalStatus: 'Approved' } }),
+        apiClient.get(`/gyms/${gymId}`),
+      ]);
+      if (secRes.status === 'fulfilled' && secRes.value.data?.success) {
+        setGymSections(secRes.value.data.data || []);
+      }
+      if (trRes.status === 'fulfilled' && trRes.value.data?.success) {
+        const empData = trRes.value.data.data;
+        const list = Array.isArray(empData) ? empData : (empData?.employees || []);
+        setGymTrainers(list);
+      }
+      if (gymRes.status === 'fulfilled' && gymRes.value.data?.data) {
+        const gymData = gymRes.value.data.data;
+        const sp = Number(gymData.singleSessionPrice || gymData.pricingPlans?.singleSession || 199);
+        setGymSingleSessionPrice(sp);
+      }
+    } catch (err) {
+      console.warn('Failed to load gym sections/trainers/profile:', err?.message);
+    }
+  };
+
   useEffect(() => {
     if (gymId) {
       loadBookings();
+      loadGymCatalog();
     }
   }, [gymId]);
 
@@ -187,7 +297,8 @@ export const BookingsManagement = ({
     const matchCustomerId = !customerIdSearch || item.customerId.toLowerCase().includes(customerIdSearch.toLowerCase());
     const matchType = bookingType === 'ALL' || item.type === bookingType;
     const matchStatus = bookingStatus === 'ALL' || item.status === bookingStatus;
-    return matchName && matchBookingId && matchCustomerId && matchType && matchStatus;
+    const matchSource = sourceFilter === 'ALL' || (item.source || 'APP') === sourceFilter;
+    return matchName && matchBookingId && matchCustomerId && matchType && matchStatus && matchSource;
   });
 
   const clearFilters = () => {
@@ -196,8 +307,10 @@ export const BookingsManagement = ({
     setCustomerIdSearch('');
     setBookingType('ALL');
     setBookingStatus('ALL');
+    setSourceFilter('ALL');
     setSelectedDateRange('21 Jul 2025 - 21 Jul 2025');
     message.info('Filters cleared');
+    loadBookings('ALL');
   };
 
   const handleCheckIn = (record) => {
@@ -214,28 +327,71 @@ export const BookingsManagement = ({
     setIsViewModalOpen(true);
   };
 
-  const handleAddWalkIn = (values) => {
-    const newBooking = {
-      key: Date.now().toString(),
-      bookingId: `BKG250721${Math.floor(100 + Math.random() * 900)}`,
-      customerId: `CID${Math.floor(1000 + Math.random() * 9000)}`,
-      customerName: values.customerName,
-      phone: values.phone,
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
-      type: 'Walk-in',
-      date: values.date ? values.date.format('DD MMM YYYY') : '21 Jul 2025',
-      time: values.time ? values.time.format('hh:mm A') : '07:00 AM',
-      amount: `₹${values.amount || 150}`,
-      status: values.status || 'Checked-in',
-      payment: values.payment || 'Cash',
-    };
+  const handleAddWalkIn = async (values) => {
+    try {
+      if (sessionTier === 'CUSTOM' && customDatesList.length === 0) {
+        message.warning('Please select at least one date for the custom schedule.');
+        return;
+      }
+      setIsLoadingBookings(true);
+      const isGroupClass = selectedSectionId && selectedSectionId !== 'general';
+      const selectedSection = gymSections.find((s) => String(s._id || s.id) === String(selectedSectionId));
+      const selectedTrainer = gymTrainers.find((t) => String(t._id || t.id || t.employeeId) === String(selectedTrainerId));
 
-    const updated = [newBooking, ...bookings];
-    setBookings(updated);
-    setIsAddModalOpen(false);
-    form.resetFields();
-    message.success(`Walk-in booking created for ${values.customerName}!`);
-    if (onAddBooking) onAddBooking(newBooking);
+      let calculatedStartDate = values.date ? values.date.format('YYYY-MM-DD') : new Date().toISOString().split('T')[0];
+      let calculatedEndDate = calculatedStartDate;
+      if (sessionTier === 'WEEKLY') {
+        const start = values.date ? values.date.toDate() : new Date();
+        const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+        calculatedEndDate = end.toISOString().split('T')[0];
+      } else if (sessionTier === 'CUSTOM' && customDatesList.length > 0) {
+        const sorted = [...customDatesList].sort();
+        calculatedStartDate = sorted[0];
+        calculatedEndDate = sorted[sorted.length - 1];
+      }
+
+      const payload = {
+        customerName: values.customerName,
+        phone: values.phone,
+        email: values.email || undefined,
+        bookingType: isGroupClass ? 'GROUP_CLASS' : 'GYM_SESSION',
+        title: selectedSection
+          ? selectedSection.title
+          : sessionTier === 'WEEKLY'
+          ? 'Weekly Gym Access Pass'
+          : sessionTier === 'CUSTOM'
+          ? `Custom ${customDatesList.length}-Days Pass`
+          : 'Gym Session Access',
+        sectionId: selectedSection ? selectedSection._id : undefined,
+        trainerId: selectedTrainer ? (selectedTrainer._id || selectedTrainer.id) : (selectedSection?.trainerId?._id || undefined),
+        startDate: calculatedStartDate,
+        endDate: calculatedEndDate,
+        timeSlot: selectedSection ? `${selectedSection.startTime} - ${selectedSection.endTime}` : (values.time ? values.time.format('hh:mm A') : '07:00 AM'),
+        amount: Number(values.amount || 150),
+        paymentMethod: values.payment || 'Cash',
+        checkInNow: values.status === 'Checked-in',
+        isCustomDates: sessionTier === 'CUSTOM',
+        customDates: sessionTier === 'CUSTOM' ? customDatesList : undefined,
+      };
+      const res = await apiClient.post(`/bookings/gym/${gymId}/walk-in`, payload);
+      if (res.data?.success) {
+        message.success(`Walk-in booking created successfully for ${values.customerName}!`);
+        setIsAddModalOpen(false);
+        form.resetFields();
+        setSelectedSectionId('general');
+        setSelectedTrainerId('none');
+        setSessionTier('PER_DAY');
+        setCustomDatesList([]);
+        await loadBookings();
+      }
+    } catch (err) {
+      const errMsg = err.response?.data?.errors?.length
+        ? err.response.data.errors.join(', ')
+        : (err.response?.data?.message || err.message || 'Failed to create walk-in booking.');
+      message.error(errMsg);
+    } finally {
+      setIsLoadingBookings(false);
+    }
   };
 
   // Date Range Quick Menu
@@ -371,6 +527,27 @@ export const BookingsManagement = ({
       },
     },
     {
+      title: 'Source',
+      dataIndex: 'source',
+      key: 'source',
+      render: (source) => {
+        const isWalkIn = source === 'WALK_IN';
+        return (
+          <Tag
+            color={isWalkIn ? 'purple' : 'blue'}
+            style={{
+              fontWeight: 700,
+              fontSize: 11,
+              borderRadius: 'var(--radius-base)',
+              padding: '2px 8px',
+            }}
+          >
+            {isWalkIn ? 'WALK-IN' : 'APP'}
+          </Tag>
+        );
+      },
+    },
+    {
       title: 'Date & Time',
       key: 'dateTime',
       render: (_, record) => (
@@ -399,6 +576,27 @@ export const BookingsManagement = ({
       dataIndex: 'status',
       key: 'status',
       render: (status) => {
+        if (status === 'Active') {
+          return (
+            <Tag
+              icon={<CheckCircleOutlined style={{ fontSize: 11 }} />}
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.15)' : '#eaf8ef',
+                color: '#00bf62',
+                border: 'none',
+                borderRadius: 'var(--radius-base)',
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '2px 10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              Active
+            </Tag>
+          );
+        }
         if (status === 'Checked-in') {
           return (
             <Tag
@@ -509,7 +707,7 @@ export const BookingsManagement = ({
       dataIndex: 'payment',
       key: 'payment',
       render: (payment) => {
-        if (payment === 'Paid Online') {
+        if (payment === 'Paid Online' || payment === 'Online' || payment === 'Card' || payment === 'POS') {
           return (
             <Tag
               style={{
@@ -522,11 +720,11 @@ export const BookingsManagement = ({
                 padding: '2px 10px',
               }}
             >
-              Paid Online
+              {payment === 'Card' || payment === 'POS' ? 'Card / POS' : 'Online'}
             </Tag>
           );
         }
-        if (payment === 'Cash') {
+        if (payment === 'Cash' || payment === 'COD') {
           return (
             <Tag
               style={{
@@ -543,7 +741,7 @@ export const BookingsManagement = ({
             </Tag>
           );
         }
-        if (payment === 'UPI') {
+        if (payment === 'UPI' || payment === 'GPay') {
           return (
             <Tag
               style={{
@@ -557,6 +755,40 @@ export const BookingsManagement = ({
               }}
             >
               UPI
+            </Tag>
+          );
+        }
+        if (payment === 'Wallet') {
+          return (
+            <Tag
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(250, 140, 22, 0.15)' : '#fef4e8',
+                color: '#fa8c16',
+                border: 'none',
+                borderRadius: 'var(--radius-base)',
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '2px 10px',
+              }}
+            >
+              Wallet
+            </Tag>
+          );
+        }
+        if (payment === 'Net Banking') {
+          return (
+            <Tag
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(22, 119, 255, 0.15)' : '#edf4fe',
+                color: '#1677ff',
+                border: 'none',
+                borderRadius: 'var(--radius-base)',
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '2px 10px',
+              }}
+            >
+              Net Banking
             </Tag>
           );
         }
@@ -738,7 +970,7 @@ export const BookingsManagement = ({
         {/* Row 2: Filter Selectors & Action Buttons */}
         <Row gutter={[16, 16]} align="bottom">
           {/* Date Range Filter */}
-          <Col xs={24} sm={12} lg={7}>
+          <Col xs={24} sm={12} lg={5}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
               Date Range
             </div>
@@ -769,7 +1001,7 @@ export const BookingsManagement = ({
           </Col>
 
           {/* Booking Type */}
-          <Col xs={24} sm={12} lg={7}>
+          <Col xs={24} sm={12} lg={5}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
               Booking Type
             </div>
@@ -778,9 +1010,30 @@ export const BookingsManagement = ({
               onChange={setBookingType}
               style={{ width: '100%', height: 42 }}
             >
-              <Option value="ALL">All Bookings</Option>
+              <Option value="ALL">All Types</Option>
+              <Option value="Gym Session">Gym Session</Option>
+              <Option value="Group Class">Group Class</Option>
               <Option value="App Booking">App Booking</Option>
               <Option value="Walk-in">Walk-in</Option>
+            </Select>
+          </Col>
+
+          {/* Source Filter */}
+          <Col xs={24} sm={12} lg={4}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
+              Source
+            </div>
+            <Select
+              value={sourceFilter}
+              onChange={(val) => {
+                setSourceFilter(val);
+                loadBookings(val);
+              }}
+              style={{ width: '100%', height: 42 }}
+            >
+              <Option value="ALL">All Sources</Option>
+              <Option value="APP">GYMEZY App</Option>
+              <Option value="WALK_IN">Front-Desk Walk-in</Option>
             </Select>
           </Col>
 
@@ -938,7 +1191,148 @@ export const BookingsManagement = ({
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item label="Booking Date" name="date">
+              <Form.Item label="Email Address (Optional)" name="email">
+                <Input placeholder="customer@example.com" style={{ height: 42, borderRadius: 'var(--radius-base)' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155' }}>
+                Session Duration / Pass Type <span style={{ color: '#ef4444' }}>*</span>
+              </div>
+              <Segmented
+                block
+                value={sessionTier}
+                onChange={(val) => setSessionTier(val)}
+                options={[
+                  { label: 'Single Session (1 Day)', value: 'PER_DAY' },
+                  { label: 'Weekly Pass (7 Days)', value: 'WEEKLY' },
+                  { label: 'Custom Dates', value: 'CUSTOM' },
+                ]}
+                style={{ height: 42, padding: 3, borderRadius: 'var(--radius-base)' }}
+              />
+            </Col>
+          </Row>
+
+          {/* Activity / Ongoing Section Selector */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155' }}>
+              Activity / Ongoing Section <span style={{ color: '#ef4444' }}>*</span>
+            </div>
+            <Select
+              value={selectedSectionId}
+              onChange={handleSectionChange}
+              style={{ width: '100%', height: 42 }}
+            >
+              <Option value="general">
+                General Gym Access (Floor & Machines) — ₹{gymSingleSessionPrice} / session
+              </Option>
+              {gymSections.map((sec) => (
+                <Option key={sec._id || sec.id} value={sec._id || sec.id}>
+                  {sec.title} ({sec.startTime} - {sec.endTime}) — ₹{sec.cost || gymSingleSessionPrice} / session
+                </Option>
+              ))}
+            </Select>
+            <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
+              Choose whether the visitor is attending general gym workout or joining an ongoing group class/section.
+            </div>
+          </div>
+
+          {/* Personal Trainer Selector */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155' }}>
+              Personal Trainer (Optional Add-on)
+            </div>
+            <Select
+              value={selectedTrainerId}
+              onChange={(val) => setSelectedTrainerId(val)}
+              style={{ width: '100%', height: 42 }}
+            >
+              <Option value="none">No Personal Trainer (Independent Workout)</Option>
+              {availableSessionTrainers.map((tr) => {
+                const dailyFee = Number(tr.trainerPricing?.singleSession || 0);
+                let feeLabel = `+₹${dailyFee.toLocaleString('en-IN')} / session`;
+                if (sessionTier === 'WEEKLY') {
+                  feeLabel = `+₹${(dailyFee * 7).toLocaleString('en-IN')} / week (7 sessions)`;
+                } else if (sessionTier === 'CUSTOM') {
+                  const cnt = Math.max(1, customDatesList.length);
+                  feeLabel = `+₹${(dailyFee * cnt).toLocaleString('en-IN')} (${cnt} sessions)`;
+                }
+                return (
+                  <Option key={tr._id || tr.id || tr.employeeId} value={tr._id || tr.id || tr.employeeId}>
+                    <UserOutlined style={{ marginRight: 6, color: 'var(--color-primary)' }} />
+                    {tr.name} ({tr.specialty || tr.role || 'Certified Trainer'}) — {feeLabel}
+                  </Option>
+                );
+              })}
+            </Select>
+            {availableSessionTrainers.length === 0 ? (
+              <div style={{ fontSize: 11, color: '#d97706', marginTop: 4 }}>
+                No personal trainers available for day/session passes.
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
+                Trainers who have configured single session / daily training pricing in their profile.
+              </div>
+            )}
+          </div>
+
+          {/* Custom Multi-Date Picker (Rendered only if CUSTOM is selected) */}
+          {sessionTier === 'CUSTOM' && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '12px 14px',
+                borderRadius: 'var(--radius-base)',
+                backgroundColor: isDarkMode ? '#1e1e1e' : '#f8fafc',
+                border: `1px solid ${isDarkMode ? '#333333' : '#e2e8f0'}`,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                  Pick Custom Session Dates
+                </span>
+                <Badge count={`${customDatesList.length} dates selected`} style={{ backgroundColor: 'var(--color-primary)' }} />
+              </div>
+              <DatePicker
+                placeholder="Click to pick and add a session date"
+                style={{ width: '100%', height: 40, marginBottom: 10, borderRadius: 'var(--radius-base)' }}
+                onChange={(d) => {
+                  if (d) {
+                    const dStr = d.format('YYYY-MM-DD');
+                    if (!customDatesList.includes(dStr)) {
+                      setCustomDatesList([...customDatesList, dStr].sort());
+                    } else {
+                      message.info('Date is already added.');
+                    }
+                  }
+                }}
+              />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 30 }}>
+                {customDatesList.length === 0 ? (
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>No dates selected yet. Pick one or more dates above.</span>
+                ) : (
+                  customDatesList.map((dStr) => (
+                    <Tag
+                      key={dStr}
+                      closable
+                      onClose={() => setCustomDatesList(customDatesList.filter((d) => d !== dStr))}
+                      color="blue"
+                      style={{ padding: '3px 8px', fontSize: 12, borderRadius: 4 }}
+                    >
+                      {dStr}
+                    </Tag>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label={sessionTier === 'WEEKLY' ? 'Pass Start Date (7 Days Validity)' : sessionTier === 'CUSTOM' ? 'First Session Date (Optional)' : 'Session Date'}
+                name="date"
+              >
                 <DatePicker style={{ width: '100%', height: 42, borderRadius: 'var(--radius-base)' }} />
               </Form.Item>
             </Col>
@@ -951,25 +1345,50 @@ export const BookingsManagement = ({
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item label="Pass Fee (Amount in ₹)" name="amount" initialValue={150}>
-                <Input prefix="₹" style={{ height: 42, borderRadius: 'var(--radius-base)' }} />
+              <Form.Item label="Pass Fee (Amount in ₹)" name="amount" initialValue={gymSingleSessionPrice}>
+                <Input prefix="₹" type="number" style={{ height: 42, borderRadius: 'var(--radius-base)', fontWeight: 700 }} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item label="Payment Method" name="payment" initialValue="Cash">
                 <Select style={{ height: 42 }}>
-                  <Option value="Cash">Cash at Turnstile</Option>
-                  <Option value="UPI">UPI / QR (GPay / PhonePe)</Option>
-                  <Option value="Paid Online">Credit / Debit Card</Option>
+                  <Option value="Cash">Cash at Desk</Option>
+                  <Option value="UPI">Counter UPI / QR (GPay, PhonePe)</Option>
+                  <Option value="Card">Card / POS Swipe</Option>
                 </Select>
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item label="Initial Status" name="status" initialValue="Checked-in">
+          {/* Price Breakdown Banner */}
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-base)',
+              backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.1)' : '#f0fdf4',
+              border: `1px solid ${isDarkMode ? 'rgba(0, 191, 98, 0.25)' : '#bbf7d0'}`,
+              marginBottom: 16,
+              fontSize: 12,
+              color: isDarkMode ? '#86efac' : '#15803d',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div>
+              <strong>Price Calculation: </strong>
+              {sessionTier === 'PER_DAY' && '1 Day Session Pass'}
+              {sessionTier === 'WEEKLY' && '7 Days Consecutive Access Pass'}
+              {sessionTier === 'CUSTOM' && `${customDatesList.length || 1} Selected Date(s)`}
+              {selectedTrainerId !== 'none' && ' + Personal Trainer Add-on'}
+            </div>
+            <Tag color="green" style={{ fontWeight: 700, margin: 0 }}>Auto-calculated</Tag>
+          </div>
+
+          <Form.Item label="Entry Status" name="status" initialValue="Checked-in">
             <Radio.Group>
-              <Radio value="Checked-in">Check-in Now (Grant Gate Access)</Radio>
-              <Radio value="Upcoming">Upcoming Slot</Radio>
+              <Radio value="Checked-in">Check-in Now (Grant Gate Access Immediately)</Radio>
+              <Radio value="Upcoming">Upcoming Session (Check-in upon Arrival)</Radio>
             </Radio.Group>
           </Form.Item>
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   createMembership,
+  createWalkInMembership,
   getMyMemberships,
   getMembershipById,
   getGymMemberships,
@@ -48,6 +49,9 @@ router.post('/:id/cancellation-negotiation', optionalAuthenticate, requestCancel
 
 // Get Memberships for a Gym (Gym Owner Portal & Gym Owner Mobile)
 router.get('/gym/:gymId', optionalAuthenticate, getGymMemberships);
+
+// Create Walk-in Membership for a Gym (Gym Owner Portal / Desk)
+router.post('/gym/:gymId/walk-in', optionalAuthenticate, createWalkInMembership);
 
 // Preview Plan Switch (Prorated Quote Dry-Run)
 router.post('/:id/preview-switch', optionalAuthenticate, previewSwitchPlan);

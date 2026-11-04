@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../../services/apiClient';
@@ -166,6 +166,7 @@ export const MembersManagement = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [planFilter, setPlanFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [sourceFilter, setSourceFilter] = useState('ALL');
   const [selectedDateRange, setSelectedDateRange] = useState('All Dates');
 
   // Plan Switch Requests State & Fetcher
@@ -199,15 +200,205 @@ export const MembersManagement = ({
 
   // Add Member Form Interactive States
   const [addMemberPhoto, setAddMemberPhoto] = useState(null);
-  const [selectedPlanType, setSelectedPlanType] = useState('Platinum (6 Months)');
+  const [selectedPlanKey, setSelectedPlanKey] = useState('monthly');
+  const [membershipStartDate, setMembershipStartDate] = useState(null);
   const [selectedPaymentType, setSelectedPaymentType] = useState('Online');
+  const [gymTrainers, setGymTrainers] = useState([]);
+  const [selectedTrainerId, setSelectedTrainerId] = useState('none');
+  const [gymPlans, setGymPlans] = useState([]);
+
+  // Load custom pricing plans from gym settings or fallback to standard 4 tiers
+  useEffect(() => {
+    if (!gymId) return;
+    apiClient
+      .get(`/gyms/${gymId}`)
+      .then((res) => {
+        const gymData = res.data?.data;
+        if (gymData) {
+          const custom = Array.isArray(gymData.customPricingPlans) ? gymData.customPricingPlans : [];
+          const flat = gymData.pricingPlans || {};
+
+          const monthlyPlan = custom.find((p) => p?.tierId === 'monthly') || {
+            name: 'Monthly Plan',
+            duration: '30 Days',
+            price: Number(flat.monthly || 1299),
+            durationDays: 30,
+            tier: 'Monthly',
+          };
+          const quarterlyPlan = custom.find((p) => p?.tierId === 'quarterly') || {
+            name: 'Quarterly Plan',
+            duration: '90 Days',
+            price: Number(flat.quarterly || 3299),
+            durationDays: 90,
+            tier: 'Quarterly',
+          };
+          const halfYearlyPlan = custom.find((p) => p?.tierId === 'half_yearly' || p?.tierId === 'halfYearly') || {
+            name: 'Half Yearly Plan',
+            duration: '180 Days',
+            price: Number(flat.halfYearly || 5999),
+            durationDays: 180,
+            tier: 'Half-Yearly',
+          };
+          const annualPlan = custom.find((p) => p?.tierId === 'annual') || {
+            name: 'Annual Plan',
+            duration: '365 Days',
+            price: Number(flat.annual || 11999),
+            durationDays: 365,
+            tier: 'Annual',
+          };
+
+          const built = [
+            {
+              key: 'monthly',
+              name: monthlyPlan.name || 'Monthly Plan',
+              label: `${monthlyPlan.name || 'Monthly Plan'} (${monthlyPlan.duration || '30 Days'})`,
+              tier: 'Monthly',
+              durationDays: 30,
+              price: Number(monthlyPlan.price || 1299),
+              features: monthlyPlan.features || ['Access to all gym facilities', 'Free group workout classes', 'Locker and shower facility'],
+              assignedTrainers: monthlyPlan.assignedTrainers || [],
+            },
+            {
+              key: 'quarterly',
+              name: quarterlyPlan.name || 'Quarterly Plan',
+              label: `${quarterlyPlan.name || 'Quarterly Plan'} (${quarterlyPlan.duration || '90 Days'})`,
+              tier: 'Quarterly',
+              durationDays: 90,
+              price: Number(quarterlyPlan.price || 3299),
+              features: quarterlyPlan.features || ['Access to all gym facilities', 'Free group workout classes', 'Locker and shower facility', '1 Guest pass per month'],
+              assignedTrainers: quarterlyPlan.assignedTrainers || [],
+            },
+            {
+              key: 'half_yearly',
+              name: halfYearlyPlan.name || 'Half Yearly Plan',
+              label: `${halfYearlyPlan.name || 'Half Yearly Plan'} (${halfYearlyPlan.duration || '180 Days'})`,
+              tier: 'Half-Yearly',
+              durationDays: 180,
+              price: Number(halfYearlyPlan.price || 5999),
+              features: halfYearlyPlan.features || ['Access to all gym facilities', 'Free group workout classes', 'Locker and shower facility', 'Personalized nutrition guidance'],
+              assignedTrainers: halfYearlyPlan.assignedTrainers || [],
+            },
+            {
+              key: 'annual',
+              name: annualPlan.name || 'Annual Plan',
+              label: `${annualPlan.name || 'Annual Plan'} (${annualPlan.duration || '365 Days'})`,
+              tier: 'Annual',
+              durationDays: 365,
+              price: Number(annualPlan.price || 11999),
+              features: annualPlan.features || ['Access to all gym facilities', 'VIP all-access pass', 'Free sauna and steam room', 'Personalized nutrition guidance'],
+              assignedTrainers: annualPlan.assignedTrainers || [],
+            },
+          ];
+          setGymPlans(built);
+          setSelectedPlanKey(built[0].key);
+        }
+      })
+      .catch((err) => console.warn('Failed to load gym pricing plans:', err?.message));
+  }, [gymId]);
+
+  const standardFallbackPlans = [
+    { key: 'monthly', name: 'Monthly Plan', label: 'Monthly Plan (30 Days)', tier: 'Monthly', durationDays: 30, price: 1599, features: ['Standard gym floor access', 'Peak hours access'] },
+    { key: 'quarterly', name: 'Quarterly Plan', label: 'Quarterly Plan (90 Days)', tier: 'Quarterly', durationDays: 90, price: 4499, features: ['Unlimited gym access', 'Locker facility', 'Diet consultation'] },
+    { key: 'half_yearly', name: 'Half Yearly Plan', label: 'Half Yearly Plan (180 Days)', tier: 'Half-Yearly', durationDays: 180, price: 7999, features: ['Unlimited gym access', 'All gym facilities', '1 Free guest pass'] },
+    { key: 'annual', name: 'Annual Plan', label: 'Annual Plan (365 Days)', tier: 'Annual', durationDays: 365, price: 14999, features: ['VIP all-access pass', 'Personal trainer sessions', 'Free sauna'] },
+  ];
+
+  const activePlans = gymPlans.length > 0 ? gymPlans : standardFallbackPlans;
+
+  const selectedPlanObj = useMemo(() => {
+    return activePlans.find((p) => p.key === selectedPlanKey) || activePlans[0];
+  }, [activePlans, selectedPlanKey]);
+
+  // Compute trainer rate mapped to the chosen membership tier (0 means not available)
+  const getTrainerFeeForTier = (trainer, tier) => {
+    if (!trainer || !trainer.trainerPricing) return 0;
+    const tierKeyMap = {
+      Monthly: 'monthly',
+      Quarterly: 'quarterly',
+      'Half-Yearly': 'halfYearly',
+      'Half Yearly': 'halfYearly',
+      Annual: 'annual',
+    };
+    const key = tierKeyMap[tier] || 'monthly';
+    const fee = Number(trainer.trainerPricing[key] ?? 0);
+    return fee > 0 ? fee : 0;
+  };
+
+  // Only list trainers whose price for this specific plan tier is GREATER THAN 0
+  const availableTrainersForPlan = useMemo(() => {
+    const tier = selectedPlanObj?.tier || 'Monthly';
+    return gymTrainers.filter((tr) => {
+      if (Array.isArray(selectedPlanObj?.assignedTrainers) && selectedPlanObj.assignedTrainers.length > 0) {
+        const allowed = selectedPlanObj.assignedTrainers.map((t) => String(t._id || t.id || t.employeeId || t));
+        const trId = String(tr._id || tr.id || tr.employeeId || '');
+        if (!allowed.includes(trId)) return false;
+      }
+      return getTrainerFeeForTier(tr, tier) > 0;
+    });
+  }, [gymTrainers, selectedPlanObj]);
+
+  // If currently selected trainer is not available for this plan, auto-reset to 'none'
+  useEffect(() => {
+    if (selectedTrainerId !== 'none') {
+      const exists = availableTrainersForPlan.some(
+        (tr) => String(tr._id || tr.id || tr.employeeId) === String(selectedTrainerId)
+      );
+      if (!exists) {
+        setSelectedTrainerId('none');
+      }
+    }
+  }, [availableTrainersForPlan, selectedTrainerId]);
+
+  const activeSelectedTrainer = useMemo(() => {
+    if (selectedTrainerId === 'none') return null;
+    return availableTrainersForPlan.find(
+      (tr) => String(tr._id || tr.id || tr.employeeId) === String(selectedTrainerId)
+    );
+  }, [availableTrainersForPlan, selectedTrainerId]);
+
+  const trainerFee = useMemo(() => {
+    if (!activeSelectedTrainer) return 0;
+    return getTrainerFeeForTier(activeSelectedTrainer, selectedPlanObj?.tier || 'Monthly');
+  }, [activeSelectedTrainer, selectedPlanObj]);
+
+  const membershipTotalAmount = (selectedPlanObj?.price || 1599) + trainerFee;
+
+  const calculatedEndDateFormatted = useMemo(() => {
+    const start = membershipStartDate ? membershipStartDate.toDate() : new Date();
+    const days = selectedPlanObj?.durationDays || 30;
+    const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+    return end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }, [membershipStartDate, selectedPlanObj]);
+
+  // Fetch approved gym trainers for personal trainer add-on
+  useEffect(() => {
+    if (!gymId) return;
+    apiClient
+      .get('/employees', { params: { gymId, role: 'Trainer', approvalStatus: 'Approved' } })
+      .then((res) => {
+        const empData = res.data?.data;
+        const list = Array.isArray(empData) ? empData : (empData?.employees || []);
+        setGymTrainers(list);
+      })
+      .catch((err) => console.warn('Failed to load gym trainers in MembersManagement:', err?.message));
+  }, [gymId]);
+
+  // Auto-open Add Walk-in Member modal if navigated with ?action=walkin
+  useEffect(() => {
+    if (searchParams.get('action') === 'walkin') {
+      setIsAddModalOpen(true);
+      searchParams.delete('action');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const fetchGymMemberships = async (
     page = currentPage,
     limit = pageSize,
     search = searchQuery,
     status = statusFilter,
-    tier = planFilter
+    tier = planFilter,
+    source = sourceFilter
   ) => {
     if (!gymId) return;
     setIsMembersLoading(true);
@@ -219,6 +410,7 @@ export const MembersManagement = ({
       if (search?.trim()) params.search = search.trim();
       if (status && status !== 'ALL' && status !== 'All') params.status = status;
       if (tier && tier !== 'ALL' && tier !== 'All') params.tier = tier;
+      if (source && source !== 'ALL') params.source = source;
 
       const res = await apiClient.get(`/memberships/gym/${gymId}`, { params });
       const data = res.data?.data?.memberships;
@@ -256,6 +448,7 @@ export const MembersManagement = ({
             expiryDate: endStr,
             daysLeft: `${daysRemaining} days left`,
             status: m.status,
+            source: m.source || 'APP',
             paymentType: m.payment?.method || 'Online',
             amount: `₹${m.pricing?.totalAmount || 0}`,
             trainerName: m.trainerId?.name || (m.hasTrainer ? 'Assigned' : 'None'),
@@ -271,8 +464,8 @@ export const MembersManagement = ({
   };
 
   useEffect(() => {
-    void fetchGymMemberships(currentPage, pageSize, searchQuery, statusFilter, planFilter);
-  }, [gymId, currentPage, pageSize, searchQuery, statusFilter, planFilter]);
+    void fetchGymMemberships(currentPage, pageSize, searchQuery, statusFilter, planFilter, sourceFilter);
+  }, [gymId, currentPage, pageSize, searchQuery, statusFilter, planFilter, sourceFilter]);
 
   const fetchGymSwitchRequests = async () => {
     if (!gymId) return;
@@ -362,9 +555,10 @@ export const MembersManagement = ({
     setSearchQuery('');
     setPlanFilter('ALL');
     setStatusFilter('ALL');
+    setSourceFilter('ALL');
     setSelectedDateRange('All Dates');
     setCurrentPage(1);
-    void fetchGymMemberships(1, pageSize, '', 'ALL', 'ALL');
+    void fetchGymMemberships(1, pageSize, '', 'ALL', 'ALL', 'ALL');
     message.info('Filters cleared');
   };
 
@@ -384,57 +578,85 @@ export const MembersManagement = ({
     setIsExtendModalOpen(true);
   };
 
-  const handleAddMemberSubmit = (values) => {
-    const plan = selectedPlanType || values.plan || 'Platinum (6 Months)';
-    const amountMap = {
-      'Silver (1 Month)': '₹1,599',
-      'Gold (3 Months)': '₹4,499',
-      'Platinum (6 Months)': '₹7,999',
-      'Annual (12 Months)': '₹14,999',
-    };
-    const daysMap = {
-      'Silver (1 Month)': '30 days left',
-      'Gold (3 Months)': '90 days left',
-      'Platinum (6 Months)': '180 days left',
-      'Annual (12 Months)': '365 days left',
-    };
-    const expiryMap = {
-      'Silver (1 Month)': '21 Aug 2025',
-      'Gold (3 Months)': '21 Oct 2025',
-      'Platinum (6 Months)': '21 Jan 2026',
-      'Annual (12 Months)': '21 Jul 2026',
-    };
+  const handleAddMemberSubmit = async (values) => {
+    const tier = selectedPlanObj?.tier || 'Monthly';
+    const basePlanPrice = selectedPlanObj?.price || 1599;
+    const finalAmount = Number(values.amount || membershipTotalAmount);
 
-    const newMember = {
-      key: Date.now().toString(),
-      memberId: `MEM000${membersList.length + 1}`,
-      name: values.name,
-      phone: `${values.countryCode || '+91'} ${values.phone}`,
-      email: `${values.name.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
-      avatar:
-        addMemberPhoto ||
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
-      plan: plan,
-      startDate: '21 Jul 2025',
-      expiryDate: expiryMap[plan] || '21 Oct 2025',
-      daysLeft: daysMap[plan] || '90 days left',
-      status: 'Active',
-      paymentType: selectedPaymentType || 'Online',
-      amount: amountMap[plan] || '₹4,499',
-    };
+    const start = values.startDate
+      ? values.startDate.toDate()
+      : membershipStartDate
+      ? membershipStartDate.toDate()
+      : new Date();
+    const days = selectedPlanObj?.durationDays || 30;
+    const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
 
-    const updated = [newMember, ...membersList];
-    setMembersList(updated);
-    setIsAddModalOpen(false);
-    form.resetFields();
-    setAddMemberPhoto(null);
+    try {
+      setIsMembersLoading(true);
+      const payload = {
+        customerName: values.name,
+        phone: `${values.countryCode || '+91'} ${values.phone}`.trim(),
+        email: values.email || undefined,
+        tier: tier,
+        price: basePlanPrice,
+        amount: finalAmount,
+        startDate: start.toISOString().split('T')[0],
+        endDate: end.toISOString().split('T')[0],
+        trainerId: activeSelectedTrainer ? (activeSelectedTrainer._id || activeSelectedTrainer.id) : undefined,
+        trainerFee: trainerFee,
+        paymentMethod: ['Online', 'Card', 'POS'].includes(selectedPaymentType)
+          ? 'Card'
+          : ['GPay', 'UPI'].includes(selectedPaymentType)
+          ? 'UPI'
+          : selectedPaymentType || values.paymentType || 'Cash',
+      };
 
-    // Save for Success Modal & Launch Canvas Confetti Popper
-    setAddedMemberData(newMember);
-    setIsSuccessModalOpen(true);
-    triggerConfettiPopper();
+      const res = await apiClient.post(`/memberships/gym/${gymId}/walk-in`, payload);
+      if (res.data?.success) {
+        const created = res.data.data;
+        const newMember = {
+          key: created._id || Date.now().toString(),
+          memberId: created.membershipId || `MEM${Date.now().toString().slice(-4)}`,
+          name: values.name,
+          phone: `${values.countryCode || '+91'} ${values.phone}`,
+          email: values.email || `${values.name.toLowerCase().replace(/\s+/g, '')}@gmail.com`,
+          avatar:
+            addMemberPhoto ||
+            'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
+          plan: selectedPlanObj?.name || tier,
+          startDate: start.toLocaleDateString('en-GB'),
+          expiryDate: created.endDate ? new Date(created.endDate).toLocaleDateString('en-GB') : end.toLocaleDateString('en-GB'),
+          daysLeft: `${days} days left`,
+          status: 'Active',
+          source: 'WALK_IN',
+          paymentType: selectedPaymentType || 'Cash',
+          amount: `₹${finalAmount}`,
+          trainerName: activeSelectedTrainer?.name || 'None',
+        };
 
-    if (onAddMember) onAddMember(newMember);
+        setIsAddModalOpen(false);
+        form.resetFields();
+        setAddMemberPhoto(null);
+        setSelectedTrainerId('none');
+        setMembershipStartDate(null);
+        setSelectedPlanKey(activePlans[0]?.key || 'monthly');
+
+        // Save for Success Modal & Launch Canvas Confetti Popper
+        setAddedMemberData(newMember);
+        setIsSuccessModalOpen(true);
+        triggerConfettiPopper();
+
+        void fetchGymMemberships(1, pageSize, searchQuery, statusFilter, planFilter, sourceFilter);
+        if (onAddMember) onAddMember(newMember);
+      }
+    } catch (err) {
+      const errMsg = err.response?.data?.errors?.length
+        ? err.response.data.errors.join(', ')
+        : (err.response?.data?.message || err.message || 'Failed to create walk-in member.');
+      message.error(errMsg);
+    } finally {
+      setIsMembersLoading(false);
+    }
   };
 
   const handleExtendSubmit = (values) => {
@@ -872,6 +1094,29 @@ export const MembersManagement = ({
           </span>
         </Tooltip>
       ),
+    },
+    {
+      title: 'Source',
+      dataIndex: 'source',
+      key: 'source',
+      width: 105,
+      ellipsis: true,
+      render: (source) => {
+        const isWalkIn = source === 'WALK_IN';
+        return (
+          <Tag
+            color={isWalkIn ? 'purple' : 'blue'}
+            style={{
+              fontWeight: 700,
+              fontSize: 10.5,
+              borderRadius: 'var(--radius-base)',
+              padding: '2px 8px',
+            }}
+          >
+            {isWalkIn ? 'WALK-IN' : 'APP'}
+          </Tag>
+        );
+      },
     },
     {
       title: 'Status',
@@ -1743,7 +1988,7 @@ export const MembersManagement = ({
             onChange={(val) => {
               setStatusFilter(val);
               setCurrentPage(1);
-              void fetchGymMemberships(1, pageSize, searchQuery, val, planFilter);
+              void fetchGymMemberships(1, pageSize, searchQuery, val, planFilter, sourceFilter);
             }}
             style={{ width: 140, height: 40 }}
           >
@@ -1754,6 +1999,35 @@ export const MembersManagement = ({
             <Option value="Expired">Expired</Option>
             <Option value="Cancelled">Cancelled</Option>
           </Select>
+
+          <Select
+            value={sourceFilter}
+            onChange={(val) => {
+              setSourceFilter(val);
+              setCurrentPage(1);
+              void fetchGymMemberships(1, pageSize, searchQuery, statusFilter, planFilter, val);
+            }}
+            style={{ width: 130, height: 40 }}
+          >
+            <Option value="ALL">All Sources</Option>
+            <Option value="APP">GYMEZY App</Option>
+            <Option value="WALK_IN">Walk-in</Option>
+          </Select>
+
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setIsAddModalOpen(true)}
+            style={{
+              height: 40,
+              borderRadius: 'var(--radius-base)',
+              fontWeight: 600,
+              backgroundColor: '#722ed1',
+              borderColor: '#722ed1',
+            }}
+          >
+            New Walk-in Member
+          </Button>
 
           <Dropdown menu={dateRangeMenu} trigger={['click']}>
             <div
@@ -3288,8 +3562,10 @@ export const MembersManagement = ({
           setIsAddModalOpen(false);
           form.resetFields();
           setAddMemberPhoto(null);
-          setSelectedPlanType('Platinum (6 Months)');
+          setSelectedPlanKey(activePlans[0]?.key || 'monthly');
           setSelectedPaymentType('Online');
+          setSelectedTrainerId('none');
+          setMembershipStartDate(null);
         }}
         footer={null}
         width={500}
@@ -3303,7 +3579,7 @@ export const MembersManagement = ({
           onFinish={handleAddMemberSubmit}
           initialValues={{
             countryCode: '+91',
-            plan: 'Platinum (6 Months)',
+            plan: activePlans[0]?.key || 'monthly',
             paymentType: 'Online',
           }}
           style={{ marginTop: 12 }}
@@ -3407,27 +3683,39 @@ export const MembersManagement = ({
                   </Form.Item>
                 </div>
               </div>
+
+              <Form.Item
+                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Email Address (Optional)</span>}
+                name="email"
+                style={{ marginTop: 10, marginBottom: 0 }}
+              >
+                <Input
+                  placeholder="customer@example.com"
+                  style={{ height: 42, borderRadius: 'var(--radius-base)' }}
+                />
+              </Form.Item>
             </Col>
           </Row>
 
-          {/* Membership Type Section */}
+          {/* Membership Plan Section */}
           <div style={{ marginBottom: 16 }}>
             <Form.Item
-              label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Membership Type <span style={{ color: '#ef4444' }}>*</span></span>}
+              label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Membership Plan <span style={{ color: '#ef4444' }}>*</span></span>}
               name="plan"
-              initialValue="Platinum (6 Months)"
+              initialValue={activePlans[0]?.key || 'monthly'}
               rules={[{ required: true }]}
               style={{ marginBottom: 8 }}
             >
               <Select
-                value={selectedPlanType}
-                onChange={(val) => setSelectedPlanType(val)}
+                value={selectedPlanKey}
+                onChange={(val) => setSelectedPlanKey(val)}
                 style={{ width: '100%', height: 42 }}
               >
-                <Option value="Silver (1 Month)">Silver (1 Month)</Option>
-                <Option value="Gold (3 Months)">Gold (3 Months)</Option>
-                <Option value="Platinum (6 Months)">Platinum (6 Months)</Option>
-                <Option value="Annual (12 Months)">Annual (12 Months)</Option>
+                {activePlans.map((p) => (
+                  <Option key={p.key} value={p.key}>
+                    {p.label || `${p.name} (${p.durationDays} Days)`}
+                  </Option>
+                ))}
               </Select>
             </Form.Item>
 
@@ -3448,14 +3736,98 @@ export const MembersManagement = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <InfoCircleOutlined style={{ color: '#722ed1', fontSize: 14 }} />
                 <span>
-                  {selectedPlanType === 'Platinum (6 Months)' && 'Unlimited gym access   |   All gym facilities   |   1 Free guest pass'}
-                  {selectedPlanType === 'Gold (3 Months)' && 'Unlimited gym access   |   Locker facility   |   Diet consultation'}
-                  {selectedPlanType === 'Silver (1 Month)' && 'Standard gym floor access   |   Peak hours access'}
-                  {selectedPlanType === 'Annual (12 Months)' && 'VIP all-access pass   |   Personal trainer sessions   |   Free sauna'}
+                  {Array.isArray(selectedPlanObj?.features) && selectedPlanObj.features.length > 0
+                    ? selectedPlanObj.features.join('   |   ')
+                    : 'Unlimited gym access   |   All gym facilities   |   Free floor guidance'}
                 </span>
               </div>
-              <DownOutlined style={{ fontSize: 10, color: '#722ed1', marginLeft: 8 }} />
             </div>
+          </div>
+
+          {/* Start Date & Validity Section */}
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Membership Start Date <span style={{ color: '#ef4444' }}>*</span></span>}
+                name="startDate"
+              >
+                <DatePicker
+                  style={{ width: '100%', height: 42, borderRadius: 'var(--radius-base)' }}
+                  placeholder="Select start date"
+                  onChange={(d) => setMembershipStartDate(d)}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 6, fontSize: 12.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155' }}>
+                Plan Duration
+              </div>
+              <div
+                style={{
+                  height: 42,
+                  padding: '0 12px',
+                  borderRadius: 'var(--radius-base)',
+                  backgroundColor: isDarkMode ? '#1e1e1e' : '#f8fafc',
+                  border: `1px solid ${isDarkMode ? '#333333' : '#e2e8f0'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: isDarkMode ? '#ffffff' : '#0f172a',
+                }}
+              >
+                <CalendarOutlined style={{ marginRight: 8, color: 'var(--color-primary)' }} />
+                <span>{selectedPlanObj?.durationDays || 30} Days ({selectedPlanObj?.name || 'Monthly'})</span>
+              </div>
+            </Col>
+          </Row>
+
+          {/* Start & End Summary Banner (Identical to Mobile App) */}
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-base)',
+              backgroundColor: isDarkMode ? 'rgba(0, 56, 130, 0.15)' : '#edf4fe',
+              border: `1px solid ${isDarkMode ? 'rgba(0, 56, 130, 0.3)' : '#bfdbfe'}`,
+              marginBottom: 16,
+              fontSize: 12,
+            }}
+          >
+            <div style={{ fontWeight: 700, color: isDarkMode ? '#93c5fd' : '#003882' }}>
+              Membership will start on {membershipStartDate ? membershipStartDate.format('DD MMM YYYY') : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </div>
+            <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 3 }}>
+              Valid until {calculatedEndDateFormatted} ({selectedPlanObj?.durationDays || 30} Days Total Access)
+            </div>
+          </div>
+
+          {/* Personal Trainer Selector */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
+              Personal Trainer (Optional Add-on)
+            </div>
+            <Select
+              value={selectedTrainerId}
+              onChange={(val) => setSelectedTrainerId(val)}
+              style={{ width: '100%', height: 42 }}
+            >
+              <Option value="none">No Personal Trainer (General Gym Access)</Option>
+              {availableTrainersForPlan.map((tr) => (
+                <Option key={tr._id || tr.id || tr.employeeId} value={tr._id || tr.id || tr.employeeId}>
+                  <UserOutlined style={{ marginRight: 6, color: 'var(--color-primary)' }} />
+                  {tr.name} ({tr.specialty || tr.role || 'Certified Trainer'}) — +₹{getTrainerFeeForTier(tr, selectedPlanObj?.tier).toLocaleString('en-IN')}
+                </Option>
+              ))}
+            </Select>
+            {availableTrainersForPlan.length === 0 ? (
+              <div style={{ fontSize: 11, color: '#d97706', marginTop: 4 }}>
+                No personal trainers have configured pricing for this plan tier.
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
+                Assign a certified trainer dedicated to workout regimes and diet plans for this membership.
+              </div>
+            )}
           </div>
 
           {/* Amount to Pay Box */}
@@ -3475,12 +3847,16 @@ export const MembersManagement = ({
                 justifyContent: 'space-between',
               }}
             >
-              <span style={{ fontSize: 20, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#003882' }}>
-                {selectedPlanType === 'Platinum (6 Months)' && '₹7,999'}
-                {selectedPlanType === 'Gold (3 Months)' && '₹4,499'}
-                {selectedPlanType === 'Silver (1 Month)' && '₹1,599'}
-                {selectedPlanType === 'Annual (12 Months)' && '₹14,999'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 20, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#003882' }}>
+                  ₹{membershipTotalAmount.toLocaleString('en-IN')}
+                </span>
+                {activeSelectedTrainer && (
+                  <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>
+                    (Base: ₹{(selectedPlanObj?.price || 0).toLocaleString('en-IN')} + Trainer: ₹{trainerFee.toLocaleString('en-IN')})
+                  </span>
+                )}
+              </div>
               <Tag
                 style={{
                   backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.15)' : '#eaf8ef',

@@ -84,6 +84,28 @@ const getGymInitials = (name) => {
 
 export const INITIAL_EMPLOYEES = [];
 
+/**
+ * Automatically determine system access type from role (Automatic RBAC)
+ * Manager -> Admin
+ * Trainer / Head Trainer / Front Desk / Support / Physio / Nutritionist -> Employee
+ * Housekeeping / Maintenance / Security -> None
+ */
+export const computeAccessTypeFromRole = (role) => {
+  if (!role) return 'Employee';
+  const norm = String(role).trim().toLowerCase();
+  if (norm.includes('front desk') || norm.includes('reception')) return 'Employee';
+  if (norm.includes('manager')) return 'Admin';
+  if (
+    norm.includes('trainer') ||
+    norm.includes('support') ||
+    norm.includes('physio') ||
+    norm.includes('nutrition')
+  ) {
+    return 'Employee';
+  }
+  return 'None';
+};
+
 export const formatAmountWithCommas = (val) => {
   if (val === undefined || val === null || val === '') return '';
   const str = String(val).replace(/,/g, '');
@@ -453,7 +475,7 @@ export const EmployeeManagement = ({
 
   const handleOpenDetails = (record) => {
     setSelectedEmployee(record);
-    setDetailAccessType(record.accessType || 'Employee');
+    setDetailAccessType(record.accessType || computeAccessTypeFromRole(record.role || 'Trainer'));
     setDetailRole(record.role || 'Trainer');
     setDetailEmpType(record.type || 'Full-Time');
     setEditPhoto(record.avatar || null);
@@ -561,7 +583,7 @@ export const EmployeeManagement = ({
       phone: formattedPhone,
       email: values.email ? values.email.trim() : (selectedEmployee.email || ''),
       role: detailRole || values.role || selectedEmployee.role || 'Trainer',
-      accessType: detailAccessType || values.accessType || selectedEmployee.accessType || 'Employee',
+      accessType: computeAccessTypeFromRole(detailRole || values.role || selectedEmployee.role || 'Trainer'),
       gender: values.gender || selectedEmployee.gender || 'All',
       type: values.type || selectedEmployee.type || 'Full-Time',
       status: values.status || selectedEmployee.status || 'Active',
@@ -711,7 +733,7 @@ export const EmployeeManagement = ({
 
   const handleNextToAddStep2 = async () => {
     try {
-      await addEmployeeForm.validateFields(['name', 'phone', 'email', 'role', 'accessLevel']);
+      await addEmployeeForm.validateFields(['name', 'phone', 'email', 'role']);
       setAddStep(2);
     } catch {
       message.warning('Please complete all required fields on Page 1 before proceeding.');
@@ -756,7 +778,7 @@ export const EmployeeManagement = ({
       joinDate: todayFormatted,
       status: 'Active',
       attendance: 'Present',
-      accessType: allFormValues.accessLevel || 'Admin',
+      accessType: computeAccessTypeFromRole(allFormValues.role),
       managerPermissions: {
         requireStaffApproval: allFormValues.requireStaffApproval ?? true,
         requirePlanSwitchApproval: allFormValues.requirePlanSwitchApproval ?? true,
@@ -2102,7 +2124,14 @@ export const EmployeeManagement = ({
                       <Row gutter={16}>
                         <Col xs={24} sm={12}>
                           <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Role / Designation <span style={{ color: '#ef4444' }}>*</span></span>} style={{ marginBottom: 14 }}>
-                            <Select value={detailRole} onChange={setDetailRole} style={{ height: 40 }}>
+                            <Select
+                              value={detailRole}
+                              onChange={(newRole) => {
+                                setDetailRole(newRole);
+                                setDetailAccessType(computeAccessTypeFromRole(newRole));
+                              }}
+                              style={{ height: 40 }}
+                            >
                               <Option value="Manager">Manager</Option>
                               <Option value="Trainer">Trainer</Option>
                               <Option value="Head Trainer">Head Trainer</Option>
@@ -2169,50 +2198,76 @@ export const EmployeeManagement = ({
                         </Card>
                       )}
 
-                      {/* Change Access Type (3 Cards Grid) */}
+                      {/* Automatic System Access (RBAC) */}
                       <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 8 }}>
-                          System Access Level
+                          System Access Level (Automatic RBAC)
                         </div>
-                        <Row gutter={12}>
-                          {[
-                            { key: 'Admin', label: 'Admin', desc: 'Full access to all features and settings', icon: <CrownOutlined /> },
-                            { key: 'Employee', label: 'Employee', desc: 'Limited access to assigned features', icon: <TeamOutlined /> },
-                            { key: 'None', label: 'None', desc: 'No access to system', icon: <CloseCircleOutlined /> },
-                          ].map((acc) => {
-                            const isSelected = detailAccessType === acc.key;
-                            return (
-                              <Col xs={24} sm={8} key={acc.key}>
-                                <div
-                                  onClick={() => setDetailAccessType(acc.key)}
-                                  style={{
-                                    height: 88,
-                                    padding: '10px 12px',
-                                    borderRadius: 'var(--radius-base)',
-                                    border: `1.5px solid ${isSelected ? '#722ed1' : isDarkMode ? '#262626' : '#e2e8f0'}`,
-                                    backgroundColor: isSelected ? (isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe') : isDarkMode ? '#141414' : '#ffffff',
-                                    cursor: 'pointer',
-                                    position: 'relative',
-                                    transition: 'all 0.2s ease',
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                                    <span style={{ fontSize: 15, color: isSelected ? '#722ed1' : isDarkMode ? '#888888' : '#64748b' }}>
-                                      {acc.icon}
-                                    </span>
-                                    {isSelected && <CheckCircleFilled style={{ color: '#722ed1', fontSize: 13 }} />}
-                                  </div>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#722ed1' : isDarkMode ? '#ffffff' : '#0f172a' }}>
-                                    {acc.label}
-                                  </div>
-                                  <div style={{ fontSize: 10.5, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2, lineHeight: 1.2 }}>
-                                    {acc.desc}
-                                  </div>
-                                </div>
-                              </Col>
-                            );
-                          })}
-                        </Row>
+                        <div
+                          style={{
+                            padding: '12px 16px',
+                            borderRadius: 'var(--radius-base)',
+                            border: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`,
+                            backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: 12,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div
+                              style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 8,
+                                backgroundColor:
+                                  detailAccessType === 'Admin'
+                                    ? 'rgba(114, 46, 209, 0.12)'
+                                    : detailAccessType === 'Employee'
+                                    ? 'rgba(22, 119, 255, 0.12)'
+                                    : isDarkMode ? '#262626' : '#f1f5f9',
+                                color:
+                                  detailAccessType === 'Admin'
+                                    ? '#722ed1'
+                                    : detailAccessType === 'Employee'
+                                    ? '#1677ff'
+                                    : isDarkMode ? '#888888' : '#64748b',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: 18,
+                              }}
+                            >
+                              {detailAccessType === 'Admin' ? (
+                                <CrownOutlined />
+                              ) : detailAccessType === 'Employee' ? (
+                                <TeamOutlined />
+                              ) : (
+                                <CloseCircleOutlined />
+                              )}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 14, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                                {detailAccessType} Access
+                              </div>
+                              <div style={{ fontSize: 11.5, color: isDarkMode ? '#888888' : '#64748b' }}>
+                                {detailAccessType === 'Admin'
+                                  ? 'Delegated Manager administrative access (governed by permissions above)'
+                                  : detailAccessType === 'Employee'
+                                  ? 'Can check in members, scan QR codes, and view scheduled sessions'
+                                  : 'Staff roster profile only (no app console credentials needed)'}
+                              </div>
+                            </div>
+                          </div>
+                          <Tag
+                            color={detailAccessType === 'Admin' ? 'purple' : detailAccessType === 'Employee' ? 'blue' : 'default'}
+                            style={{ borderRadius: 6, fontWeight: 600, fontSize: 11.5, padding: '2px 10px' }}
+                          >
+                            Automated by Role
+                          </Tag>
+                        </div>
                       </div>
                     </div>
                   ),
@@ -2981,10 +3036,10 @@ export const EmployeeManagement = ({
             </Row>
 
             <Row gutter={16}>
-              <Col xs={24} sm={12}>
+              <Col xs={24} sm={24}>
                 <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Role <span style={{ color: '#ef4444' }}>*</span></span>} name="role" initialValue="Trainer" rules={[{ required: true }]} style={{ marginBottom: 14 }}>
                   <Select style={{ height: 40 }}>
-                    <Option value="Manager">Manager</Option>
+                    <Option value="Manager">Manager (Operational Admin)</Option>
                     <Option value="Trainer">Trainer</Option>
                     <Option value="Front Desk Manager">Front Desk Manager</Option>
                     <Option value="Customer Support">Customer Support</Option>
@@ -2994,18 +3049,6 @@ export const EmployeeManagement = ({
                     <Option value="Security">Security</Option>
                   </Select>
                 </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Access Level <span style={{ color: '#ef4444' }}>*</span></span>} name="accessLevel" initialValue="Admin" rules={[{ required: true }]} style={{ marginBottom: 4 }}>
-                  <Select style={{ height: 40 }}>
-                    <Option value="Admin">Admin</Option>
-                    <Option value="Employee">Employee</Option>
-                    <Option value="None">None</Option>
-                  </Select>
-                </Form.Item>
-                <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 14 }}>
-                  Define what this employee can access in the system.
-                </div>
               </Col>
             </Row>
 

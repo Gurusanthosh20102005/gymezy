@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import crypto from 'node:crypto';
 
 export const MEMBERSHIP_TIERS = ['Monthly', 'Quarterly', 'Half Yearly', 'Annual'];
+export const MEMBERSHIP_SOURCES = ['APP', 'WALK_IN'];
 export const MEMBERSHIP_STATUS = [
   'Active',
   'Upcoming',
@@ -11,7 +12,7 @@ export const MEMBERSHIP_STATUS = [
   'Switched',
   'PendingDowngrade',
 ];
-export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Cash', 'Wallet'];
+export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Cash', 'Wallet', 'Online', 'GPay', 'POS', 'COD'];
 export const PAYMENT_STATUS = ['Completed', 'Pending', 'Failed', 'Refunded'];
 
 const pauseHistorySchema = new mongoose.Schema(
@@ -175,6 +176,17 @@ const membershipSchema = new mongoose.Schema(
       enum: MEMBERSHIP_STATUS,
       default: 'Active',
       index: true,
+    },
+    source: {
+      type: String,
+      enum: MEMBERSHIP_SOURCES,
+      default: 'APP',
+      index: true,
+    },
+    walkInDetails: {
+      bookedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+      bookedByName: { type: String, trim: true, default: '' },
+      notes: { type: String, trim: true, default: '' },
     },
     cancellation: {
       type: cancellationSchema,

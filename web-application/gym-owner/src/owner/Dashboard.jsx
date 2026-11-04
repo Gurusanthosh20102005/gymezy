@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Row,
   Col,
@@ -43,6 +43,7 @@ import {
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { recordCheckIn, recordCheckOut } from '../redux/slices/gymSlice';
+import { apiClient } from '../services/apiClient';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -51,13 +52,42 @@ export const Dashboard = () => {
   const dispatch = useDispatch();
   const { isDarkMode } = useTheme();
 
+  const { user } = useSelector((state) => state.auth || {});
   const { liveOccupancy, capacity, members, checkIns, bookings, gymProfile } = useSelector((state) => state.gym);
+
+  // Scoped gym partner identity
+  const activeGym = user?.gym || gymProfile || {};
+  const gymId = activeGym._id || activeGym.id || user?.gymId?._id || user?.gymId || user?.partnerId || 'me';
+
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   const [quickOtp, setQuickOtp] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [selectedDate, setSelectedDate] = useState('Today');
   const [isCustomDateModalOpen, setIsCustomDateModalOpen] = useState(false);
   const [tempCustomRange, setTempCustomRange] = useState(null);
+
+  const fetchDashboardStats = useCallback(async () => {
+    if (!gymId) return;
+    setLoadingStats(true);
+    try {
+      const res = await apiClient.get(`/gyms/${gymId}/dashboard-stats`, {
+        params: { range: selectedDate },
+      });
+      if (res?.data?.data) {
+        setDashboardStats(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load gym dashboard statistics:', err);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [gymId, selectedDate]);
+
+  useEffect(() => {
+    fetchDashboardStats();
+  }, [fetchDashboardStats]);
 
   const handleQuickCheckIn = () => {
     if (!quickOtp || quickOtp.length < 6) {
@@ -265,7 +295,7 @@ export const Dashboard = () => {
                   Total Revenue
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{Number(gymProfile?.monthlyRevenue || 0).toLocaleString('en-IN')}
+                  ₹{Number(dashboardStats?.metrics?.totalRevenue ?? gymProfile?.monthlyRevenue ?? 0).toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
                   Monthly GMV
@@ -305,10 +335,10 @@ export const Dashboard = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Member Revenue
+                  Membership Plans
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{(members || []).reduce((acc, m) => acc + (parseInt(String(m.amount || '').replace(/[^\d]/g, ''), 10) || 0), 0).toLocaleString('en-IN')}
+                  ₹{Number(dashboardStats?.metrics?.memberRevenue ?? (members || []).reduce((acc, m) => acc + (parseInt(String(m.amount || '').replace(/[^\d]/g, ''), 10) || 0), 0)).toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
                   Active Plan Subscriptions
@@ -348,20 +378,63 @@ export const Dashboard = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  App Booking Revenue
+                  Session Bookings
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{(checkIns || []).reduce((acc, b) => acc + (Number(b.price) || 0), 0).toLocaleString('en-IN')}
+                  ₹{Number(dashboardStats?.metrics?.appBookingRevenue ?? (checkIns || []).reduce((acc, b) => acc + (Number(b.price) || 0), 0)).toLocaleString('en-IN')}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Direct GYMEZY App Passes
+                  Day Passes & Group Classes
                 </div>
               </div>
             </div>
           </Card>
         </Col>
 
-        {/* 4. Total Active Users */}
+        {/* 4. App Count */}
+        <Col xs={24} sm={12} lg={8}>
+          <Card
+            style={{
+              backgroundColor: 'var(--bg-surface-elevated)',
+              borderColor: 'var(--border-color)',
+              borderRadius: 'var(--radius-base)',
+              boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
+            }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--color-purple-bg)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--color-purple)',
+                  fontSize: 20,
+                  flexShrink: 0,
+                }}
+              >
+                <MobileOutlined />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                  App Count
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
+                  {dashboardStats?.metrics?.appCount ?? 0}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                  Active App Passes & Bookings
+                </div>
+              </div>
+            </div>
+          </Card>
+        </Col>
+
+        {/* 5. Total Active Users (Moved to center) */}
         <Col xs={24} sm={12} lg={8}>
           <Card
             style={{
@@ -394,17 +467,17 @@ export const Dashboard = () => {
                   Total Active Users
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {gymProfile?.membersCount || (members || []).length || 0}
+                  {dashboardStats?.metrics?.totalActiveUsers ?? 0}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Registered Members
+                  Active Registered Customers
                 </div>
               </div>
             </div>
           </Card>
         </Col>
 
-        {/* 5. Members */}
+        {/* 6. Walk-in Count (Replaced Completed Sessions) */}
         <Col xs={24} sm={12} lg={8}>
           <Card
             style={{
@@ -434,56 +507,13 @@ export const Dashboard = () => {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Members
+                  Walk-in Count
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {(members || []).length}
+                  {dashboardStats?.metrics?.walkInCount ?? 0}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Active Gym Passes
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
-
-        {/* 6. App Booking Number */}
-        <Col xs={24} sm={12} lg={8}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px 24px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-danger-bg)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--color-danger)',
-                  fontSize: 20,
-                  flexShrink: 0,
-                }}
-              >
-                <MobileOutlined />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  App Booking Number
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  {(checkIns || []).length}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Completed Bookings
+                  Counter & Desk Walk-ins
                 </div>
               </div>
             </div>
@@ -540,7 +570,8 @@ export const Dashboard = () => {
               pagination={false}
               size="middle"
               scroll={{ x: 'max-content' }}
-              dataSource={bookings || []}
+              loading={loadingStats}
+              dataSource={(dashboardStats?.recentBookings || bookings || []).slice(0, 4)}
               locale={{ emptyText: 'No recent bookings recorded today' }}
               columns={[
                 {
@@ -575,20 +606,35 @@ export const Dashboard = () => {
                   title: 'Type',
                   dataIndex: 'type',
                   key: 'type',
-                  render: (type) => (
-                    <Tag
-                      style={{
-                        backgroundColor: type === 'App Booking' ? 'var(--color-purple-bg)' : 'var(--color-success-bg)',
-                        color: type === 'App Booking' ? 'var(--color-purple)' : 'var(--color-success)',
-                        border: 'none',
-                        borderRadius: 6,
-                        fontWeight: 600,
-                        fontSize: 11,
-                        padding: '1px 8px',
-                      }}
-                    >
-                      {type}
-                    </Tag>
+                  render: (type, record) => (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <Tag
+                        style={{
+                          backgroundColor: type === 'App Booking' ? 'var(--color-purple-bg)' : 'var(--color-success-bg)',
+                          color: type === 'App Booking' ? 'var(--color-purple)' : 'var(--color-success)',
+                          border: 'none',
+                          borderRadius: 6,
+                          fontWeight: 600,
+                          fontSize: 11,
+                          padding: '1px 8px',
+                          margin: 0,
+                        }}
+                      >
+                        {type}
+                      </Tag>
+                      <Tag
+                        color={record.source === 'WALK_IN' ? 'purple' : 'blue'}
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 10,
+                          borderRadius: 4,
+                          padding: '0 6px',
+                          margin: 0,
+                        }}
+                      >
+                        {record.source === 'WALK_IN' ? 'WALK-IN' : 'APP'}
+                      </Tag>
+                    </div>
                   ),
                 },
                 {
@@ -688,7 +734,8 @@ export const Dashboard = () => {
               pagination={false}
               size="middle"
               scroll={{ x: 'max-content' }}
-              dataSource={members || []}
+              loading={loadingStats}
+              dataSource={(dashboardStats?.recentMembers || members || []).slice(0, 4)}
               locale={{ emptyText: 'No registered active members found' }}
               columns={[
                 {
@@ -708,10 +755,24 @@ export const Dashboard = () => {
                   title: 'Membership Type',
                   dataIndex: 'plan',
                   key: 'plan',
-                  render: (plan) => (
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      {plan}
-                    </span>
+                  render: (plan, record) => (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        {plan}
+                      </span>
+                      <Tag
+                        color={record.source === 'WALK_IN' ? 'purple' : 'blue'}
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 10,
+                          borderRadius: 4,
+                          padding: '0 6px',
+                          margin: 0,
+                        }}
+                      >
+                        {record.source === 'WALK_IN' ? 'WALK-IN' : 'APP'}
+                      </Tag>
+                    </div>
                   ),
                 },
                 {
@@ -857,7 +918,99 @@ export const Dashboard = () => {
             </Card>
           </Col>
 
-          {/* Action 2: Add Employee */}
+          {/* Action 2: New Walk-in Booking */}
+          <Col xs={24} sm={12} lg={6}>
+            <Card
+              hoverable
+              onClick={() => navigate('/owner/bookings?action=walkin')}
+              style={{
+                backgroundColor: 'var(--bg-surface-elevated)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 'var(--radius-base)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              styles={{ body: { padding: '16px 18px' } }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 'var(--radius-base)',
+                      backgroundColor: 'var(--color-primary-bg)',
+                      color: 'var(--color-primary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 20,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <PlusOutlined />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      New Walk-in Booking
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      Create pass or session for visitor
+                    </div>
+                  </div>
+                </div>
+                <ArrowRightOutlined style={{ color: 'var(--text-secondary)', fontSize: 13, marginLeft: 8 }} />
+              </div>
+            </Card>
+          </Col>
+
+          {/* Action 3: New Walk-in Member */}
+          <Col xs={24} sm={12} lg={6}>
+            <Card
+              hoverable
+              onClick={() => navigate('/owner/members?action=walkin')}
+              style={{
+                backgroundColor: 'var(--bg-surface-elevated)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 'var(--radius-base)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              styles={{ body: { padding: '16px 18px' } }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 'var(--radius-base)',
+                      backgroundColor: 'rgba(114, 46, 209, 0.12)',
+                      color: '#722ed1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 20,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <UsergroupAddOutlined />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      New Walk-in Member
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      Register offline walk-in member
+                    </div>
+                  </div>
+                </div>
+                <ArrowRightOutlined style={{ color: 'var(--text-secondary)', fontSize: 13, marginLeft: 8 }} />
+              </div>
+            </Card>
+          </Col>
+
+          {/* Action 4: Add Employee */}
           <Col xs={24} sm={12} lg={6}>
             <Card
               hoverable

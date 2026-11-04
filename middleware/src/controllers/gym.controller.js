@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import Gym from '../models/gym.model.js';
 import { Employee } from '../models/employee.model.js';
 import User, { USER_ROLES } from '../models/user.model.js';
+import Booking from '../models/booking.model.js';
+import Membership from '../models/membership.model.js';
 import Counter from '../models/counter.model.js';
 import { syncGymTrainersFromEmployees } from './employee.controller.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -2251,4 +2253,205 @@ export const getGymTransactions = asyncHandler(async (req, res) => {
     )
   );
 });
+
+/**
+ * Gym Owner: Scoped Overview Dashboard Statistics & Recent Activity
+ * Computes live metrics and maps recent bookings & memberships for this gym alone.
+ */
+export const getGymDashboardStats = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { range } = req.query;
+
+  let targetGym = null;
+
+  // Resolve gym: handle 'me', 'my-gym', 'profile', ObjectId, partnerId
+  if (id === 'me' || id === 'my-gym' || id === 'profile') {
+    if (req.user?.gymId) {
+      targetGym = await Gym.findById(req.user.gymId);
+    }
+    if (!targetGym && req.user?._id) {
+      targetGym = await Gym.findOne({ ownerId: req.user._id });
+    }
+  } else if (mongoose.Types.ObjectId.isValid(id)) {
+    targetGym = await Gym.findById(id);
+    if (!targetGym) {
+      targetGym = await Gym.findOne({ ownerId: id });
+    }
+  } else {
+    targetGym = await Gym.findOne({ partnerId: id });
+  }
+
+  const gymId = targetGym ? targetGym._id : (mongoose.Types.ObjectId.isValid(id) ? id : null);
+  if (!gymId) {
+    throw new ApiError(404, 'Gym partner not found');
+  }
+
+  const gymObjectId = new mongoose.Types.ObjectId(gymId);
+
+  // Parallel database queries
+  const [gymDoc, bookings, memberships] = await Promise.all([
+    targetGym ? targetGym : Gym.findById(gymObjectId).lean(),
+    Booking.find({ gymId: gymObjectId })
+      .populate('userId', 'fullName name email phone avatar profilePicture customerId')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Membership.find({ gymId: gymObjectId })
+      .populate('userId', 'fullName name email phone avatar profilePicture customerId')
+      .sort({ createdAt: -1 })
+      .lean(),
+  ]);
+
+  // Aggregate metrics
+  let memberRevenue = 0;
+  let activeMembersCount = 0;
+  let walkInCount = 0;
+  let appCount = 0;
+  const userIdsSet = new Set();
+
+  for (const m of memberships) {
+    if (m.userId) {
+      const uId = m.userId._id || m.userId.id || m.userId;
+      if (uId) userIdsSet.add(String(uId));
+    }
+    if (m.source === 'WALK_IN') {
+      walkInCount++;
+    } else {
+      appCount++;
+    }
+    // Only active plan subscriptions (excludes Switched and Cancelled)
+    if (['Active', 'Upcoming', 'Expiring Soon'].includes(m.status)) {
+      activeMembersCount++;
+      if (m.payment?.status !== 'Failed' && m.payment?.status !== 'Refunded') {
+        const amt = Number(m.pricing?.totalAmount || m.totalAmount || 0);
+        memberRevenue += amt;
+      }
+    }
+  }
+
+  let appBookingRevenue = 0;
+  let completedBookingsCount = 0;
+
+  for (const b of bookings) {
+    if (b.userId) {
+      const uId = b.userId._id || b.userId.id || b.userId;
+      if (uId) userIdsSet.add(String(uId));
+    }
+    if (b.source === 'WALK_IN') {
+      walkInCount++;
+    } else {
+      appCount++;
+    }
+    if (b.payment?.status !== 'Failed' && b.payment?.status !== 'Refunded' && b.status !== 'Cancelled') {
+      const amt = Number(b.pricing?.totalAmount || b.totalAmount || 0);
+      appBookingRevenue += amt;
+    }
+    if (b.status === 'Completed') {
+      completedBookingsCount++;
+    }
+  }
+
+  const totalRevenue = memberRevenue + appBookingRevenue;
+  // Option A: Real App Users (unique customer accounts who have booked or bought passes at this gym)
+  const totalActiveUsers = userIdsSet.size;
+
+  const defaultAvatar = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop';
+
+  // Map Recent Bookings (top 4)
+  const recentBookings = bookings.slice(0, 4).map((b) => {
+    const user = b.userId || {};
+    const userName = user.fullName || user.name || 'Member';
+    const userPhone = user.phone || '—';
+    const avatar = user.avatar || user.profilePicture || defaultAvatar;
+
+    let timeDisplay = b.timeSlot;
+    if (!timeDisplay || timeDisplay.trim() === '') {
+      timeDisplay = b.startDate
+        ? new Date(b.startDate).toLocaleDateString('en-GB')
+        : 'Full Day Access';
+    }
+
+    let typeDisplay = 'App Booking';
+    if (b.bookingType === 'GROUP_CLASS') typeDisplay = 'Group Class';
+    else if (b.bookingType === 'GYM_SESSION') typeDisplay = 'Gym Session';
+
+    let statusDisplay = b.status || 'Completed';
+    if (statusDisplay === 'Active') statusDisplay = 'Checked In';
+
+    return {
+      key: String(b._id),
+      id: b.bookingId || String(b._id),
+      name: userName,
+      phone: userPhone,
+      avatar,
+      time: timeDisplay,
+      date: b.startDate ? new Date(b.startDate).toLocaleDateString('en-GB') : 'Today',
+      type: typeDisplay,
+      status: statusDisplay,
+      source: b.source || 'APP',
+      amount: Number(b.pricing?.totalAmount || 0),
+    };
+  });
+
+  // Map Recent Memberships (top 4)
+  const recentMembers = memberships.slice(0, 4).map((m) => {
+    const user = m.userId || {};
+    const userName = user.fullName || user.name || 'Member';
+    const avatar = user.avatar || user.profilePicture || defaultAvatar;
+
+    let planDisplay = m.tier || '';
+    if (!planDisplay && m.startDate && m.endDate) {
+      const diffDays = Math.round((new Date(m.endDate) - new Date(m.startDate)) / (1000 * 60 * 60 * 24));
+      if (diffDays >= 300) planDisplay = 'Annual Membership';
+      else if (diffDays >= 150) planDisplay = 'Half-Yearly Membership';
+      else if (diffDays >= 80) planDisplay = 'Quarterly Membership';
+      else planDisplay = 'Monthly Membership';
+    }
+    if (!planDisplay) planDisplay = 'Active Membership';
+
+    const endFormatted = m.endDate
+      ? new Date(m.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      : '—';
+
+    return {
+      key: String(m._id),
+      id: m.membershipId || String(m._id),
+      name: userName,
+      avatar,
+      plan: planDisplay,
+      endDate: endFormatted,
+      status: m.status || 'Active',
+      source: m.source || 'APP',
+      amount: Number(m.pricing?.totalAmount || 0),
+    };
+  });
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        gym: {
+          id: gymDoc?._id || gymId,
+          name: gymDoc?.name || 'Partner Gym',
+          partnerId: gymDoc?.partnerId || '',
+          city: gymDoc?.city || '',
+        },
+        metrics: {
+          totalRevenue,
+          memberRevenue,
+          appBookingRevenue,
+          totalActiveUsers,
+          appCount,
+          walkInCount,
+          activeMembersCount,
+          completedBookingsCount,
+          totalBookingsCount: bookings.length,
+          totalMembersCount: memberships.length,
+        },
+        recentBookings,
+        recentMembers,
+      },
+      'Gym dashboard statistics retrieved successfully'
+    )
+  );
+});
+
 

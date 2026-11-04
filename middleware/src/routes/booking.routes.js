@@ -9,6 +9,7 @@ import {
   reviewReschedule,
   respondRescheduleProposal,
   getGymBookings,
+  createWalkInBooking,
 } from '../controllers/booking.controller.js';
 import { optionalAuthenticate } from '../middlewares/auth.middleware.js';
 
@@ -22,6 +23,9 @@ router.get('/my', optionalAuthenticate, getMyBookings);
 
 // Get all bookings for a gym (Gym Owner portal)
 router.get('/gym/:gymId', optionalAuthenticate, getGymBookings);
+
+// Create walk-in booking at the desk (Gym Owner / Manager / Staff)
+router.post('/gym/:gymId/walk-in', optionalAuthenticate, createWalkInBooking);
 
 // Get section enrollments roster (Gym Owner & Staff)
 router.get('/section/:sectionId', optionalAuthenticate, getSectionEnrollments);

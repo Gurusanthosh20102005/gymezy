@@ -10,6 +10,7 @@ import { Wallet } from '../models/wallet.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { findOrCreateWalkInCustomer } from '../utils/walkInHelper.js';
 
 /**
  * Resolve User ID from token or request body
@@ -72,8 +73,13 @@ const resolveGym = async (gymId) => {
 
 const generateGymBookingId = async (gym) => {
   const gymSeqKey = `bkg_${gym.partnerId || gym._id}`;
-  const seq = await Counter.getNextSequence(gymSeqKey, 100);
-  return `BK${seq}`;
+  let seq = await Counter.getNextSequence(gymSeqKey, 100);
+  let id = `BK${seq}`;
+  while (await Booking.exists({ gymId: gym._id, bookingId: id })) {
+    seq = await Counter.getNextSequence(gymSeqKey, 100);
+    id = `BK${seq}`;
+  }
+  return id;
 };
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -492,8 +498,9 @@ export const createBooking = asyncHandler(async (req, res) => {
 /**
  * Enrich booking with custom dates daily schedule, next session date, and OTP status
  */
-export const enrichBookingWithCustomSchedule = (b) => {
-  if (!b) return b;
+export const enrichBookingWithCustomSchedule = (rawB) => {
+  if (!rawB) return rawB;
+  const b = rawB.toObject ? rawB.toObject() : (rawB._doc ? { ...rawB._doc } : { ...rawB });
   const isCustom = Boolean(b.isCustomDates || (Array.isArray(b.customDates) && b.customDates.length > 0));
   if (!isCustom) {
     return { ...b, isTodayValid: true };
@@ -632,15 +639,166 @@ export const getBookingById = asyncHandler(async (req, res) => {
  */
 export const getGymBookings = asyncHandler(async (req, res) => {
   const { gymId } = req.params;
+  const { source, status } = req.query;
   const isObjectId = mongoose.Types.ObjectId.isValid(gymId);
-  const filter = isObjectId ? { gymId } : { gymId };
+
+  const gym = await Gym.findOne(
+    isObjectId ? { $or: [{ _id: gymId }, { partnerId: gymId }] } : { partnerId: gymId }
+  );
+  if (!gym) {
+    throw ApiError.notFound('Gym not found.');
+  }
+
+  const filter = { gymId: gym._id };
+  if (source && source !== 'ALL') {
+    filter.source = source.toUpperCase();
+  }
+  if (status && status !== 'ALL') {
+    filter.status = status;
+  }
 
   const bookings = await Booking.find(filter)
-    .populate('userId', 'name email phone avatar customerId')
-    .sort({ createdAt: -1 });
+    .populate('userId', 'fullName name email phone avatar customerId')
+    .sort({ createdAt: -1 })
+    .lean();
 
   const enriched = bookings.map((b) => enrichBookingWithCustomSchedule(b));
   return res.status(200).json(ApiResponse.success(enriched, 'Gym bookings retrieved successfully'));
+});
+
+/**
+ * Create Walk-in Booking at the Gym Counter (Desk POS)
+ * POST /api/v1/bookings/gym/:gymId/walk-in
+ */
+export const createWalkInBooking = asyncHandler(async (req, res) => {
+  const { gymId } = req.params;
+  const {
+    name,
+    customerName,
+    phone,
+    email,
+    bookingType = 'GYM_SESSION',
+    title,
+    sectionId = null,
+    trainerId = null,
+    startDate,
+    endDate,
+    timeSlot,
+    price = 0,
+    amount = 0,
+    customDates = [],
+    isCustomDates = false,
+    paymentMethod = 'Cash',
+    paymentStatus = 'Completed',
+    checkInNow = false,
+    notes = '',
+  } = req.body;
+
+  if (!phone) {
+    throw ApiError.badRequest('Customer phone number is required for walk-in booking.');
+  }
+
+  const targetName = name || customerName || 'Walk-in Visitor';
+
+  // Resolve Gym
+  const isObjectId = mongoose.Types.ObjectId.isValid(gymId);
+  const gym = await Gym.findOne(
+    isObjectId ? { $or: [{ _id: gymId }, { partnerId: gymId }] } : { partnerId: gymId }
+  );
+  if (!gym) {
+    throw ApiError.notFound('Gym facility not found.');
+  }
+
+  // Find or create User by phone
+  const user = await findOrCreateWalkInCustomer({ fullName: targetName, phone, email });
+
+  // Generate Booking ID: BK{counter}
+  const bookingId = await generateGymBookingId(gym);
+
+  // Generate 6-digit entry OTP & QR code data
+  const entryOtp = Math.floor(100000 + Math.random() * 900000).toString();
+  const qrCodeData = `GYMEZY:${gym.partnerId || gym._id}:${bookingId}:${entryOtp}`;
+
+  const finalPrice = Math.max(0, Number(price || amount) || 0);
+  const now = new Date();
+  const sessionStartDate = startDate ? new Date(startDate) : now;
+  const sessionEndDate = endDate ? new Date(endDate) : sessionStartDate;
+
+  const initialStatus = checkInNow ? 'Active' : 'Upcoming';
+  const attendanceHistory = checkInNow
+    ? [{ attendedAt: now, method: 'Front Desk Walk-In', area: 'Main Gate' }]
+    : [];
+
+  const hasCustomDates = Boolean(isCustomDates || (Array.isArray(customDates) && customDates.length > 0));
+  const parsedCustomDates = Array.isArray(customDates)
+    ? customDates.map((d) => ({
+        date: typeof d === 'string' ? new Date(d) : (d.date ? new Date(d.date) : new Date()),
+        status: 'Scheduled',
+        dailyOtp: Math.floor(100000 + Math.random() * 900000).toString(),
+      }))
+    : [];
+
+  const normalizePayment = (method) => {
+    if (!method) return 'Cash';
+    const s = String(method).toLowerCase();
+    if (s.includes('card') || s === 'pos' || s === 'online') return 'Card';
+    if (s.includes('upi') || s === 'gpay') return 'UPI';
+    if (s.includes('cash') || s === 'cod') return 'Cash';
+    if (s.includes('wallet')) return 'Wallet';
+    if (s.includes('net') || s.includes('bank')) return 'Net Banking';
+    return method;
+  };
+
+  const newBooking = await Booking.create({
+    bookingId,
+    userId: user._id,
+    gymId: gym._id,
+    sectionId: sectionId && mongoose.Types.ObjectId.isValid(sectionId) ? sectionId : null,
+    trainerId: trainerId && mongoose.Types.ObjectId.isValid(trainerId) ? trainerId : null,
+    bookingType: bookingType === 'GROUP_CLASS' ? 'GROUP_CLASS' : 'GYM_SESSION',
+    title: title || (bookingType === 'GROUP_CLASS' ? 'Group Class Walk-In' : 'Gym Session Walk-In'),
+    startDate: sessionStartDate,
+    endDate: sessionEndDate,
+    timeSlot: timeSlot || 'General Access',
+    isCustomDates: hasCustomDates,
+    customDates: parsedCustomDates,
+    pricing: {
+      subtotal: finalPrice,
+      discount: 0,
+      totalAmount: finalPrice,
+      currency: 'INR',
+    },
+    payment: {
+      method: normalizePayment(paymentMethod),
+      status: paymentStatus || 'Completed',
+      transactionId: `WALK-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      paidAt: now,
+    },
+    entryOtp,
+    qrCodeData,
+    status: initialStatus,
+    source: 'WALK_IN',
+    walkInDetails: {
+      bookedBy: req.user?._id || null,
+      bookedByName: req.user?.fullName || req.user?.name || 'Front Desk Staff',
+      notes: notes || '',
+    },
+    attendedSessionsCount: checkInNow ? 1 : 0,
+    attendanceHistory,
+  });
+
+  const populated = await Booking.findById(newBooking._id)
+    .populate('userId', 'fullName name email phone avatar customerId')
+    .lean();
+
+  return res.status(201).json(
+    ApiResponse.success(
+      enrichBookingWithCustomSchedule(populated),
+      checkInNow
+        ? 'Walk-in booking created and customer checked in successfully.'
+        : 'Walk-in booking created successfully.'
+    )
+  );
 });
 
 /**

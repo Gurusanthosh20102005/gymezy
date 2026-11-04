@@ -1091,6 +1091,12 @@ export const QrCheckIn = () => {
                                 >
                                   {member.status}
                                 </Tag>
+                                <Tag
+                                  color={member.source === 'WALK_IN' ? 'purple' : 'blue'}
+                                  style={{ fontWeight: 700, fontSize: 10, margin: 0, borderRadius: 3 }}
+                                >
+                                  {member.source === 'WALK_IN' ? 'WALK-IN' : 'APP'}
+                                </Tag>
                               </div>
                               <div style={{ fontSize: 12, color: isDarkMode ? '#aaaaaa' : '#64748b', marginTop: 2 }}>
                                 {member.plan}
