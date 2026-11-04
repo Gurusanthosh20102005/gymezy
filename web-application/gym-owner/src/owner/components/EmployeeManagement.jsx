@@ -189,7 +189,18 @@ export const EmployeeManagement = ({
 
   const addRoleWatch = Form.useWatch('role', addEmployeeForm);
   const editRoleWatch = Form.useWatch('role', editEmployeeForm);
-  const isTrainerRole = (role) => ['Trainer', 'Coach', 'Yoga Instructor', 'Zumba Instructor', 'Fitness Trainer'].includes(role);
+  const isTrainerRole = (role) => {
+    if (!role) return false;
+    const norm = String(role).trim().toLowerCase();
+    if (norm.includes('manager')) return false;
+    return (
+      norm.includes('trainer') ||
+      norm.includes('coach') ||
+      norm.includes('instructor') ||
+      norm === 'fitness trainer' ||
+      norm === 'head trainer'
+    );
+  };
   const isAddTrainer = isTrainerRole(addRoleWatch || 'Trainer');
 
   // Map live gym trainers & staff from database fallback
@@ -478,9 +489,12 @@ export const EmployeeManagement = ({
 
   const handleOpenDetails = (record) => {
     setSelectedEmployee(record);
-    setDetailAccessType(record.accessType || computeAccessTypeFromRole(record.role || 'Trainer'));
-    setDetailRole(record.role || 'Trainer');
+    const empRole = record.role || 'Trainer';
+    const isTrainer = isTrainerRole(empRole);
+    setDetailAccessType(record.accessType || computeAccessTypeFromRole(empRole));
+    setDetailRole(empRole);
     setDetailEmpType(record.type || 'Full-Time');
+    setShowTrainerShowcaseTab(isTrainer);
     setEditPhoto(record.avatar || null);
     setEditEmpDocs(Array.isArray(record.documents) ? record.documents : []);
     setEditWorkingDays(
@@ -2089,7 +2103,11 @@ export const EmployeeManagement = ({
                                 setDetailEmpType(val);
                                 const vLower = (val || '').toLowerCase();
                                 const isTemp = vLower === 'temporary' || vLower === 'part-time' || vLower === 'parttime';
-                                setShowTrainerShowcaseTab(!isTemp);
+                                if (isTrainerRole(detailRole)) {
+                                  setShowTrainerShowcaseTab(!isTemp);
+                                } else {
+                                  setShowTrainerShowcaseTab(false);
+                                }
                               }}
                             >
                               <Option value="Full-Time">Full-Time</Option>
@@ -2100,9 +2118,10 @@ export const EmployeeManagement = ({
                         </Col>
                       </Row>
 
-                      {((detailEmpType || '').toLowerCase() === 'temporary' ||
-                        (detailEmpType || '').toLowerCase() === 'part-time' ||
-                        (detailEmpType || '').toLowerCase() === 'parttime') && (
+                      {isTrainerRole(detailRole) &&
+                        ((detailEmpType || '').toLowerCase() === 'temporary' ||
+                          (detailEmpType || '').toLowerCase() === 'part-time' ||
+                          (detailEmpType || '').toLowerCase() === 'parttime') && (
                         <div
                           style={{
                             marginTop: 4,
@@ -2140,6 +2159,11 @@ export const EmployeeManagement = ({
                               onChange={(newRole) => {
                                 setDetailRole(newRole);
                                 setDetailAccessType(computeAccessTypeFromRole(newRole));
+                                const isNowTrainer = isTrainerRole(newRole);
+                                setShowTrainerShowcaseTab(isNowTrainer);
+                                if (!isNowTrainer && (editActiveTab === 'trainer_profile' || editActiveTab === 'trainer_pricing')) {
+                                  setEditActiveTab('personal');
+                                }
                               }}
                               style={{ height: 40 }}
                             >
@@ -2323,8 +2347,29 @@ export const EmployeeManagement = ({
                     <div style={{ paddingTop: 8 }}>
                       <Row gutter={16}>
                         <Col xs={24} sm={14}>
-                          <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Specialization / Key Skills</span>} name="specialty" style={{ marginBottom: 14 }}>
-                            <Input placeholder="e.g. Strength Training, HIIT, Yoga, Nutrition" style={{ height: 40, borderRadius: 'var(--radius-base)' }} />
+                          <Form.Item
+                            label={
+                              <span style={{ fontWeight: 600, fontSize: 12.5 }}>
+                                {detailRole === 'Manager'
+                                  ? 'Administrative & Operations Skills'
+                                  : isTrainerRole(detailRole)
+                                  ? 'Fitness Specialization / Training Focus'
+                                  : 'Specialization / Key Skills'}
+                              </span>
+                            }
+                            name="specialty"
+                            style={{ marginBottom: 14 }}
+                          >
+                            <Input
+                              placeholder={
+                                detailRole === 'Manager'
+                                  ? 'e.g. Gym Operations, Staff Management, Customer Retention'
+                                  : isTrainerRole(detailRole)
+                                  ? 'e.g. Strength Training, HIIT, Yoga, Nutrition'
+                                  : 'e.g. Facility Maintenance, Front Desk Greeting'
+                              }
+                              style={{ height: 40, borderRadius: 'var(--radius-base)' }}
+                            />
                           </Form.Item>
                         </Col>
                         <Col xs={24} sm={10}>
@@ -2468,7 +2513,7 @@ export const EmployeeManagement = ({
                     </div>
                   ),
                 },
-                ...(showTrainerShowcaseTab
+                ...(isTrainerRole(detailRole) && showTrainerShowcaseTab
                   ? [
                       {
                         key: 'trainer_profile',
@@ -2626,7 +2671,7 @@ export const EmployeeManagement = ({
                           <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Compensation Model</span>} name="payType" initialValue="Monthly" style={{ marginBottom: 14 }}>
                             <Select style={{ height: 40 }}>
                               <Option value="Monthly">Monthly Fixed Salary</Option>
-                              <Option value="Session">Per Session / Personal Training</Option>
+                              {isTrainerRole(detailRole) && <Option value="Session">Per Session / Personal Training</Option>}
                               <Option value="Hourly">Hourly Rate</Option>
                               <Option value="Daily">Daily Pay</Option>
                             </Select>
@@ -2792,7 +2837,7 @@ export const EmployeeManagement = ({
                     </div>
                   ),
                 },
-                ...((detailRole === 'Trainer' || selectedEmployee?.role === 'Trainer')
+                ...(isTrainerRole(detailRole)
                   ? [
                       {
                         key: 'trainer_pricing',
