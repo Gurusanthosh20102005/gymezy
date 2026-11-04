@@ -938,6 +938,8 @@ export const EmployeeManagement = ({
 
   const getRoleTagColor = (role) => {
     switch (role) {
+      case 'Manager':
+        return { bg: isDarkMode ? 'rgba(79, 70, 229, 0.2)' : '#eef2ff', color: isDarkMode ? '#a5b4fc' : '#4338ca' };
       case 'Front Desk Manager':
         return { bg: isDarkMode ? 'rgba(114, 46, 209, 0.2)' : '#f3effe', color: isDarkMode ? '#b37feb' : '#722ed1' };
       case 'Trainer':
@@ -1655,7 +1657,7 @@ export const EmployeeManagement = ({
               style={{ width: '100%', height: 42 }}
             >
               <Option value="ALL">All Roles</Option>
-              <Option value="Front Desk Manager">Front Desk Manager</Option>
+              <Option value="Manager">Manager</Option>
               <Option value="Trainer">Trainer</Option>
               <Option value="Customer Support">Customer Support</Option>
               <Option value="Housekeeping">Housekeeping</Option>
@@ -2137,7 +2139,6 @@ export const EmployeeManagement = ({
                               <Option value="Manager">Manager</Option>
                               <Option value="Trainer">Trainer</Option>
                               <Option value="Head Trainer">Head Trainer</Option>
-                              <Option value="Front Desk Manager">Front Desk Manager</Option>
                               <Option value="Customer Support">Customer Support</Option>
                               <Option value="Housekeeping">Housekeeping</Option>
                               <Option value="Nutritionist">Nutritionist</Option>
@@ -3057,7 +3058,6 @@ export const EmployeeManagement = ({
                   <Select style={{ height: 40 }}>
                     <Option value="Manager">Manager (Operational Admin)</Option>
                     <Option value="Trainer">Trainer</Option>
-                    <Option value="Front Desk Manager">Front Desk Manager</Option>
                     <Option value="Customer Support">Customer Support</Option>
                     <Option value="Housekeeping">Housekeeping</Option>
                     <Option value="Nutritionist">Nutritionist</Option>
