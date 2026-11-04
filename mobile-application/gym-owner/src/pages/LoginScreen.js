@@ -115,8 +115,9 @@ export const LoginScreen = ({ navigation }) => {
           });
           navigation.replace('ApplicationStatus');
         } else {
+          const roleTitle = loggedInUser?.role === 'MANAGER' ? 'Manager Portal' : 'Gym Owner Portal';
           showToast({
-            message: `Welcome back, ${displayName}! Gym Owner Portal loaded.`,
+            message: `Welcome back, ${displayName}! ${roleTitle} loaded.`,
             isSuccess: true,
           });
           navigation.replace('Dashboard');

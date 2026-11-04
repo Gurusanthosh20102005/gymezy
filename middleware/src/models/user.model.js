@@ -6,6 +6,7 @@ import { generateToken } from '../utils/jwtHelper.js';
 export const USER_ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   GYM_OWNER: 'GYM_OWNER',
+  MANAGER: 'MANAGER',
   EMPLOYEE: 'EMPLOYEE',
   TRAINER: 'TRAINER',
   CUSTOMER: 'CUSTOMER',

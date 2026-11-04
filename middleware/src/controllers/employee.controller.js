@@ -4,7 +4,7 @@ import { Gym } from '../models/gym.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { USER_ROLES } from '../models/user.model.js';
+import User, { USER_ROLES } from '../models/user.model.js';
 
 /**
  * Synchronize approved trainers from Employee collection to the parent Gym's embedded trainers array
@@ -320,11 +320,59 @@ export const createEmployee = asyncHandler(async (req, res) => {
     ? 'NONE'
     : 'NEW_EMPLOYEE';
 
+  // If role is Manager, ensure User account exists with role-based auth credentials
+  let createdManagerUserId = null;
+  if ((role || '').trim() === 'Manager') {
+    const managerEmail = email ? email.trim().toLowerCase() : '';
+    const managerPhone = phone ? phone.trim() : '';
+    const managerPassword = req.body.password ? String(req.body.password).trim() : '';
+
+    if (!managerPassword) {
+      throw ApiError.badRequest('Password is required for Manager to enable portal login.');
+    }
+    if (managerPassword.length < 6) {
+      throw ApiError.badRequest('Manager password must be at least 6 characters long.');
+    }
+    if (!managerEmail) {
+      throw ApiError.badRequest('Email is required for Manager to enable portal login.');
+    }
+
+    let existingUser = await User.findOne({
+      $or: [{ email: managerEmail }, ...(managerPhone ? [{ phone: managerPhone }] : [])],
+    });
+
+    if (existingUser) {
+      existingUser.fullName = name.trim();
+      existingUser.role = USER_ROLES.MANAGER;
+      existingUser.gymId = gymId;
+      existingUser.password = managerPassword;
+      existingUser.isActive = true;
+      existingUser.isVerified = true;
+      existingUser.employeeProfile = { staffRole: 'MANAGER' };
+      await existingUser.save();
+      createdManagerUserId = existingUser._id;
+    } else {
+      const newUser = await User.create({
+        fullName: name.trim(),
+        email: managerEmail,
+        phone: managerPhone || '0000000000',
+        password: managerPassword,
+        role: USER_ROLES.MANAGER,
+        gymId: gymId,
+        isActive: true,
+        isVerified: true,
+        employeeProfile: { staffRole: 'MANAGER' },
+      });
+      createdManagerUserId = newUser._id;
+    }
+  }
+
   const newEmployeeData = {
     gymId,
     gymPartnerId,
     gymName,
     employeeId: req.body.employeeId || generatedEmpId,
+    userId: createdManagerUserId,
     name: name.trim(),
     role: role || 'Trainer',
     phone: phone || '',
@@ -641,7 +689,7 @@ export const updateEmployee = asyncHandler(async (req, res) => {
   // Calculate detailed diff of changed fields
   const editedDiff = calculateFieldDiff(previousSnapshot, updatedFieldsPayload);
 
-  if (Object.keys(editedDiff).length === 0) {
+  if (Object.keys(editedDiff).length === 0 && !req.body.password) {
     return res.status(200).json(ApiResponse.success(employee, 'No changes detected.'));
   }
 
@@ -715,6 +763,56 @@ export const updateEmployee = asyncHandler(async (req, res) => {
       newSnapshot: onlyChangedFields,
       approvalStatus: 'Pending Approval',
     });
+  }
+
+  // If employee is or became a Manager, synchronize their User account & portal credentials
+  const isManagerRole = (req.body.role || employee.role) === 'Manager';
+  if (isManagerRole) {
+    const managerEmail = (req.body.email || employee.email || '').trim().toLowerCase();
+    const managerPhone = (req.body.phone || employee.phone || '').trim();
+    const managerPassword = req.body.password ? String(req.body.password).trim() : '';
+
+    let linkedUser = null;
+    if (employee.userId) {
+      linkedUser = await User.findById(employee.userId);
+    }
+    if (!linkedUser && (managerEmail || managerPhone)) {
+      linkedUser = await User.findOne({
+        $or: [
+          ...(managerEmail ? [{ email: managerEmail }] : []),
+          ...(managerPhone ? [{ phone: managerPhone }] : []),
+        ],
+      });
+    }
+
+    if (linkedUser) {
+      if (req.body.name) linkedUser.fullName = req.body.name.trim();
+      if (managerEmail) linkedUser.email = managerEmail;
+      if (managerPhone) linkedUser.phone = managerPhone;
+      linkedUser.role = USER_ROLES.MANAGER;
+      linkedUser.gymId = employee.gymId;
+      if (req.body.status) {
+        linkedUser.isActive = req.body.status === 'Active';
+      }
+      if (managerPassword && managerPassword.length >= 6) {
+        linkedUser.password = managerPassword;
+      }
+      await linkedUser.save();
+      employee.userId = linkedUser._id;
+    } else if (managerPassword && managerPassword.length >= 6 && managerEmail) {
+      const newUser = await User.create({
+        fullName: (req.body.name || employee.name || '').trim(),
+        email: managerEmail,
+        phone: managerPhone || '0000000000',
+        password: managerPassword,
+        role: USER_ROLES.MANAGER,
+        gymId: employee.gymId,
+        isActive: req.body.status ? req.body.status === 'Active' : true,
+        isVerified: true,
+        employeeProfile: { staffRole: 'MANAGER' },
+      });
+      employee.userId = newUser._id;
+    }
   }
 
   await employee.save();

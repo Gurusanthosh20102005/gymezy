@@ -15,10 +15,10 @@ export const loginUser = createAsyncThunk(
       const responseData = response.data?.data || response.data || {};
       const userRole = responseData.role || 'GYM_OWNER';
 
-      if (userRole !== 'GYM_OWNER' && userRole !== 'SUPER_ADMIN') {
+      if (userRole !== 'GYM_OWNER' && userRole !== 'SUPER_ADMIN' && userRole !== 'MANAGER') {
         localStorage.removeItem('gymezy_auth_token');
         localStorage.removeItem('gymezy_user');
-        return rejectWithValue('Access denied: This portal is reserved for Gym Owners.');
+        return rejectWithValue('Access denied: This portal is reserved for Gym Owners and Managers.');
       }
 
       const token = responseData.token;
@@ -29,6 +29,7 @@ export const loginUser = createAsyncThunk(
         email: responseData.email,
         phone: responseData.phone,
         role: userRole,
+        isManager: userRole === 'MANAGER',
         gymId: responseData.gym?.id || responseData.gymId,
         gymName: responseData.gym?.name || responseData.gymName || 'My Gym',
         branch: responseData.gym?.city || responseData.gym?.area || '',
@@ -59,6 +60,10 @@ export const refreshCurrentUser = createAsyncThunk(
       const responseData = response.data?.data || response.data || {};
       const userRole = responseData.role || 'GYM_OWNER';
 
+      if (userRole !== 'GYM_OWNER' && userRole !== 'SUPER_ADMIN' && userRole !== 'MANAGER') {
+        return rejectWithValue('Access denied: Invalid role for this portal.');
+      }
+
       const user = {
         id: responseData.id || responseData._id,
         name: responseData.fullName || responseData.name,
@@ -66,6 +71,7 @@ export const refreshCurrentUser = createAsyncThunk(
         email: responseData.email,
         phone: responseData.phone,
         role: userRole,
+        isManager: userRole === 'MANAGER',
         gymId: responseData.gym?.id || responseData.gymId,
         gymName: responseData.gym?.name || responseData.gymName || 'My Gym',
         branch: responseData.gym?.city || responseData.gym?.area || '',

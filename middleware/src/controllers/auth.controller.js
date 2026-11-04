@@ -5,6 +5,7 @@ import { setAuthCookie, clearAuthCookie } from '../utils/cookieHelper.js';
 import { sanitizeDocument } from '../utils/responseTransformer.js';
 import { User, USER_ROLES } from '../models/user.model.js';
 import Gym from '../models/gym.model.js';
+import Employee from '../models/employee.model.js';
 import { verifyGoogleIdToken } from '../services/firebase.service.js';
 
 /**
@@ -28,6 +29,14 @@ const fetchUserGym = async (user) => {
   }
   if (user.role === USER_ROLES.GYM_OWNER) {
     return Gym.findOne({ ownerId: user._id }).select('-auditHistory -documents -galleryPhotos -images');
+  }
+  if (user.role === USER_ROLES.MANAGER || user.role === 'MANAGER') {
+    const emp = await Employee.findOne({
+      $or: [{ userId: user._id }, { email: user.email }, { phone: user.phone }],
+    });
+    if (emp?.gymId) {
+      return Gym.findById(emp.gymId).select('-auditHistory -documents -galleryPhotos -images');
+    }
   }
   if (user.role === USER_ROLES.SUPER_ADMIN) {
     return (
@@ -96,7 +105,13 @@ export const login = asyncHandler(async (req, res) => {
     if (requestedRole === USER_ROLES.SUPER_ADMIN && user.role !== USER_ROLES.SUPER_ADMIN) {
       throw ApiError.forbidden('Access denied. Only Super Administrators are authorized to access the Super Admin Portal.');
     }
-    if (requestedRole === USER_ROLES.GYM_OWNER && user.role !== USER_ROLES.GYM_OWNER && user.role !== USER_ROLES.SUPER_ADMIN) {
+    if (
+      requestedRole === USER_ROLES.GYM_OWNER &&
+      user.role !== USER_ROLES.GYM_OWNER &&
+      user.role !== USER_ROLES.SUPER_ADMIN &&
+      user.role !== USER_ROLES.MANAGER &&
+      user.role !== 'MANAGER'
+    ) {
       throw ApiError.forbidden('Access denied. This portal is reserved for registered Gym Owners and Managers.');
     }
   }

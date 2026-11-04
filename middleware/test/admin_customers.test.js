@@ -8,6 +8,7 @@ test('Admin Customers & Users Architecture Tests', async (t) => {
     assert.strictEqual(USER_ROLES.CUSTOMER, 'CUSTOMER');
     assert.strictEqual(USER_ROLES.SUPER_ADMIN, 'SUPER_ADMIN');
     assert.strictEqual(USER_ROLES.GYM_OWNER, 'GYM_OWNER');
+    assert.strictEqual(USER_ROLES.MANAGER, 'MANAGER');
   });
 
   await t.test('2. User model schema instantiates a Customer with default values', () => {

@@ -78,6 +78,12 @@ const employeeSchema = new mongoose.Schema(
       lowercase: true,
       default: '',
     },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
     avatar: {
       type: String,
       default: '',

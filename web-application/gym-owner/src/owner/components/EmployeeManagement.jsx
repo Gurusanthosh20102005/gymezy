@@ -62,6 +62,7 @@ import {
   ShopOutlined,
   InfoCircleOutlined,
   PaperClipOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import confetti from 'canvas-confetti';
 import { useTheme } from '../../theme/ThemeContext';
@@ -586,6 +587,7 @@ export const EmployeeManagement = ({
       email: values.email ? values.email.trim() : (selectedEmployee.email || ''),
       role: detailRole || values.role || selectedEmployee.role || 'Trainer',
       accessType: computeAccessTypeFromRole(detailRole || values.role || selectedEmployee.role || 'Trainer'),
+      password: values.password && values.password.trim() ? values.password.trim() : undefined,
       gender: values.gender || selectedEmployee.gender || 'All',
       type: values.type || selectedEmployee.type || 'Full-Time',
       status: values.status || selectedEmployee.status || 'Active',
@@ -735,7 +737,11 @@ export const EmployeeManagement = ({
 
   const handleNextToAddStep2 = async () => {
     try {
-      await addEmployeeForm.validateFields(['name', 'phone', 'email', 'role']);
+      const fieldsToValidate = ['name', 'phone', 'email', 'role'];
+      if (addRoleWatch === 'Manager') {
+        fieldsToValidate.push('password');
+      }
+      await addEmployeeForm.validateFields(fieldsToValidate);
       setAddStep(2);
     } catch {
       message.warning('Please complete all required fields on Page 1 before proceeding.');
@@ -774,6 +780,7 @@ export const EmployeeManagement = ({
       role: allFormValues.role || 'Trainer',
       phone: `${allFormValues.countryCode || '+91'} ${allFormValues.phone || ''}`.trim(),
       email: allFormValues.email?.trim() || `${allFormValues.name?.toLowerCase().replace(/\s+/g, '') || 'staff'}@gymezy.com`,
+      password: allFormValues.password ? allFormValues.password.trim() : undefined,
       avatar:
         addPhoto ||
         'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
@@ -2201,6 +2208,36 @@ export const EmployeeManagement = ({
                         </Card>
                       )}
 
+                      {detailRole === 'Manager' && (
+                        <Card
+                          size="small"
+                          style={{
+                            marginBottom: 16,
+                            borderRadius: 'var(--radius-base)',
+                            backgroundColor: isDarkMode ? '#1e1b4b' : '#f5f3ff',
+                            borderColor: isDarkMode ? '#4338ca' : '#c7d2fe',
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, fontSize: 13, color: '#4f46e5', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <LockOutlined /> Manager Portal Login Password
+                          </div>
+                          <div style={{ fontSize: 11.5, color: isDarkMode ? '#c7d2fe' : '#475569', marginBottom: 12 }}>
+                            Set or reset the login password for this Manager. Leave blank to keep existing password.
+                          </div>
+                          <Form.Item
+                            name="password"
+                            label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>New Portal Password (Optional)</span>}
+                            rules={[{ min: 6, message: 'Password must be at least 6 characters' }]}
+                            style={{ marginBottom: 4 }}
+                          >
+                            <Input.Password
+                              placeholder="Leave blank to keep existing password (min 6 characters)"
+                              style={{ height: 40, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }}
+                            />
+                          </Form.Item>
+                        </Card>
+                      )}
+
                       {/* Automatic System Access (RBAC) */}
                       <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 8 }}>
@@ -3106,6 +3143,39 @@ export const EmployeeManagement = ({
                     </Form.Item>
                   </Col>
                 </Row>
+              </Card>
+            )}
+
+            {addRoleWatch === 'Manager' && (
+              <Card
+                size="small"
+                style={{
+                  marginBottom: 16,
+                  borderRadius: 'var(--radius-base)',
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#f5f3ff',
+                  borderColor: isDarkMode ? '#4338ca' : '#c7d2fe',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#4f46e5', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <LockOutlined /> Manager Portal Login Password
+                </div>
+                <div style={{ fontSize: 11.5, color: isDarkMode ? '#c7d2fe' : '#475569', marginBottom: 12 }}>
+                  Set a secure password for this Manager. They will use their email and this password to log in to the Gym Owner Web Portal & Mobile App.
+                </div>
+                <Form.Item
+                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Portal Login Password <span style={{ color: '#ef4444' }}>*</span></span>}
+                  name="password"
+                  rules={[
+                    { required: addRoleWatch === 'Manager', message: 'Please set a portal login password for the manager' },
+                    { min: 6, message: 'Password must be at least 6 characters long' },
+                  ]}
+                  style={{ marginBottom: 4 }}
+                >
+                  <Input.Password
+                    placeholder="Enter password (min 6 characters)"
+                    style={{ height: 40, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }}
+                  />
+                </Form.Item>
               </Card>
             )}
 

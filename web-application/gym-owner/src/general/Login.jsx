@@ -112,7 +112,8 @@ export const Login = () => {
           message.info(`Welcome back, ${user.fullName || user.name || 'Partner'}! Your application status is loaded.`);
           navigate('/application-status');
         } else {
-          message.success(`Welcome back, ${user.fullName || user.name || 'Partner'}! Gym Owner Portal loaded.`);
+          const roleLabel = user.role === 'MANAGER' ? 'Manager Portal' : 'Gym Owner Portal';
+          message.success(`Welcome back, ${user.fullName || user.name || 'Partner'}! ${roleLabel} loaded.`);
           navigate('/owner/dashboard');
         }
       } else {
