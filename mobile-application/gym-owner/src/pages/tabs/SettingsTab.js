@@ -14,14 +14,17 @@ import {
   RefreshControl,
   Linking,
   Dimensions,
+  AppState,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppColors } from '../../theme/appTheme';
 import { useToast } from '../../widgets/CustomScaffoldMessage';
 import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../services/apiService';
+import { notificationService } from '../../services/notificationService';
 import { getSafeImageUri, getGymLogoUri } from '../../utils/mediaUtils';
 import { pickImageFromDevice, capturePhotoFromCamera } from '../../utils/filePickerUtils';
 import { AddEmployeeModal } from '../../widgets/AddEmployeeModal';
@@ -147,6 +150,7 @@ const getNormalizedPricingPlans = (data) => {
 
 export const SettingsTab = ({ topInset, navigation }) => {
   const { isDark, toggleTheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { user, gym, logout, updateGym, refreshGymProfile } = useAuth();
 
@@ -177,6 +181,59 @@ export const SettingsTab = ({ topInset, navigation }) => {
   // Operational Toggles
   const [audioBeep, setAudioBeep] = useState(true);
   const [smsReminders, setSmsReminders] = useState(true);
+
+  // Native Notification Permission State
+  const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(false);
+
+  const checkNotifications = useCallback(async () => {
+    const granted = await notificationService.checkNotificationPermission();
+    setIsNotificationsEnabled(granted);
+  }, []);
+
+  useEffect(() => {
+    checkNotifications();
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        checkNotifications();
+      }
+    });
+    return () => subscription.remove();
+  }, [checkNotifications]);
+
+  const handleToggleNotifications = async (targetValue) => {
+    if (targetValue) {
+      const res = await notificationService.requestNotificationPermission();
+      if (res.granted) {
+        setIsNotificationsEnabled(true);
+        showToast({ message: 'Notifications enabled successfully!', isSuccess: true });
+      } else {
+        setIsNotificationsEnabled(false);
+        Alert.alert(
+          'Notification Permission Required',
+          'GYMEZY Gym Owner notifications are disabled in device settings. Would you like to open settings to allow notifications?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => notificationService.openNotificationSettings(),
+            },
+          ]
+        );
+      }
+    } else {
+      Alert.alert(
+        'Disable Notifications',
+        'To silence or turn off notifications, please adjust permission in your device system settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open Settings',
+            onPress: () => notificationService.openNotificationSettings(),
+          },
+        ]
+      );
+    }
+  };
 
   // Modals
   const [showPendingRequestsModal, setShowPendingRequestsModal] = useState(false);
@@ -770,7 +827,7 @@ export const SettingsTab = ({ topInset, navigation }) => {
     <ScrollView
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingTop: topInset + 12, paddingBottom: 110 },
+        { paddingTop: topInset + 12, paddingBottom: 170 + Math.max(insets.bottom, 24) },
       ]}
       showsVerticalScrollIndicator={false}
       refreshControl={
@@ -1097,7 +1154,7 @@ export const SettingsTab = ({ topInset, navigation }) => {
       {/* SECTION 2: APPEARANCE & PREFERENCES */}
       <View style={styles.sectionContainer}>
         <Text style={[styles.sectionHeading, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-          Appearance
+          Preferences
         </Text>
         <View
           style={[
@@ -1108,6 +1165,56 @@ export const SettingsTab = ({ topInset, navigation }) => {
             },
           ]}
         >
+          {/* Push Notifications Row */}
+          <View style={styles.menuItemRow}>
+            <View
+              style={[
+                styles.menuIconBox,
+                {
+                  backgroundColor: isNotificationsEnabled
+                    ? 'rgba(16, 185, 129, 0.12)'
+                    : 'rgba(239, 68, 68, 0.12)',
+                },
+              ]}
+            >
+              <MaterialIcons
+                name={isNotificationsEnabled ? 'notifications-active' : 'notifications-off'}
+                size={20}
+                color={isNotificationsEnabled ? '#10B981' : '#EF4444'}
+              />
+            </View>
+            <View style={styles.menuTextBox}>
+              <Text style={[styles.menuTitleText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Push Notifications
+              </Text>
+              <Text
+                style={[
+                  styles.menuSubText,
+                  { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' },
+                ]}
+              >
+                {isNotificationsEnabled
+                  ? 'Real-time alerts for bookings & check-ins'
+                  : 'Notifications are turned off'}
+              </Text>
+            </View>
+            <Switch
+              value={isNotificationsEnabled}
+              onValueChange={handleToggleNotifications}
+              trackColor={{ false: '#CBD5E1', true: AppColors.primaryColor }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          <View
+            style={{
+              height: 1,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+              marginHorizontal: 16,
+            }}
+          />
+
+          {/* Dark Mode Row */}
           <View style={styles.menuItemRow}>
             <View style={[styles.menuIconBox, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
               <MaterialIcons name={isDark ? 'dark-mode' : 'light-mode'} size={20} color="#F59E0B" />
@@ -1176,7 +1283,7 @@ export const SettingsTab = ({ topInset, navigation }) => {
     <ScrollView
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingTop: topInset + 12, paddingBottom: 110 },
+        { paddingTop: topInset + 12, paddingBottom: 170 + Math.max(insets.bottom, 24) },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -1752,7 +1859,7 @@ export const SettingsTab = ({ topInset, navigation }) => {
     <ScrollView
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingTop: topInset + 12, paddingBottom: 110 },
+        { paddingTop: topInset + 12, paddingBottom: 170 + Math.max(insets.bottom, 24) },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -2035,7 +2142,7 @@ export const SettingsTab = ({ topInset, navigation }) => {
         </View>
 
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingTop: 14, paddingBottom: 110 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: 14, paddingBottom: 170 + Math.max(insets.bottom, 24) }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -2168,7 +2275,7 @@ export const SettingsTab = ({ topInset, navigation }) => {
         </View>
 
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingTop: 14, paddingBottom: 110 }]}
+          contentContainerStyle={[styles.scrollContent, { paddingTop: 14, paddingBottom: 170 + Math.max(insets.bottom, 24) }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl

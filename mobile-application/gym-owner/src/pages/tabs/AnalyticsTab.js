@@ -11,6 +11,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../theme/ThemeContext';
 import { AppColors } from '../../theme/appTheme';
 import { useAuth } from '../../context/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const WEEKLY_CHECKINS = [
   { day: 'Mon', count: 74, heightPct: 74 },
@@ -36,6 +37,7 @@ const PLAN_STATS = [
 
 export const AnalyticsTab = ({ topInset }) => {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { gym } = useAuth();
   const [selectedPeriod, setSelectedPeriod] = useState('This Month');
 
@@ -45,7 +47,7 @@ export const AnalyticsTab = ({ topInset }) => {
         styles.scrollContent,
         {
           paddingTop: topInset + 12,
-          paddingBottom: 110,
+          paddingBottom: 170 + Math.max(insets.bottom, 24),
         },
       ]}
       showsVerticalScrollIndicator={false}

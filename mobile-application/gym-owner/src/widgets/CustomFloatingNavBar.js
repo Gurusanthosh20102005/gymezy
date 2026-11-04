@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 
@@ -119,6 +120,8 @@ const AnimatedNavItem = ({ item, isSelected, onTap, isDark }) => {
 
 export const CustomFloatingNavBar = ({ currentIndex, onTap }) => {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const bottomMargin = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : Math.max(insets.bottom, 20) + 16;
   const [rowWidth, setRowWidth] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scalePillAnim = useRef(new Animated.Value(1)).current;
@@ -166,6 +169,7 @@ export const CustomFloatingNavBar = ({ currentIndex, onTap }) => {
         style={[
           styles.container,
           {
+            marginBottom: bottomMargin,
             backgroundColor: isDark
               ? 'rgba(22, 22, 26, 0.92)'
               : 'rgba(255, 255, 255, 0.94)',
@@ -224,10 +228,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    zIndex: 999,
   },
   container: {
     marginHorizontal: 16,
-    marginBottom: Platform.OS === 'ios' ? 24 : 18,
     borderRadius: 30,
     borderWidth: 1.2,
     shadowColor: '#000',

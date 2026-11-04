@@ -21,6 +21,8 @@ import { useToast } from '../../widgets/CustomScaffoldMessage';
 import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../services/apiService';
 import { getSafeImageUri } from '../../utils/mediaUtils';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AddTempStaffModal } from '../../widgets/AddTempStaffModal';
 import {
   AddEmployeeModal,
   AVAILABLE_SERVICES,
@@ -30,6 +32,7 @@ import {
 const FILTER_TABS = ['All', 'Trainers', 'Floor Staff', 'Part-Time', 'Temporary', 'Pending Approval'];
 
 export const EmployeesTab = ({ topInset, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const { showToast } = useToast();
   const { gym } = useAuth();
@@ -45,6 +48,7 @@ export const EmployeesTab = ({ topInset, navigation }) => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showTempStaffModal, setShowTempStaffModal] = useState(false);
 
 
   // Fetch Employees
@@ -193,29 +197,50 @@ export const EmployeesTab = ({ topInset, navigation }) => {
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground }]}>
-      {/* 1. Header */}
+      {/* 1. Header with Dual Action Buttons (Add Employee & Add Temp / Part-Time) */}
       <View style={[styles.headerRow, { paddingTop: topInset + 12 }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-            Staff & Employees
-          </Text>
-          <Text style={[styles.headerSubtitle, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
-            {employees.length} team members configured
-          </Text>
+        <View style={styles.headerTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.headerTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+              Staff & Employees
+            </Text>
+            <Text style={[styles.headerSubtitle, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
+              {employees.length} team members configured
+            </Text>
+          </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.addEmployeeBtn}
-          onPress={() => setShowAddModal(true)}
-          activeOpacity={0.85}
-        >
-          <MaterialIcons name="person-add" size={17} color="#FFFFFF" />
-          <Text style={styles.addEmployeeBtnText}>Add Employee</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActionRow}>
+          <TouchableOpacity
+            style={[
+              styles.addTempStaffBtn,
+              {
+                backgroundColor: isDark ? 'rgba(124, 58, 237, 0.16)' : '#F5F3FF',
+                borderColor: isDark ? 'rgba(124, 58, 237, 0.45)' : '#DDD6FE',
+              },
+            ]}
+            onPress={() => setShowTempStaffModal(true)}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="group-add" size={16} color={isDark ? '#C084FC' : '#7C3AED'} />
+            <Text style={[styles.addTempStaffBtnText, { color: isDark ? '#C084FC' : '#7C3AED' }]}>
+              + Temp / Part-Time
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.addEmployeeBtn}
+            onPress={() => setShowAddModal(true)}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="person-add" size={16} color="#FFFFFF" />
+            <Text style={styles.addEmployeeBtnText}>+ Add Employee</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 170 + Math.max(insets.bottom, 24) }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -482,17 +507,72 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                     )}
                   </View>
 
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[styles.empName, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                        {emp.name}
-                      </Text>
-                      <View style={styles.empIdTag}>
-                        <Text style={styles.empIdTagText}>{emp.employeeId || 'EMP'}</Text>
+                  <View style={styles.headerInfoCol}>
+                    <View style={styles.nameAndStatusRow}>
+                      <View style={styles.nameAndIdBox}>
+                        <Text
+                          style={[styles.empName, { color: isDark ? '#FFFFFF' : '#0F172A' }]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {emp.name}
+                        </Text>
+                        <View
+                          style={[
+                            styles.empIdTag,
+                            {
+                              backgroundColor: isDark ? 'rgba(0, 56, 130, 0.28)' : 'rgba(0, 56, 130, 0.08)',
+                              borderColor: isDark ? 'rgba(0, 56, 130, 0.45)' : 'rgba(0, 56, 130, 0.18)',
+                            },
+                          ]}
+                        >
+                          <Text style={styles.empIdTagText}>{emp.employeeId || 'EMP'}</Text>
+                        </View>
                       </View>
+
+                      {/* Status Pill - Right aligned, flexShrink: 0, guaranteed zero overlap */}
+                      {!isApproved && emp.approvalStatus && emp.approvalStatus !== 'Approved' && (
+                        <View
+                          style={[
+                            styles.statusPill,
+                            {
+                              backgroundColor: isPending
+                                ? 'rgba(245, 158, 11, 0.14)'
+                                : 'rgba(239, 68, 68, 0.12)',
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.statusDot,
+                              {
+                                backgroundColor: isPending
+                                  ? AppColors.warningAmber
+                                  : AppColors.dangerRed,
+                              },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              {
+                                color: isPending
+                                  ? AppColors.warningAmber
+                                  : AppColors.dangerRed,
+                              },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {emp.approvalStatus}
+                          </Text>
+                        </View>
+                      )}
                     </View>
 
-                    <Text style={[styles.empRole, { color: isDark ? 'rgba(255,255,255,0.7)' : '#64748B' }]}>
+                    <Text
+                      style={[styles.empRole, { color: isDark ? 'rgba(255,255,255,0.7)' : '#64748B' }]}
+                      numberOfLines={1}
+                    >
                       {emp.role}
                     </Text>
 
@@ -516,49 +596,13 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                               ? { color: '#0891B2', fontWeight: '700' }
                               : { color: isDark ? '#94A3B8' : '#475569' },
                           ]}
+                          numberOfLines={1}
                         >
                           {emp.type || 'Full Time'} • {emp.accessType || 'Employee'}
                         </Text>
                       </View>
                     </View>
                   </View>
-
-                  {/* Status Pill - Only shown when not approved (e.g. Pending Approval or Rejected) */}
-                  {!isApproved && emp.approvalStatus && emp.approvalStatus !== 'Approved' && (
-                    <View
-                      style={[
-                        styles.statusPill,
-                        {
-                          backgroundColor: isPending
-                            ? 'rgba(245, 158, 11, 0.14)'
-                            : 'rgba(239, 68, 68, 0.12)',
-                        },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.statusDot,
-                          {
-                            backgroundColor: isPending
-                              ? AppColors.warningAmber
-                              : AppColors.dangerRed,
-                          },
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.statusPillText,
-                          {
-                            color: isPending
-                              ? AppColors.warningAmber
-                              : AppColors.dangerRed,
-                          },
-                        ]}
-                      >
-                        {emp.approvalStatus}
-                      </Text>
-                    </View>
-                  )}
                 </View>
 
                 {/* Info row */}
@@ -685,7 +729,10 @@ export const EmployeesTab = ({ topInset, navigation }) => {
           <View
             style={[
               styles.modalSheet,
-              { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                paddingBottom: Math.max(insets.bottom, 24) + 16,
+              },
             ]}
           >
             <View style={styles.modalHeader}>
@@ -867,19 +914,51 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                     Shift & Compensation
                   </Text>
                   <View style={styles.detailRow}>
-                    <Text style={[styles.detailKey, { color: isDark ? '#94A3B8' : '#64748B' }]}>Monthly Pay</Text>
-                    <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                    <Text style={[styles.detailKey, { color: isDark ? '#94A3B8' : '#64748B' }]}>Employment Type</Text>
+                    <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: '700' }]}>
+                      {selectedEmployee.type || 'Full-Time'}
+                    </Text>
+                  </View>
+                  {selectedEmployee.type === 'Temporary' && (selectedEmployee.schedule?.startDate || selectedEmployee.schedule?.endDate) && (
+                    <View style={styles.detailRow}>
+                      <Text style={[styles.detailKey, { color: isDark ? '#94A3B8' : '#64748B' }]}>Engagement Period</Text>
+                      <Text style={[styles.detailVal, { color: '#EA580C', fontWeight: '700' }]}>
+                        {selectedEmployee.schedule.startDate || '—'} to {selectedEmployee.schedule.endDate || '—'}
+                      </Text>
+                    </View>
+                  )}
+                  {Array.isArray(selectedEmployee.schedule?.workingDays) && selectedEmployee.schedule.workingDays.length > 0 && (
+                    <View style={styles.detailRow}>
+                      <Text style={[styles.detailKey, { color: isDark ? '#94A3B8' : '#64748B' }]}>Working Days</Text>
+                      <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                        {selectedEmployee.schedule.workingDays.join(', ')}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailKey, { color: isDark ? '#94A3B8' : '#64748B' }]}>Compensation</Text>
+                    <Text style={[styles.detailVal, { color: AppColors.secondaryColor, fontWeight: '700' }]}>
                       {selectedEmployee.compensation?.payAmount
-                        ? `₹${Number(selectedEmployee.compensation.payAmount).toLocaleString('en-IN')}`
+                        ? `₹${Number(selectedEmployee.compensation.payAmount).toLocaleString('en-IN')}${selectedEmployee.compensation?.payType ? ` / ${selectedEmployee.compensation.payType}` : ''}${selectedEmployee.compensation?.payFreq ? ` (${selectedEmployee.compensation.payFreq})` : ''}`
                         : 'Not recorded'}
                     </Text>
                   </View>
                   <View style={styles.detailRow}>
                     <Text style={[styles.detailKey, { color: isDark ? '#94A3B8' : '#64748B' }]}>Shift Hours</Text>
                     <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                      {selectedEmployee.schedule?.shiftTiming || 'General Floor Shift'}
+                      {selectedEmployee.schedule?.workingTimeStart && selectedEmployee.schedule?.workingTimeEnd
+                        ? `${selectedEmployee.schedule.workingTimeStart} - ${selectedEmployee.schedule.workingTimeEnd}`
+                        : selectedEmployee.schedule?.shiftTiming || 'General Floor Shift'}
                     </Text>
                   </View>
+                  {!!selectedEmployee.notes && (
+                    <View style={styles.detailRow}>
+                      <Text style={[styles.detailKey, { color: isDark ? '#94A3B8' : '#64748B' }]}>Notes</Text>
+                      <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A', flex: 1, textAlign: 'right' }]}>
+                        {selectedEmployee.notes}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* Emergency Contact */}
@@ -1025,10 +1104,17 @@ export const EmployeesTab = ({ topInset, navigation }) => {
         </View>
       </Modal>
 
-      {/* 8. Add Employee Modal */}
+      {/* 8. Add Permanent Employee Modal */}
       <AddEmployeeModal
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
+        onSuccess={() => fetchEmployees()}
+      />
+
+      {/* 9. Add Temporary / Part-Time Staff Modal */}
+      <AddTempStaffModal
+        visible={showTempStaffModal}
+        onClose={() => setShowTempStaffModal(false)}
         onSuccess={() => fetchEmployees()}
       />
     </View>
@@ -1040,9 +1126,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 14,
   },
@@ -1057,11 +1140,39 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: Platform.OS === 'ios' ? 'Outfit' : 'Outfit-Medium',
   },
-  addEmployeeBtn: {
+  headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  headerActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  addTempStaffBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1.2,
+    gap: 6,
+  },
+  addTempStaffBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  addEmployeeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: AppColors.primaryColor,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingVertical: 9,
     borderRadius: 12,
     gap: 6,
@@ -1074,7 +1185,7 @@ const styles = StyleSheet.create({
   addEmployeeBtnText: {
     color: '#FFFFFF',
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12.5,
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -1235,16 +1346,41 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 15,
   },
+  headerInfoCol: {
+    flex: 1,
+    marginLeft: 12,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  nameAndStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    minWidth: 0,
+  },
+  nameAndIdBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
+  },
   empName: {
     fontSize: 15,
     fontWeight: '800',
     letterSpacing: -0.2,
+    flexShrink: 1,
   },
   empIdTag: {
-    marginLeft: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexShrink: 0,
   },
   empIdTagText: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
     color: AppColors.primaryColor,
   },
@@ -1266,9 +1402,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
+    paddingVertical: 3.5,
+    borderRadius: 8,
     gap: 5,
+    flexShrink: 0,
   },
   statusDot: {
     width: 6,

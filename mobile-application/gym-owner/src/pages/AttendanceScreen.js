@@ -210,7 +210,7 @@ export const AttendanceScreen = ({ navigation, route }) => {
     <ScrollView
       contentContainerStyle={[
         styles.scrollContent,
-        { paddingTop: topInset + 12, paddingBottom: 40 },
+        { paddingTop: topInset + 12, paddingBottom: 40 + Math.max(insets.bottom, 20) },
       ]}
       showsVerticalScrollIndicator={false}
     >
@@ -495,7 +495,7 @@ export const AttendanceScreen = ({ navigation, route }) => {
         </View>
 
         <ScrollView
-          contentContainerStyle={[styles.searchScrollContent, { paddingBottom: 40 }]}
+          contentContainerStyle={[styles.searchScrollContent, { paddingBottom: 40 + Math.max(insets.bottom, 20) }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -709,7 +709,7 @@ export const AttendanceScreen = ({ navigation, route }) => {
         </View>
 
         <ScrollView
-          contentContainerStyle={[styles.detailsScrollContent, { paddingBottom: 40 }]}
+          contentContainerStyle={[styles.detailsScrollContent, { paddingBottom: 40 + Math.max(insets.bottom, 20) }]}
           showsVerticalScrollIndicator={false}
         >
           {/* Profile Card */}
@@ -967,7 +967,7 @@ export const AttendanceScreen = ({ navigation, route }) => {
         </View>
 
         <ScrollView
-          contentContainerStyle={[styles.searchScrollContent, { paddingBottom: 40 }]}
+          contentContainerStyle={[styles.searchScrollContent, { paddingBottom: 40 + Math.max(insets.bottom, 20) }]}
           showsVerticalScrollIndicator={false}
         >
           {/* Summary Mini Cards */}
@@ -1150,7 +1150,7 @@ export const AttendanceScreen = ({ navigation, route }) => {
             <View
               style={[
                 styles.bottomSheetCard,
-                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', paddingBottom: Math.max(insets.bottom, 24) + 16 },
               ]}
             >
               <View style={styles.sheetHeader}>
@@ -1275,7 +1275,7 @@ export const AttendanceScreen = ({ navigation, route }) => {
             <View
               style={[
                 styles.bottomSheetCard,
-                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
+                { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', paddingBottom: Math.max(insets.bottom, 24) + 16 },
               ]}
             >
               <View style={styles.sheetHeader}>
