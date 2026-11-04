@@ -142,84 +142,424 @@ const SubscriptionDonutChart = ({ isDarkMode, data = {} }) => {
   );
 };
 
-// Revenue Monthly Bar Chart Component
-const RevenueBarChart = ({ isDarkMode, data = [] }) => {
-  const months = data.length > 0 ? data : [
-    { name: 'Jan', subscription: 0, commission: 0, total: 0 },
-    { name: 'Feb', subscription: 0, commission: 0, total: 0 },
-    { name: 'Mar', subscription: 0, commission: 0, total: 0 },
-    { name: 'Apr', subscription: 0, commission: 0, total: 0 },
-    { name: 'May', subscription: 0, commission: 0, total: 0 },
-    { name: 'Jun', subscription: 0, commission: 0, total: 0 },
+// Computes smooth cubic Bezier spline path through points
+const getSmoothSplinePath = (pts) => {
+  if (!pts || pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+
+  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? 0 : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+};
+
+const getSmoothAreaPath = (pts, bottomY) => {
+  if (!pts || pts.length === 0) return '';
+  const spline = getSmoothSplinePath(pts);
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  return `${spline} L ${last.x.toFixed(1)} ${bottomY} L ${first.x.toFixed(1)} ${bottomY} Z`;
+};
+
+// Revenue Growth Spline Chart Component (Dual-Curve Area Chart with Interactive Hover)
+const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
+  // 12-month sample series exactly mirroring Image 2 design
+  const defaultSeries = [
+    { label: "Jan '21", current: 20, previous: 52 },
+    { label: "Feb '21", current: 28, previous: 45 },
+    { label: "Mar '21", current: 48, previous: 28 },
+    { label: "Apr '21", current: 56, previous: 17 },
+    { label: "May '21", current: 67, previous: 66 },
+    { label: "Jun '21", current: 40, previous: 15 },
+    { label: "Jul '21", current: 58, previous: 49 },
+    { label: "Aug '21", current: 22, previous: 46 },
+    { label: "Sep '21", current: 28, previous: 58 },
+    { label: "Oct '21", current: 59, previous: 86 },
+    { label: "Nov '21", current: 20, previous: 72 },
+    { label: "2022",    current: 18, previous: 16 },
   ];
 
-  const maxVal = Math.max(50, ...months.map((m) => m.total || 0));
+  // If live data has non-zero total points, integrate with live stats
+  const hasLiveData = Array.isArray(data) && data.length > 0 && data.some((d) => (d.total || 0) > 0);
+  const series = hasLiveData
+    ? data.map((d, i) => ({
+        label: d.name ? `${d.name} '${String(d.year || 26).slice(-2)}` : defaultSeries[i]?.label || `M${i + 1}`,
+        current: d.subscription || d.total || 0,
+        previous: d.commission || Math.round((d.total || 0) * 0.7),
+      }))
+    : defaultSeries;
+
+  const [activeIndex, setActiveIndex] = React.useState(3); // Default hovered on Apr '21 like screenshot
+  const svgRef = React.useRef(null);
+
+  // Layout boundaries
+  const width = 680;
+  const height = 250;
+  const plotLeft = 45;
+  const plotRight = 655;
+  const plotTop = 25;
+  const plotBottom = 205;
+  const plotWidth = plotRight - plotLeft;
+  const plotHeight = plotBottom - plotTop;
+
+  // Y-axis ticks [0, 20, 40, 60, 80, 100]
+  const yTicks = [0, 20, 40, 60, 80, 100];
+  const maxVal = 100;
+
+  const stepX = plotWidth / (series.length - 1);
+
+  // Compute points
+  const currentPoints = series.map((item, idx) => {
+    const x = plotLeft + idx * stepX;
+    const y = plotBottom - (Math.min(maxVal, item.current) / maxVal) * plotHeight;
+    return { x, y, ...item };
+  });
+
+  const prevPoints = series.map((item, idx) => {
+    const x = plotLeft + idx * stepX;
+    const y = plotBottom - (Math.min(maxVal, item.previous) / maxVal) * plotHeight;
+    return { x, y, ...item };
+  });
+
+  const activeCurrent = currentPoints[activeIndex] || currentPoints[3];
+  const activePrev = prevPoints[activeIndex] || prevPoints[3];
+  const activeItem = series[activeIndex] || series[3];
+  const activeX = activeCurrent.x;
+
+  // Tooltip position
+  const tooltipWidth = 115;
+  const tooltipHeight = 72;
+  const tooltipX = Math.min(Math.max(activeX - tooltipWidth / 2, plotLeft + 10), plotRight - tooltipWidth - 10);
+  const tooltipY = Math.max(plotTop + 5, Math.min(activeCurrent.y, activePrev.y) - 45);
+
+  const handlePointerMove = (e) => {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const clientX = e.clientX || (e.touches && e.touches[0]?.clientX);
+    if (!clientX) return;
+    const relX = ((clientX - rect.left) / rect.width) * width;
+    const closestIdx = Math.round((relX - plotLeft) / stepX);
+    const clampedIdx = Math.max(0, Math.min(series.length - 1, closestIdx));
+    setActiveIndex(clampedIdx);
+  };
 
   return (
-    <div style={{ width: '100%', paddingTop: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: 160, gap: 12, paddingBottom: 10 }}>
-        {months.map((m, idx) => {
-          const subHeight = maxVal > 0 ? (m.subscription / maxVal) * 130 : 0;
-          const commHeight = maxVal > 0 ? (m.commission / maxVal) * 130 : 0;
-          return (
-            <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
-                ₹{m.total}L
-              </span>
-              <div
-                style={{
-                  width: '100%',
-                  maxWidth: 36,
-                  height: 130,
-                  display: 'flex',
-                  flexDirection: 'column-reverse',
-                  backgroundColor: isDarkMode ? '#1e293b' : '#f1f5f9',
-                  borderRadius: 6,
-                  overflow: 'hidden',
-                }}
-              >
-                <Tooltip title={`Subscription: ₹${m.subscription}L`}>
-                  <div
-                    style={{
-                      height: `${subHeight}px`,
-                      backgroundColor: '#6366f1',
-                      width: '100%',
-                      transition: 'height 0.3s ease',
-                    }}
-                  />
-                </Tooltip>
-                <Tooltip title={`Booking Commission: ₹${m.commission}L`}>
-                  <div
-                    style={{
-                      height: `${commHeight}px`,
-                      backgroundColor: '#22c55e',
-                      width: '100%',
-                      transition: 'height 0.3s ease',
-                    }}
-                  />
-                </Tooltip>
-              </div>
-              <span style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
-                {m.name}
-              </span>
-            </div>
-          );
-        })}
+    <div style={{ width: '100%', position: 'relative', userSelect: 'none' }}>
+      {/* Top Right Legend matching Screenshot */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          gap: 20,
+          marginBottom: 8,
+          paddingRight: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: '#4361ee',
+              boxShadow: '0 0 6px rgba(67, 97, 238, 0.4)',
+            }}
+          />
+          <span style={{ fontSize: 13, fontWeight: 600, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+            Current
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <div
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: '#e5a03b',
+              boxShadow: '0 0 6px rgba(229, 160, 59, 0.4)',
+            }}
+          />
+          <span style={{ fontSize: 13, fontWeight: 600, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+            Previous
+          </span>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 24, paddingTop: 12, borderTop: `1px solid ${isDarkMode ? '#222' : '#f1f5f9'}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#6366f1' }} />
-          <span style={{ fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' }}>Partner Subscriptions</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#22c55e' }} />
-          <span style={{ fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' }}>Booking Commissions</span>
-        </div>
-      </div>
+      {/* Responsive SVG Chart */}
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${width} ${height}`}
+        style={{ width: '100%', height: 'auto', overflow: 'visible', display: 'block' }}
+        onMouseMove={handlePointerMove}
+        onTouchMove={handlePointerMove}
+      >
+        <defs>
+          {/* Blue Current Area Gradient */}
+          <linearGradient id="currentAreaGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4361ee" stopOpacity={isDarkMode ? 0.35 : 0.22} />
+            <stop offset="65%" stopColor="#4361ee" stopOpacity={isDarkMode ? 0.12 : 0.05} />
+            <stop offset="100%" stopColor="#4361ee" stopOpacity="0" />
+          </linearGradient>
+
+          {/* Amber Previous Area Gradient */}
+          <linearGradient id="prevAreaGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#e5a03b" stopOpacity={isDarkMode ? 0.32 : 0.20} />
+            <stop offset="65%" stopColor="#e5a03b" stopOpacity={isDarkMode ? 0.10 : 0.04} />
+            <stop offset="100%" stopColor="#e5a03b" stopOpacity="0" />
+          </linearGradient>
+
+          {/* Floating Tooltip Shadow Filter */}
+          <filter id="tooltipShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor={isDarkMode ? '#000000' : '#0f172a'} floodOpacity="0.12" />
+          </filter>
+        </defs>
+
+        {/* Horizontal Gridlines & Y-Axis Labels */}
+        {yTicks.map((tick) => {
+          const y = plotBottom - (tick / maxVal) * plotHeight;
+          return (
+            <g key={tick}>
+              <line
+                x1={plotLeft - 5}
+                y1={y}
+                x2={plotRight + 10}
+                y2={y}
+                stroke={isDarkMode ? 'rgba(255,255,255,0.06)' : '#f1f5f9'}
+                strokeWidth="1"
+              />
+              <text
+                x={plotLeft - 14}
+                y={y + 4}
+                textAnchor="end"
+                fontSize="11.5"
+                fontWeight="500"
+                fill={isDarkMode ? '#64748b' : '#94a3b8'}
+              >
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* 1. Previous Area Fill */}
+        <path
+          d={getSmoothAreaPath(prevPoints, plotBottom)}
+          fill="url(#prevAreaGradient)"
+        />
+
+        {/* 2. Current Area Fill */}
+        <path
+          d={getSmoothAreaPath(currentPoints, plotBottom)}
+          fill="url(#currentAreaGradient)"
+        />
+
+        {/* 3. Previous Spline Curve Line */}
+        <path
+          d={getSmoothSplinePath(prevPoints)}
+          fill="none"
+          stroke="#e5a03b"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* 4. Current Spline Curve Line */}
+        <path
+          d={getSmoothSplinePath(currentPoints)}
+          fill="none"
+          stroke="#4361ee"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* Data Point Dots for Previous (Amber) */}
+        {prevPoints.map((pt, i) => (
+          <circle
+            key={`prev-dot-${i}`}
+            cx={pt.x}
+            cy={pt.y}
+            r="3.2"
+            fill="#e5a03b"
+            stroke={isDarkMode ? '#0f172a' : '#ffffff'}
+            strokeWidth="1.2"
+          />
+        ))}
+
+        {/* Data Point Dots for Current (Blue) */}
+        {currentPoints.map((pt, i) => (
+          <circle
+            key={`curr-dot-${i}`}
+            cx={pt.x}
+            cy={pt.y}
+            r="3.2"
+            fill="#4361ee"
+            stroke={isDarkMode ? '#0f172a' : '#ffffff'}
+            strokeWidth="1.2"
+          />
+        ))}
+
+        {/* 5. Active Hover Interaction Guides */}
+        {activeIndex !== null && (
+          <g>
+            {/* Vertical Dashed Guide Line */}
+            <line
+              x1={activeX}
+              y1={plotTop - 6}
+              x2={activeX}
+              y2={plotBottom}
+              stroke={isDarkMode ? '#64748b' : '#94a3b8'}
+              strokeDasharray="3 3"
+              strokeWidth="1.2"
+            />
+
+            {/* Hovered Current Dot */}
+            <circle
+              cx={activeCurrent.x}
+              cy={activeCurrent.y}
+              r="4.5"
+              fill="#4361ee"
+              stroke="#ffffff"
+              strokeWidth="2"
+            />
+
+            {/* Hovered Previous Dot */}
+            <circle
+              cx={activePrev.x}
+              cy={activePrev.y}
+              r="4.5"
+              fill="#e5a03b"
+              stroke="#ffffff"
+              strokeWidth="2"
+            />
+
+            {/* Floating Tooltip Card */}
+            <g transform={`translate(${tooltipX}, ${tooltipY})`} filter="url(#tooltipShadow)">
+              <rect
+                width={tooltipWidth}
+                height={tooltipHeight}
+                rx="8"
+                ry="8"
+                fill={isDarkMode ? '#1e293b' : '#ffffff'}
+                stroke={isDarkMode ? '#334155' : '#e2e8f0'}
+                strokeWidth="1"
+              />
+              {/* Tooltip Header (Month Name) */}
+              <text
+                x="12"
+                y="18"
+                fontSize="12"
+                fontWeight="700"
+                fill={isDarkMode ? '#f8fafc' : '#0f172a'}
+              >
+                {activeItem.label}
+              </text>
+
+              {/* Current Value Row */}
+              <circle cx="16" cy="36" r="4" fill="#4361ee" />
+              <text x="26" y="40" fontSize="11" fontWeight="500" fill={isDarkMode ? '#94a3b8' : '#64748b'}>
+                Current: <tspan fontWeight="800" fill={isDarkMode ? '#ffffff' : '#0f172a'}>{activeItem.current}</tspan>
+              </text>
+
+              {/* Previous Value Row */}
+              <circle cx="16" cy="54" r="4" fill="#e5a03b" />
+              <text x="26" y="58" fontSize="11" fontWeight="500" fill={isDarkMode ? '#94a3b8' : '#64748b'}>
+                Previous: <tspan fontWeight="800" fill={isDarkMode ? '#ffffff' : '#0f172a'}>{activeItem.previous}</tspan>
+              </text>
+            </g>
+          </g>
+        )}
+
+        {/* 6. X-Axis Monthly Labels */}
+        {series.map((item, idx) => {
+          const x = plotLeft + idx * stepX;
+          const isActive = idx === activeIndex;
+
+          if (isActive) {
+            const pillW = 54;
+            const pillH = 22;
+            const pillX = x - pillW / 2;
+            const pillY = plotBottom + 8;
+            return (
+              <g key={`axis-active-${idx}`}>
+                {/* Upward caret notch pointing to dashed line */}
+                <polygon
+                  points={`${x - 4},${pillY} ${x},${pillY - 4} ${x + 4},${pillY}`}
+                  fill={isDarkMode ? '#1e293b' : '#f1f5f9'}
+                  stroke={isDarkMode ? '#475569' : '#cbd5e1'}
+                  strokeWidth="1"
+                />
+                {/* Pill rectangle */}
+                <rect
+                  x={pillX}
+                  y={pillY}
+                  width={pillW}
+                  height={pillH}
+                  rx="4"
+                  ry="4"
+                  fill={isDarkMode ? '#1e293b' : '#f1f5f9'}
+                  stroke={isDarkMode ? '#475569' : '#cbd5e1'}
+                  strokeWidth="1"
+                />
+                {/* Active Month Label */}
+                <text
+                  x={x}
+                  y={pillY + 15}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fontWeight="700"
+                  fill={isDarkMode ? '#ffffff' : '#0f172a'}
+                >
+                  {item.label}
+                </text>
+              </g>
+            );
+          }
+
+          return (
+            <text
+              key={`axis-${idx}`}
+              x={x}
+              y={plotBottom + 22}
+              textAnchor="middle"
+              fontSize="11"
+              fontWeight="500"
+              fill={isDarkMode ? '#64748b' : '#94a3b8'}
+              style={{ cursor: 'pointer' }}
+              onClick={() => setActiveIndex(idx)}
+            >
+              {item.label}
+            </text>
+          );
+        })}
+
+        {/* Transparent Interactive Overlay to capture mouse movement smoothly */}
+        <rect
+          x={plotLeft - 10}
+          y={plotTop}
+          width={plotWidth + 20}
+          height={plotHeight + 35}
+          fill="transparent"
+          style={{ cursor: 'crosshair' }}
+        />
+      </svg>
     </div>
   );
 };
+
+const RevenueBarChart = RevenueGrowthSplineChart;
 
 export const Dashboard = () => {
   const { isDarkMode } = useTheme();

@@ -1109,3 +1109,4 @@ export const TransactionsManagement = () => {
 };
 
 export default TransactionsManagement;
+

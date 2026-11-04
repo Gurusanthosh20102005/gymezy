@@ -61,3 +61,4 @@ test('Gym Owner Scoped Transactions & Payments Architecture Tests', async (t) =>
     assert.strictEqual(successRate, '50.0%');
   });
 });
+
