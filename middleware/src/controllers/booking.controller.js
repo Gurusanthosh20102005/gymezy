@@ -73,8 +73,13 @@ const resolveGym = async (gymId) => {
 
 const generateGymBookingId = async (gym) => {
   const gymSeqKey = `bkg_${gym.partnerId || gym._id}`;
-  const seq = await Counter.getNextSequence(gymSeqKey, 100);
-  return `BK${seq}`;
+  let seq = await Counter.getNextSequence(gymSeqKey, 100);
+  let id = `BK${seq}`;
+  while (await Booking.exists({ gymId: gym._id, bookingId: id })) {
+    seq = await Counter.getNextSequence(gymSeqKey, 100);
+    id = `BK${seq}`;
+  }
+  return id;
 };
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -708,8 +713,7 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
   const user = await findOrCreateWalkInCustomer({ fullName: targetName, phone, email });
 
   // Generate Booking ID: BK{counter}
-  const nextSeq = await Counter.getNextSequence(`booking_${gym._id}`, 100);
-  const bookingId = `BK${nextSeq}`;
+  const bookingId = await generateGymBookingId(gym);
 
   // Generate 6-digit entry OTP & QR code data
   const entryOtp = Math.floor(100000 + Math.random() * 900000).toString();

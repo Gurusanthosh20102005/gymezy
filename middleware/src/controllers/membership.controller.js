@@ -61,8 +61,13 @@ const getTrainerTierFee = (trainer, tier) => {
  */
 const generateGymMembershipId = async (gym) => {
   const gymSeqKey = `mem_${gym.partnerId || gym._id}`;
-  const seq = await Counter.getNextSequence(gymSeqKey);
-  return `MEM00${seq}`;
+  let seq = await Counter.getNextSequence(gymSeqKey, 1);
+  let id = `MEM00${seq}`;
+  while (await Membership.exists({ gymId: gym._id, membershipId: id })) {
+    seq = await Counter.getNextSequence(gymSeqKey, 1);
+    id = `MEM00${seq}`;
+  }
+  return id;
 };
 
 /**
@@ -676,8 +681,7 @@ export const createWalkInMembership = async (req, res, next) => {
     const totalAmount = basePrice + tFee;
 
     // Generate scoped membership ID: MEM00{counter}
-    const memSeq = await Counter.getNextSequence(`membership_${gym._id}`, 1);
-    const membershipId = `MEM00${memSeq}`;
+    const membershipId = await generateGymMembershipId(gym);
 
     // Generate entry OTP
     const entryOtp = Math.floor(100000 + Math.random() * 900000).toString();
