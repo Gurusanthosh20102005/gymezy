@@ -390,5 +390,16 @@ To ensure walk-in modal submissions never trigger `422 Unprocessable Entity` or 
 3. **Explanatory Frontend Error Messages**:
    - If a validation constraint fails, frontend modals extract detailed field violations from `err.response?.data?.errors?.join(', ')` rather than displaying a generic `"Validation failed"` notification.
 
+---
+
+### 8.5 Unique Sequential IDs and Gym-Scoped Collision Avoidance
+To prevent MongoDB `E11000 duplicate key error collection: gymezy_dev.memberships index: gymId_1_membershipId_1`:
+1. **Unified Gym Counter Key**:
+   - Both in-app customer purchase and front-desk walk-in creation share the single source of truth counter key:
+     `mem_${gym.partnerId || gym._id}` (for memberships) and `bkg_${gym.partnerId || gym._id}` (for bookings).
+2. **Deterministic Pre-Save Collision Loop**:
+   - `generateGymMembershipId(gym)` and `generateGymBookingId(gym)` verify `await Membership.exists({ gymId, membershipId })` prior to assignment. If a sequence number was previously generated, the counter auto-increments until a guaranteed vacant ID is secured.
+
+
 
 
