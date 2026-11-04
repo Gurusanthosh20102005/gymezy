@@ -667,6 +667,7 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
   const { gymId } = req.params;
   const {
     name,
+    customerName,
     phone,
     email,
     bookingType = 'GYM_SESSION',
@@ -677,6 +678,9 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
     endDate,
     timeSlot,
     price = 0,
+    amount = 0,
+    customDates = [],
+    isCustomDates = false,
     paymentMethod = 'Cash',
     paymentStatus = 'Completed',
     checkInNow = false,
@@ -686,6 +690,8 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
   if (!phone) {
     throw ApiError.badRequest('Customer phone number is required for walk-in booking.');
   }
+
+  const targetName = name || customerName || 'Walk-in Visitor';
 
   // Resolve Gym
   const isObjectId = mongoose.Types.ObjectId.isValid(gymId);
@@ -697,7 +703,7 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
   }
 
   // Find or create User by phone
-  const user = await findOrCreateWalkInCustomer({ fullName: name, phone, email });
+  const user = await findOrCreateWalkInCustomer({ fullName: targetName, phone, email });
 
   // Generate Booking ID: BK{counter}
   const nextSeq = await Counter.getNextSequence(`booking_${gym._id}`, 100);
@@ -707,7 +713,7 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
   const entryOtp = Math.floor(100000 + Math.random() * 900000).toString();
   const qrCodeData = `GYMEZY:${gym.partnerId || gym._id}:${bookingId}:${entryOtp}`;
 
-  const finalPrice = Math.max(0, Number(price) || 0);
+  const finalPrice = Math.max(0, Number(price || amount) || 0);
   const now = new Date();
   const sessionStartDate = startDate ? new Date(startDate) : now;
   const sessionEndDate = endDate ? new Date(endDate) : sessionStartDate;
@@ -715,6 +721,15 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
   const initialStatus = checkInNow ? 'Active' : 'Upcoming';
   const attendanceHistory = checkInNow
     ? [{ attendedAt: now, method: 'Front Desk Walk-In', area: 'Main Gate' }]
+    : [];
+
+  const hasCustomDates = Boolean(isCustomDates || (Array.isArray(customDates) && customDates.length > 0));
+  const parsedCustomDates = Array.isArray(customDates)
+    ? customDates.map((d) => ({
+        date: typeof d === 'string' ? new Date(d) : (d.date ? new Date(d.date) : new Date()),
+        status: 'Upcoming',
+        dailyOtp: Math.floor(100000 + Math.random() * 900000).toString(),
+      }))
     : [];
 
   const newBooking = await Booking.create({
@@ -728,6 +743,8 @@ export const createWalkInBooking = asyncHandler(async (req, res) => {
     startDate: sessionStartDate,
     endDate: sessionEndDate,
     timeSlot: timeSlot || 'General Access',
+    isCustomDates: hasCustomDates,
+    customDates: parsedCustomDates,
     pricing: {
       subtotal: finalPrice,
       discount: 0,

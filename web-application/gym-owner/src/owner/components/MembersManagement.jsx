@@ -202,6 +202,42 @@ export const MembersManagement = ({
   const [addMemberPhoto, setAddMemberPhoto] = useState(null);
   const [selectedPlanType, setSelectedPlanType] = useState('Platinum (6 Months)');
   const [selectedPaymentType, setSelectedPaymentType] = useState('Online');
+  const [gymTrainers, setGymTrainers] = useState([]);
+  const [selectedTrainerId, setSelectedTrainerId] = useState('none');
+
+  const PLAN_BASE_PRICES = {
+    'Silver (1 Month)': 1599,
+    'Gold (3 Months)': 4499,
+    'Platinum (6 Months)': 7999,
+    'Annual (12 Months)': 14999,
+  };
+
+  const PLAN_TRAINER_FEES = {
+    'Silver (1 Month)': 2000,
+    'Gold (3 Months)': 5500,
+    'Platinum (6 Months)': 10000,
+    'Annual (12 Months)': 18000,
+  };
+
+  const getTrainerFeeForPlan = (plan) => PLAN_TRAINER_FEES[plan] || 2000;
+  const getMembershipTotal = (plan, trId) => {
+    const base = PLAN_BASE_PRICES[plan] || 1599;
+    const trainer = trId !== 'none' ? (PLAN_TRAINER_FEES[plan] || 2000) : 0;
+    return base + trainer;
+  };
+
+  // Fetch approved gym trainers for personal trainer add-on
+  useEffect(() => {
+    if (!gymId) return;
+    apiClient
+      .get('/employees', { params: { gymId, role: 'Trainer', approvalStatus: 'Approved' } })
+      .then((res) => {
+        const empData = res.data?.data;
+        const list = Array.isArray(empData) ? empData : (empData?.employees || []);
+        setGymTrainers(list);
+      })
+      .catch((err) => console.warn('Failed to load gym trainers in MembersManagement:', err?.message));
+  }, [gymId]);
 
   // Auto-open Add Walk-in Member modal if navigated with ?action=walkin
   useEffect(() => {
@@ -418,7 +454,10 @@ export const MembersManagement = ({
       Annual: 14999,
     };
 
-    const finalAmount = Number(values.amount || priceMap[tier] || 1599);
+    const basePlanPrice = PLAN_BASE_PRICES[selectedPlanType] || priceMap[tier] || 1599;
+    const selectedTrainer = gymTrainers.find((t) => String(t._id || t.id || t.employeeId) === String(selectedTrainerId));
+    const trainerFee = selectedTrainer ? (PLAN_TRAINER_FEES[selectedPlanType] || 2000) : 0;
+    const finalAmount = Number(values.amount || (basePlanPrice + trainerFee));
 
     try {
       setIsMembersLoading(true);
@@ -427,7 +466,10 @@ export const MembersManagement = ({
         phone: `${values.countryCode || '+91'} ${values.phone}`.trim(),
         email: values.email || undefined,
         tier: tier,
+        price: basePlanPrice,
         amount: finalAmount,
+        trainerId: selectedTrainer ? (selectedTrainer._id || selectedTrainer.id) : undefined,
+        trainerFee: trainerFee,
         paymentMethod: selectedPaymentType || values.paymentType || 'Cash',
       };
 
@@ -451,11 +493,13 @@ export const MembersManagement = ({
           source: 'WALK_IN',
           paymentType: selectedPaymentType || 'Cash',
           amount: `₹${finalAmount}`,
+          trainerName: selectedTrainer?.name || 'None',
         };
 
         setIsAddModalOpen(false);
         form.resetFields();
         setAddMemberPhoto(null);
+        setSelectedTrainerId('none');
 
         // Save for Success Modal & Launch Canvas Confetti Popper
         setAddedMemberData(newMember);
@@ -3377,6 +3421,7 @@ export const MembersManagement = ({
           setAddMemberPhoto(null);
           setSelectedPlanType('Platinum (6 Months)');
           setSelectedPaymentType('Online');
+          setSelectedTrainerId('none');
         }}
         footer={null}
         width={500}
@@ -3556,6 +3601,28 @@ export const MembersManagement = ({
             </div>
           </div>
 
+          {/* Personal Trainer Selector */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
+              Personal Trainer (Optional Add-on)
+            </div>
+            <Select
+              value={selectedTrainerId}
+              onChange={(val) => setSelectedTrainerId(val)}
+              style={{ width: '100%', height: 42 }}
+            >
+              <Option value="none">No Personal Trainer (General Gym Access)</Option>
+              {gymTrainers.map((tr) => (
+                <Option key={tr._id || tr.id || tr.employeeId} value={tr._id || tr.id || tr.employeeId}>
+                  👤 {tr.name} ({tr.specialty || tr.role || 'Fitness Coach'}) — +₹{getTrainerFeeForPlan(selectedPlanType).toLocaleString('en-IN')}
+                </Option>
+              ))}
+            </Select>
+            <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
+              Assign a dedicated certified trainer to guide workout regimes and diet plans throughout the membership.
+            </div>
+          </div>
+
           {/* Amount to Pay Box */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
@@ -3573,12 +3640,16 @@ export const MembersManagement = ({
                 justifyContent: 'space-between',
               }}
             >
-              <span style={{ fontSize: 20, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#003882' }}>
-                {selectedPlanType === 'Platinum (6 Months)' && '₹7,999'}
-                {selectedPlanType === 'Gold (3 Months)' && '₹4,499'}
-                {selectedPlanType === 'Silver (1 Month)' && '₹1,599'}
-                {selectedPlanType === 'Annual (12 Months)' && '₹14,999'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 20, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#003882' }}>
+                  ₹{getMembershipTotal(selectedPlanType, selectedTrainerId).toLocaleString('en-IN')}
+                </span>
+                {selectedTrainerId !== 'none' && (
+                  <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>
+                    (Base: ₹{(PLAN_BASE_PRICES[selectedPlanType] || 1599).toLocaleString('en-IN')} + Trainer: ₹{(PLAN_TRAINER_FEES[selectedPlanType] || 2000).toLocaleString('en-IN')})
+                  </span>
+                )}
+              </div>
               <Tag
                 style={{
                   backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.15)' : '#eaf8ef',

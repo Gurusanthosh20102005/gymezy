@@ -620,6 +620,7 @@ export const createWalkInMembership = async (req, res, next) => {
     const { gymId } = req.params;
     const {
       name,
+      customerName,
       phone,
       email,
       tier = 'Monthly',
@@ -628,6 +629,7 @@ export const createWalkInMembership = async (req, res, next) => {
       startDate,
       endDate,
       price,
+      amount,
       trainerFee = 0,
       paymentMethod = 'Cash',
       paymentStatus = 'Completed',
@@ -638,6 +640,8 @@ export const createWalkInMembership = async (req, res, next) => {
       throw ApiError.badRequest('Customer phone number is required for walk-in membership.');
     }
 
+    const targetName = name || customerName || 'Walk-in Member';
+
     const isObjectId = mongoose.Types.ObjectId.isValid(gymId);
     const gym = await Gym.findOne(
       isObjectId ? { $or: [{ _id: gymId }, { partnerId: gymId }] } : { partnerId: gymId }
@@ -647,7 +651,7 @@ export const createWalkInMembership = async (req, res, next) => {
     }
 
     // Find or create User by phone
-    const user = await findOrCreateWalkInCustomer({ fullName: name, phone, email });
+    const user = await findOrCreateWalkInCustomer({ fullName: targetName, phone, email });
 
     // Clean tier & duration
     let cleanTier = 'Monthly';
@@ -667,7 +671,7 @@ export const createWalkInMembership = async (req, res, next) => {
     const start = startDate ? new Date(startDate) : new Date();
     const end = endDate ? new Date(endDate) : new Date(start.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-    const basePrice = Math.max(0, Number(price) || 0);
+    const basePrice = Math.max(0, Number(price || amount) || 0);
     const tFee = Math.max(0, Number(trainerFee) || 0);
     const totalAmount = basePrice + tFee;
 
