@@ -303,78 +303,74 @@ walkInDetails: {
 
 ## 8. Pass Types, Duration Tiers, Active Sections & Personal Trainer Selection
 
-Front-desk operations cater to diverse visitor requirements ranging from quick one-day visits to ongoing specialty fitness classes and long-term VIP memberships with personal training.
+Front-desk operations match the exact catalog, pricing tiers, and trainer availability rules established in the Gym Profile / Settings and the mobile application.
 
-### 8.1 Membership Plans: Annual vs. Monthly & Personal Trainer Selection
+### 8.1 Membership Plans: Naming, Trainer Filtering & Start Date Selection
 
-When an offline visitor opts for gym membership at the desk (`/owner/members` -> `+ New Walk-in Member`), the operator configures:
+When an offline visitor registers for a membership at the desk (`/owner/members` -> `+ New Walk-in Member`), the operator configures:
 
-#### 1. Membership Plan Tier
-| Plan Name | Internal Tier | Duration | Base Price (INR) | Inclusions & Perks |
+#### 1. Membership Plan Tier (Standardized with Settings Page)
+The plans displayed strictly mirror the gym's configured pricing tiers from the Settings / Profile page (`customPricingPlans`):
+
+| Plan Name in Settings | Internal Tier | Duration | Base Price (INR) | Inclusions & Perks |
 |---|---|---|---|---|
-| **Silver (1 Month)** | `Monthly` | 30 Days | ₹1,599 | Standard gym floor access, peak hour entry |
-| **Gold (3 Months)** | `Quarterly` | 90 Days | ₹4,499 | Floor access, locker facility, 1 diet consultation |
-| **Platinum (6 Months)** | `Half-Yearly` | 180 Days | ₹7,999 | All gym facilities, 1 free guest pass, shower/steam |
-| **Annual (12 Months)** | `Annual` | 365 Days | ₹14,999 | VIP all-access pass, priority locker, sauna, events |
+| **Monthly Plan (30 Days)** | `Monthly` | 30 Days | ₹1,299 – ₹1,599 | Standard gym floor access, peak hours access, lockers |
+| **Quarterly Plan (90 Days)** | `Quarterly` | 90 Days | ₹3,299 – ₹4,499 | Floor access, locker facility, diet consultation, 1 guest pass |
+| **Half Yearly Plan (180 Days)** | `Half-Yearly` | 180 Days | ₹5,999 – ₹7,999 | All gym facilities, free classes, shower/steam, nutrition guidance |
+| **Annual Plan (365 Days)** | `Annual` | 365 Days | ₹11,999 – ₹14,999 | VIP all-access pass, sauna, priority locker, personalized regime |
 
-#### 2. Personal Trainer Selection
-- The desk can choose **"No Personal Trainer (General Gym Access)"** or select an approved gym trainer from the live staff roster loaded via `GET /api/v1/employees?gymId=:gymId&role=Trainer&approvalStatus=Approved`.
-- Trainer fees scale with the duration of the membership plan:
-  - **1 Month**: +₹2,000
-  - **3 Months**: +₹5,500
-  - **6 Months**: +₹10,000
-  - **12 Months (Annual)**: +₹18,000
-- **Live Fee Calculation**: The UI automatically computes:
-  $$\text{Total Amount} = \text{Base Plan Price} + \text{Personal Trainer Fee}$$
-  *(e.g., Annual Plan ₹14,999 + Dedicated Coach ₹18,000 = ₹32,999 auto-filled in the payment box).*
+#### 2. Personal Trainer Availability & Zero-Price Filtering
+In accordance with platform standards (identical to the mobile app `BuyMembershipScreen`):
+- **Zero-Price Filtering Rule**: If an employee/trainer has not set a fee for the chosen plan tier (i.e. `trainerPricing[tier] <= 0` or missing), **they are NOT listed in the dropdown**.
+- Only certified trainers who offer active coaching for that specific tier (`trainerPricing.monthly`, `trainerPricing.quarterly`, `trainerPricing.halfYearly`, or `trainerPricing.annual` > 0) appear.
+- The dropdown renders a clean trainer icon (`<UserOutlined />`) with the trainer's name, specialization, and their exact configured coaching rate:
+  $$\text{Total Amount} = \text{Base Plan Price} + \text{Trainer Fee (from trainerPricing)}$$
+- If the plan tier changes and the previously selected trainer is not available for the new tier, the selection automatically resets to **No Personal Trainer (General Gym Access)**.
+
+#### 3. Start Date & Validity Computation
+- The desk selects the **Membership Start Date** via a calendar picker (defaults to today, or can be set to a future date like the 1st of next month).
+- A live validity banner immediately computes and displays the exact duration:
+  $$\text{endDate} = \text{startDate} + \text{durationDays}$$
+  *(e.g., "Membership will start on 04 Nov 2026 • Valid until 04 Dec 2026 (30 Days Total Access)").*
 
 ---
 
 ### 8.2 Session Bookings: Per Day vs. Weekly Plan vs. Custom Dates
 
-For visitors seeking pay-as-you-go access rather than a long-term membership (`/owner/bookings` -> `+ Create Walk-in Booking`), the desk selects from three duration tiers:
+For single-visit or short-term training (`/owner/bookings` -> `+ Create Walk-in Booking`):
 
 ```mermaid
 flowchart LR
     Tier{"Session Duration"}
-    Tier -->|"Per Day / Single"| D1["1 Single Day Access\n• 1 Date Selected\n• Base Fee: ₹150 (Gym) or Section Rate\n• Trainer Fee: +₹200"]
-    Tier -->|"Weekly Plan"| D2["7 Consecutive Days\n• Start Date + 6 Days\n• 1 Free Day Promo (Charged for 6 Days)\n• Base: 6 × Rate | Trainer: 6 × Rate"]
-    Tier -->|"Custom Dates"| D3["Multi-Date Selection\n• Desk picks specific calendar dates\n• Generates N daily sessions & OTPs\n• Total: N × (Base + Trainer)"]
+    Tier -->|"Single Session (1 Day)"| D1["1 Day Pass\n• Date: Selected Session Date\n• Base Fee: Single Session Price\n• Trainer Fee: trainerPricing.singleSession"]
+    Tier -->|"Weekly Pass (7 Days)"| D2["7 Days Pass\n• Start Date to Start + 6 Days\n• Base: 7 × Session Price\n• Trainer: 7 × singleSession Fee"]
+    Tier -->|"Custom Dates"| D3["Multi-Date Selection\n• Desk selects specific calendar dates\n• Generates N daily sessions & OTPs\n• Total: N × (Base + Trainer Fee)"]
 ```
 
-1. **Single Day (Per Day)**:
-   - Grants pass for one session on the selected booking date.
-   - Base fee: ₹150 for general workout, or section fee if joining a class.
+1. **Single Session (1 Day)**:
+   - Valid on the selected date for general floor access or a specific class.
 2. **Weekly Pass (7 Days)**:
-   - Sets `startDate` to selected date and auto-computes `endDate = startDate + 6 days`.
-   - Incorporates promotional pricing: **6 days charged, 1 free day**.
+   - Sets start date and computes 7 consecutive days of validity.
 3. **Custom Multi-Dates (`isCustomDates: true`)**:
-   - For visitors who visit on non-consecutive days (e.g., Monday, Wednesday, Friday across multiple weeks).
-   - The operator picks individual session dates using the custom date picker. Selected dates appear as removable pills with a count badge.
-   - The backend stores each date in `customDates: [{ date, status: 'Upcoming', dailyOtp }]`, generating an independent 6-digit access OTP for each scheduled day.
-   - Pricing multiplies the per-session fee by the exact count of dates chosen.
+   - Allows visitors training on non-consecutive days (e.g., Mon, Wed, Fri) to pick exact dates.
+   - Selected dates appear as clean date pills with remove actions and a total count badge.
+   - The backend attaches individual session records with 6-digit entry OTPs for each scheduled day.
+
+#### Session Trainer Availability & Zero-Price Filtering
+- Identical to `BookingSessionScreen` in the mobile app, only trainers with `trainerPricing.singleSession > 0` are listed.
+- If a trainer has not enabled single session passes (`singleSession === 0`), they are excluded from the list.
+- Each trainer option displays `<UserOutlined />` and their exact rate (Single: `+₹fee / session`, Weekly: `+₹(fee × 7)`, Custom: `+₹(fee × count)`).
 
 ---
 
-### 8.3 Selecting Activity / Ongoing Sections (Yoga, Zumba, CrossFit, Pilates)
-
-Front-desk staff can register walk-ins for open gym floor access or assign them directly into an ongoing or upcoming group class/section:
-
-1. **Activity Dropdown Options**:
-   - `🏋️ General Gym Workout (Floor Access & Machines)`: Open floor workout (Default ₹150 / session).
-   - **Active Gym Sections**: Dynamically populated from `GET /api/v1/sections?gymId=:gymId`.
-     - *Example 1*: `🧘 Morning Yoga (06:00 AM - 07:00 AM) — ₹250 / session`
-     - *Example 2*: `💃 Zumba Dance Fitness (07:30 AM - 08:30 AM) — ₹300 / session`
-     - *Example 3*: `🏋️ CrossFit Conditioning (06:00 PM - 07:00 PM) — ₹350 / session`
-2. **Automatic Field Population**:
-   - When a specific section is chosen:
-     - `bookingType` is set to `GROUP_CLASS`.
-     - `sectionId` is linked to the booking record.
-     - `timeSlot` is auto-filled to match the section's schedule (e.g. `06:00 AM - 07:00 AM`).
-     - `amount` is updated to the section's defined `cost`.
-     - If the section has an assigned lead trainer, that trainer is automatically linked.
-3. **Personal Trainer Session Add-on**:
-   - The desk can also attach a dedicated personal trainer to any session (+₹200 / session).
-   - When selected, the trainer is linked via `trainerId`, ensuring the trainer's schedule and compensation ledger accurately record the walk-in client.
+### 8.3 Selecting Activity / Ongoing Sections
+Front-desk staff can register walk-ins for open floor workout or direct enrollment into a live scheduled class:
+- **General Gym Access (Floor & Machines)**: Standard single-session rate from gym profile (`singleSessionPrice`, default ₹199).
+- **Active Gym Sections**: Loaded dynamically from `GET /api/v1/sections?gymId=:gymId`:
+  - `Morning Yoga (06:00 AM - 07:00 AM) — ₹250 / session`
+  - `Zumba Dance Fitness (07:30 AM - 08:30 AM) — ₹300 / session`
+  - `CrossFit Conditioning (06:00 PM - 07:00 PM) — ₹350 / session`
+- Selecting a section automatically populates `sectionId`, slot time, sets `bookingType: 'GROUP_CLASS'`, and updates the pass fee.
+- All interface labels are standardized with clean typography and Ant Design icons without decorative emojis.
 
 

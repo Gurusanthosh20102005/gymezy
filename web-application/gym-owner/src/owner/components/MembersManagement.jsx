@@ -200,31 +200,175 @@ export const MembersManagement = ({
 
   // Add Member Form Interactive States
   const [addMemberPhoto, setAddMemberPhoto] = useState(null);
-  const [selectedPlanType, setSelectedPlanType] = useState('Platinum (6 Months)');
+  const [selectedPlanKey, setSelectedPlanKey] = useState('monthly');
+  const [membershipStartDate, setMembershipStartDate] = useState(null);
   const [selectedPaymentType, setSelectedPaymentType] = useState('Online');
   const [gymTrainers, setGymTrainers] = useState([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState('none');
+  const [gymPlans, setGymPlans] = useState([]);
 
-  const PLAN_BASE_PRICES = {
-    'Silver (1 Month)': 1599,
-    'Gold (3 Months)': 4499,
-    'Platinum (6 Months)': 7999,
-    'Annual (12 Months)': 14999,
+  // Load custom pricing plans from gym settings or fallback to standard 4 tiers
+  useEffect(() => {
+    if (!gymId) return;
+    apiClient
+      .get(`/gyms/${gymId}`)
+      .then((res) => {
+        const gymData = res.data?.data;
+        if (gymData) {
+          const custom = Array.isArray(gymData.customPricingPlans) ? gymData.customPricingPlans : [];
+          const flat = gymData.pricingPlans || {};
+
+          const monthlyPlan = custom.find((p) => p?.tierId === 'monthly') || {
+            name: 'Monthly Plan',
+            duration: '30 Days',
+            price: Number(flat.monthly || 1299),
+            durationDays: 30,
+            tier: 'Monthly',
+          };
+          const quarterlyPlan = custom.find((p) => p?.tierId === 'quarterly') || {
+            name: 'Quarterly Plan',
+            duration: '90 Days',
+            price: Number(flat.quarterly || 3299),
+            durationDays: 90,
+            tier: 'Quarterly',
+          };
+          const halfYearlyPlan = custom.find((p) => p?.tierId === 'half_yearly' || p?.tierId === 'halfYearly') || {
+            name: 'Half Yearly Plan',
+            duration: '180 Days',
+            price: Number(flat.halfYearly || 5999),
+            durationDays: 180,
+            tier: 'Half-Yearly',
+          };
+          const annualPlan = custom.find((p) => p?.tierId === 'annual') || {
+            name: 'Annual Plan',
+            duration: '365 Days',
+            price: Number(flat.annual || 11999),
+            durationDays: 365,
+            tier: 'Annual',
+          };
+
+          const built = [
+            {
+              key: 'monthly',
+              name: monthlyPlan.name || 'Monthly Plan',
+              label: `${monthlyPlan.name || 'Monthly Plan'} (${monthlyPlan.duration || '30 Days'})`,
+              tier: 'Monthly',
+              durationDays: 30,
+              price: Number(monthlyPlan.price || 1299),
+              features: monthlyPlan.features || ['Access to all gym facilities', 'Free group workout classes', 'Locker and shower facility'],
+              assignedTrainers: monthlyPlan.assignedTrainers || [],
+            },
+            {
+              key: 'quarterly',
+              name: quarterlyPlan.name || 'Quarterly Plan',
+              label: `${quarterlyPlan.name || 'Quarterly Plan'} (${quarterlyPlan.duration || '90 Days'})`,
+              tier: 'Quarterly',
+              durationDays: 90,
+              price: Number(quarterlyPlan.price || 3299),
+              features: quarterlyPlan.features || ['Access to all gym facilities', 'Free group workout classes', 'Locker and shower facility', '1 Guest pass per month'],
+              assignedTrainers: quarterlyPlan.assignedTrainers || [],
+            },
+            {
+              key: 'half_yearly',
+              name: halfYearlyPlan.name || 'Half Yearly Plan',
+              label: `${halfYearlyPlan.name || 'Half Yearly Plan'} (${halfYearlyPlan.duration || '180 Days'})`,
+              tier: 'Half-Yearly',
+              durationDays: 180,
+              price: Number(halfYearlyPlan.price || 5999),
+              features: halfYearlyPlan.features || ['Access to all gym facilities', 'Free group workout classes', 'Locker and shower facility', 'Personalized nutrition guidance'],
+              assignedTrainers: halfYearlyPlan.assignedTrainers || [],
+            },
+            {
+              key: 'annual',
+              name: annualPlan.name || 'Annual Plan',
+              label: `${annualPlan.name || 'Annual Plan'} (${annualPlan.duration || '365 Days'})`,
+              tier: 'Annual',
+              durationDays: 365,
+              price: Number(annualPlan.price || 11999),
+              features: annualPlan.features || ['Access to all gym facilities', 'VIP all-access pass', 'Free sauna and steam room', 'Personalized nutrition guidance'],
+              assignedTrainers: annualPlan.assignedTrainers || [],
+            },
+          ];
+          setGymPlans(built);
+          setSelectedPlanKey(built[0].key);
+        }
+      })
+      .catch((err) => console.warn('Failed to load gym pricing plans:', err?.message));
+  }, [gymId]);
+
+  const standardFallbackPlans = [
+    { key: 'monthly', name: 'Monthly Plan', label: 'Monthly Plan (30 Days)', tier: 'Monthly', durationDays: 30, price: 1599, features: ['Standard gym floor access', 'Peak hours access'] },
+    { key: 'quarterly', name: 'Quarterly Plan', label: 'Quarterly Plan (90 Days)', tier: 'Quarterly', durationDays: 90, price: 4499, features: ['Unlimited gym access', 'Locker facility', 'Diet consultation'] },
+    { key: 'half_yearly', name: 'Half Yearly Plan', label: 'Half Yearly Plan (180 Days)', tier: 'Half-Yearly', durationDays: 180, price: 7999, features: ['Unlimited gym access', 'All gym facilities', '1 Free guest pass'] },
+    { key: 'annual', name: 'Annual Plan', label: 'Annual Plan (365 Days)', tier: 'Annual', durationDays: 365, price: 14999, features: ['VIP all-access pass', 'Personal trainer sessions', 'Free sauna'] },
+  ];
+
+  const activePlans = gymPlans.length > 0 ? gymPlans : standardFallbackPlans;
+
+  const selectedPlanObj = useMemo(() => {
+    return activePlans.find((p) => p.key === selectedPlanKey) || activePlans[0];
+  }, [activePlans, selectedPlanKey]);
+
+  // Compute trainer rate mapped to the chosen membership tier (0 means not available)
+  const getTrainerFeeForTier = (trainer, tier) => {
+    if (!trainer || !trainer.trainerPricing) return 0;
+    const tierKeyMap = {
+      Monthly: 'monthly',
+      Quarterly: 'quarterly',
+      'Half-Yearly': 'halfYearly',
+      'Half Yearly': 'halfYearly',
+      Annual: 'annual',
+    };
+    const key = tierKeyMap[tier] || 'monthly';
+    const fee = Number(trainer.trainerPricing[key] ?? 0);
+    return fee > 0 ? fee : 0;
   };
 
-  const PLAN_TRAINER_FEES = {
-    'Silver (1 Month)': 2000,
-    'Gold (3 Months)': 5500,
-    'Platinum (6 Months)': 10000,
-    'Annual (12 Months)': 18000,
-  };
+  // Only list trainers whose price for this specific plan tier is GREATER THAN 0
+  const availableTrainersForPlan = useMemo(() => {
+    const tier = selectedPlanObj?.tier || 'Monthly';
+    return gymTrainers.filter((tr) => {
+      if (Array.isArray(selectedPlanObj?.assignedTrainers) && selectedPlanObj.assignedTrainers.length > 0) {
+        const allowed = selectedPlanObj.assignedTrainers.map((t) => String(t._id || t.id || t.employeeId || t));
+        const trId = String(tr._id || tr.id || tr.employeeId || '');
+        if (!allowed.includes(trId)) return false;
+      }
+      return getTrainerFeeForTier(tr, tier) > 0;
+    });
+  }, [gymTrainers, selectedPlanObj]);
 
-  const getTrainerFeeForPlan = (plan) => PLAN_TRAINER_FEES[plan] || 2000;
-  const getMembershipTotal = (plan, trId) => {
-    const base = PLAN_BASE_PRICES[plan] || 1599;
-    const trainer = trId !== 'none' ? (PLAN_TRAINER_FEES[plan] || 2000) : 0;
-    return base + trainer;
-  };
+  // If currently selected trainer is not available for this plan, auto-reset to 'none'
+  useEffect(() => {
+    if (selectedTrainerId !== 'none') {
+      const exists = availableTrainersForPlan.some(
+        (tr) => String(tr._id || tr.id || tr.employeeId) === String(selectedTrainerId)
+      );
+      if (!exists) {
+        setSelectedTrainerId('none');
+      }
+    }
+  }, [availableTrainersForPlan, selectedTrainerId]);
+
+  const activeSelectedTrainer = useMemo(() => {
+    if (selectedTrainerId === 'none') return null;
+    return availableTrainersForPlan.find(
+      (tr) => String(tr._id || tr.id || tr.employeeId) === String(selectedTrainerId)
+    );
+  }, [availableTrainersForPlan, selectedTrainerId]);
+
+  const trainerFee = useMemo(() => {
+    if (!activeSelectedTrainer) return 0;
+    return getTrainerFeeForTier(activeSelectedTrainer, selectedPlanObj?.tier || 'Monthly');
+  }, [activeSelectedTrainer, selectedPlanObj]);
+
+  const membershipTotalAmount = (selectedPlanObj?.price || 1599) + trainerFee;
+
+  const calculatedEndDateFormatted = useMemo(() => {
+    const start = membershipStartDate ? membershipStartDate.toDate() : new Date();
+    const days = selectedPlanObj?.durationDays || 30;
+    const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+    return end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }, [membershipStartDate, selectedPlanObj]);
 
   // Fetch approved gym trainers for personal trainer add-on
   useEffect(() => {
@@ -435,29 +579,17 @@ export const MembersManagement = ({
   };
 
   const handleAddMemberSubmit = async (values) => {
-    const rawPlan = selectedPlanType || values.plan || 'Platinum (6 Months)';
-    let tier = 'Monthly';
-    if (rawPlan.includes('3 Month') || rawPlan.toLowerCase().includes('gold') || rawPlan.toLowerCase().includes('quarterly')) {
-      tier = 'Quarterly';
-    } else if (rawPlan.includes('6 Month') || rawPlan.toLowerCase().includes('platinum') || rawPlan.toLowerCase().includes('half')) {
-      tier = 'Half-Yearly';
-    } else if (rawPlan.includes('12 Month') || rawPlan.toLowerCase().includes('annual') || rawPlan.toLowerCase().includes('year')) {
-      tier = 'Annual';
-    } else if (rawPlan.toLowerCase().includes('monthly') || rawPlan.includes('1 Month')) {
-      tier = 'Monthly';
-    }
+    const tier = selectedPlanObj?.tier || 'Monthly';
+    const basePlanPrice = selectedPlanObj?.price || 1599;
+    const finalAmount = Number(values.amount || membershipTotalAmount);
 
-    const priceMap = {
-      Monthly: 1599,
-      Quarterly: 4499,
-      'Half-Yearly': 7999,
-      Annual: 14999,
-    };
-
-    const basePlanPrice = PLAN_BASE_PRICES[selectedPlanType] || priceMap[tier] || 1599;
-    const selectedTrainer = gymTrainers.find((t) => String(t._id || t.id || t.employeeId) === String(selectedTrainerId));
-    const trainerFee = selectedTrainer ? (PLAN_TRAINER_FEES[selectedPlanType] || 2000) : 0;
-    const finalAmount = Number(values.amount || (basePlanPrice + trainerFee));
+    const start = values.startDate
+      ? values.startDate.toDate()
+      : membershipStartDate
+      ? membershipStartDate.toDate()
+      : new Date();
+    const days = selectedPlanObj?.durationDays || 30;
+    const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
 
     try {
       setIsMembersLoading(true);
@@ -468,7 +600,9 @@ export const MembersManagement = ({
         tier: tier,
         price: basePlanPrice,
         amount: finalAmount,
-        trainerId: selectedTrainer ? (selectedTrainer._id || selectedTrainer.id) : undefined,
+        startDate: start.toISOString().split('T')[0],
+        endDate: end.toISOString().split('T')[0],
+        trainerId: activeSelectedTrainer ? (activeSelectedTrainer._id || activeSelectedTrainer.id) : undefined,
         trainerFee: trainerFee,
         paymentMethod: selectedPaymentType || values.paymentType || 'Cash',
       };
@@ -485,21 +619,23 @@ export const MembersManagement = ({
           avatar:
             addMemberPhoto ||
             'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
-          plan: tier,
-          startDate: new Date().toLocaleDateString('en-GB'),
-          expiryDate: created.endDate ? new Date(created.endDate).toLocaleDateString('en-GB') : 'N/A',
-          daysLeft: 'Active',
+          plan: selectedPlanObj?.name || tier,
+          startDate: start.toLocaleDateString('en-GB'),
+          expiryDate: created.endDate ? new Date(created.endDate).toLocaleDateString('en-GB') : end.toLocaleDateString('en-GB'),
+          daysLeft: `${days} days left`,
           status: 'Active',
           source: 'WALK_IN',
           paymentType: selectedPaymentType || 'Cash',
           amount: `₹${finalAmount}`,
-          trainerName: selectedTrainer?.name || 'None',
+          trainerName: activeSelectedTrainer?.name || 'None',
         };
 
         setIsAddModalOpen(false);
         form.resetFields();
         setAddMemberPhoto(null);
         setSelectedTrainerId('none');
+        setMembershipStartDate(null);
+        setSelectedPlanKey(activePlans[0]?.key || 'monthly');
 
         // Save for Success Modal & Launch Canvas Confetti Popper
         setAddedMemberData(newMember);
@@ -3419,9 +3555,10 @@ export const MembersManagement = ({
           setIsAddModalOpen(false);
           form.resetFields();
           setAddMemberPhoto(null);
-          setSelectedPlanType('Platinum (6 Months)');
+          setSelectedPlanKey(activePlans[0]?.key || 'monthly');
           setSelectedPaymentType('Online');
           setSelectedTrainerId('none');
+          setMembershipStartDate(null);
         }}
         footer={null}
         width={500}
@@ -3435,7 +3572,7 @@ export const MembersManagement = ({
           onFinish={handleAddMemberSubmit}
           initialValues={{
             countryCode: '+91',
-            plan: 'Platinum (6 Months)',
+            plan: activePlans[0]?.key || 'monthly',
             paymentType: 'Online',
           }}
           style={{ marginTop: 12 }}
@@ -3553,24 +3690,25 @@ export const MembersManagement = ({
             </Col>
           </Row>
 
-          {/* Membership Type Section */}
+          {/* Membership Plan Section */}
           <div style={{ marginBottom: 16 }}>
             <Form.Item
-              label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Membership Type <span style={{ color: '#ef4444' }}>*</span></span>}
+              label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Membership Plan <span style={{ color: '#ef4444' }}>*</span></span>}
               name="plan"
-              initialValue="Platinum (6 Months)"
+              initialValue={activePlans[0]?.key || 'monthly'}
               rules={[{ required: true }]}
               style={{ marginBottom: 8 }}
             >
               <Select
-                value={selectedPlanType}
-                onChange={(val) => setSelectedPlanType(val)}
+                value={selectedPlanKey}
+                onChange={(val) => setSelectedPlanKey(val)}
                 style={{ width: '100%', height: 42 }}
               >
-                <Option value="Silver (1 Month)">Silver (1 Month)</Option>
-                <Option value="Gold (3 Months)">Gold (3 Months)</Option>
-                <Option value="Platinum (6 Months)">Platinum (6 Months)</Option>
-                <Option value="Annual (12 Months)">Annual (12 Months)</Option>
+                {activePlans.map((p) => (
+                  <Option key={p.key} value={p.key}>
+                    {p.label || `${p.name} (${p.durationDays} Days)`}
+                  </Option>
+                ))}
               </Select>
             </Form.Item>
 
@@ -3591,13 +3729,68 @@ export const MembersManagement = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <InfoCircleOutlined style={{ color: '#722ed1', fontSize: 14 }} />
                 <span>
-                  {selectedPlanType === 'Platinum (6 Months)' && 'Unlimited gym access   |   All gym facilities   |   1 Free guest pass'}
-                  {selectedPlanType === 'Gold (3 Months)' && 'Unlimited gym access   |   Locker facility   |   Diet consultation'}
-                  {selectedPlanType === 'Silver (1 Month)' && 'Standard gym floor access   |   Peak hours access'}
-                  {selectedPlanType === 'Annual (12 Months)' && 'VIP all-access pass   |   Personal trainer sessions   |   Free sauna'}
+                  {Array.isArray(selectedPlanObj?.features) && selectedPlanObj.features.length > 0
+                    ? selectedPlanObj.features.join('   |   ')
+                    : 'Unlimited gym access   |   All gym facilities   |   Free floor guidance'}
                 </span>
               </div>
-              <DownOutlined style={{ fontSize: 10, color: '#722ed1', marginLeft: 8 }} />
+            </div>
+          </div>
+
+          {/* Start Date & Validity Section */}
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Membership Start Date <span style={{ color: '#ef4444' }}>*</span></span>}
+                name="startDate"
+              >
+                <DatePicker
+                  style={{ width: '100%', height: 42, borderRadius: 'var(--radius-base)' }}
+                  placeholder="Select start date"
+                  onChange={(d) => setMembershipStartDate(d)}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ marginBottom: 6, fontSize: 12.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155' }}>
+                Plan Duration
+              </div>
+              <div
+                style={{
+                  height: 42,
+                  padding: '0 12px',
+                  borderRadius: 'var(--radius-base)',
+                  backgroundColor: isDarkMode ? '#1e1e1e' : '#f8fafc',
+                  border: `1px solid ${isDarkMode ? '#333333' : '#e2e8f0'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: isDarkMode ? '#ffffff' : '#0f172a',
+                }}
+              >
+                <CalendarOutlined style={{ marginRight: 8, color: 'var(--color-primary)' }} />
+                <span>{selectedPlanObj?.durationDays || 30} Days ({selectedPlanObj?.name || 'Monthly'})</span>
+              </div>
+            </Col>
+          </Row>
+
+          {/* Start & End Summary Banner (Identical to Mobile App) */}
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-base)',
+              backgroundColor: isDarkMode ? 'rgba(0, 56, 130, 0.15)' : '#edf4fe',
+              border: `1px solid ${isDarkMode ? 'rgba(0, 56, 130, 0.3)' : '#bfdbfe'}`,
+              marginBottom: 16,
+              fontSize: 12,
+            }}
+          >
+            <div style={{ fontWeight: 700, color: isDarkMode ? '#93c5fd' : '#003882' }}>
+              Membership will start on {membershipStartDate ? membershipStartDate.format('DD MMM YYYY') : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </div>
+            <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 3 }}>
+              Valid until {calculatedEndDateFormatted} ({selectedPlanObj?.durationDays || 30} Days Total Access)
             </div>
           </div>
 
@@ -3612,15 +3805,22 @@ export const MembersManagement = ({
               style={{ width: '100%', height: 42 }}
             >
               <Option value="none">No Personal Trainer (General Gym Access)</Option>
-              {gymTrainers.map((tr) => (
+              {availableTrainersForPlan.map((tr) => (
                 <Option key={tr._id || tr.id || tr.employeeId} value={tr._id || tr.id || tr.employeeId}>
-                  👤 {tr.name} ({tr.specialty || tr.role || 'Fitness Coach'}) — +₹{getTrainerFeeForPlan(selectedPlanType).toLocaleString('en-IN')}
+                  <UserOutlined style={{ marginRight: 6, color: 'var(--color-primary)' }} />
+                  {tr.name} ({tr.specialty || tr.role || 'Certified Trainer'}) — +₹{getTrainerFeeForTier(tr, selectedPlanObj?.tier).toLocaleString('en-IN')}
                 </Option>
               ))}
             </Select>
-            <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
-              Assign a dedicated certified trainer to guide workout regimes and diet plans throughout the membership.
-            </div>
+            {availableTrainersForPlan.length === 0 ? (
+              <div style={{ fontSize: 11, color: '#d97706', marginTop: 4 }}>
+                No personal trainers have configured pricing for this plan tier.
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
+                Assign a certified trainer dedicated to workout regimes and diet plans for this membership.
+              </div>
+            )}
           </div>
 
           {/* Amount to Pay Box */}
@@ -3642,11 +3842,11 @@ export const MembersManagement = ({
             >
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontSize: 20, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#003882' }}>
-                  ₹{getMembershipTotal(selectedPlanType, selectedTrainerId).toLocaleString('en-IN')}
+                  ₹{membershipTotalAmount.toLocaleString('en-IN')}
                 </span>
-                {selectedTrainerId !== 'none' && (
+                {activeSelectedTrainer && (
                   <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>
-                    (Base: ₹{(PLAN_BASE_PRICES[selectedPlanType] || 1599).toLocaleString('en-IN')} + Trainer: ₹{(PLAN_TRAINER_FEES[selectedPlanType] || 2000).toLocaleString('en-IN')})
+                    (Base: ₹{(selectedPlanObj?.price || 0).toLocaleString('en-IN')} + Trainer: ₹{trainerFee.toLocaleString('en-IN')})
                   </span>
                 )}
               </div>

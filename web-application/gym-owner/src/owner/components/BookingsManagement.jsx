@@ -90,41 +90,60 @@ export const BookingsManagement = ({
   // Dynamic Catalog State for Walk-In Creation
   const [gymSections, setGymSections] = useState([]);
   const [gymTrainers, setGymTrainers] = useState([]);
+  const [gymSingleSessionPrice, setGymSingleSessionPrice] = useState(199);
   const [sessionTier, setSessionTier] = useState('PER_DAY'); // 'PER_DAY' | 'WEEKLY' | 'CUSTOM'
   const [selectedSectionId, setSelectedSectionId] = useState('general');
   const [selectedTrainerId, setSelectedTrainerId] = useState('none');
   const [customDatesList, setCustomDatesList] = useState([]);
 
+  // Trainers who offer Single Session pass (price > 0)
+  const availableSessionTrainers = useMemo(() => {
+    return (gymTrainers || []).filter((tr) => Number(tr.trainerPricing?.singleSession || 0) > 0);
+  }, [gymTrainers]);
+
+  // Auto-reset selectedTrainerId if they do not offer session passes
+  useEffect(() => {
+    if (selectedTrainerId !== 'none') {
+      const exists = availableSessionTrainers.some(
+        (tr) => String(tr._id || tr.id || tr.employeeId) === String(selectedTrainerId)
+      );
+      if (!exists) {
+        setSelectedTrainerId('none');
+      }
+    }
+  }, [availableSessionTrainers, selectedTrainerId]);
+
   // Calculate total fee based on duration, activity/section, trainer, and custom dates
   const calculateTotalFee = (tier, secId, trId, customDates) => {
     const sec = gymSections.find((s) => String(s._id || s.id) === String(secId));
-    const baseRate = sec?.cost ? Number(sec.cost) : 150;
-    const trainerRate = trId && trId !== 'none' ? 200 : 0;
+    const baseRate = sec?.cost ? Number(sec.cost) : gymSingleSessionPrice;
+    const trObj = availableSessionTrainers.find((t) => String(t._id || t.id || t.employeeId) === String(trId));
+    const trainerDailyFee = trObj ? Number(trObj.trainerPricing?.singleSession || 0) : 0;
 
     if (tier === 'PER_DAY') {
-      return baseRate + trainerRate;
+      return baseRate + trainerDailyFee;
     }
     if (tier === 'WEEKLY') {
-      return (baseRate * 6) + (trainerRate * 6); // 7-day pass discounted to 6 days
+      return (baseRate * 7) + (trainerDailyFee * 7);
     }
     if (tier === 'CUSTOM') {
       const days = Math.max(1, customDates.length);
-      return (baseRate + trainerRate) * days;
+      return (baseRate + trainerDailyFee) * days;
     }
-    return 150;
+    return baseRate;
   };
 
   useEffect(() => {
     const total = calculateTotalFee(sessionTier, selectedSectionId, selectedTrainerId, customDatesList);
     form.setFieldsValue({ amount: total });
-  }, [sessionTier, selectedSectionId, selectedTrainerId, customDatesList, gymSections]);
+  }, [sessionTier, selectedSectionId, selectedTrainerId, customDatesList, gymSections, gymSingleSessionPrice, availableSessionTrainers]);
 
   const handleSectionChange = (val) => {
     setSelectedSectionId(val);
     const sec = gymSections.find((s) => String(s._id || s.id) === String(val));
     if (sec && sec.trainerId) {
       const trId = String(sec.trainerId._id || sec.trainerId);
-      if (gymTrainers.some((t) => String(t._id || t.id || t.employeeId) === trId)) {
+      if (availableSessionTrainers.some((t) => String(t._id || t.id || t.employeeId) === trId)) {
         setSelectedTrainerId(trId);
       }
     }
@@ -193,9 +212,10 @@ export const BookingsManagement = ({
   const loadGymCatalog = async () => {
     if (!gymId) return;
     try {
-      const [secRes, trRes] = await Promise.allSettled([
+      const [secRes, trRes, gymRes] = await Promise.allSettled([
         apiClient.get('/sections', { params: { gymId } }),
         apiClient.get('/employees', { params: { gymId, role: 'Trainer', approvalStatus: 'Approved' } }),
+        apiClient.get(`/gyms/${gymId}`),
       ]);
       if (secRes.status === 'fulfilled' && secRes.value.data?.success) {
         setGymSections(secRes.value.data.data || []);
@@ -205,8 +225,13 @@ export const BookingsManagement = ({
         const list = Array.isArray(empData) ? empData : (empData?.employees || []);
         setGymTrainers(list);
       }
+      if (gymRes.status === 'fulfilled' && gymRes.value.data?.data) {
+        const gymData = gymRes.value.data.data;
+        const sp = Number(gymData.singleSessionPrice || gymData.pricingPlans?.singleSession || 199);
+        setGymSingleSessionPrice(sp);
+      }
     } catch (err) {
-      console.warn('Failed to load gym sections/trainers:', err?.message);
+      console.warn('Failed to load gym sections/trainers/profile:', err?.message);
     }
   };
 
@@ -1121,8 +1146,8 @@ export const BookingsManagement = ({
                 value={sessionTier}
                 onChange={(val) => setSessionTier(val)}
                 options={[
-                  { label: 'Single Day', value: 'PER_DAY' },
-                  { label: 'Weekly Pass', value: 'WEEKLY' },
+                  { label: 'Single Session (1 Day)', value: 'PER_DAY' },
+                  { label: 'Weekly Pass (7 Days)', value: 'WEEKLY' },
                   { label: 'Custom Dates', value: 'CUSTOM' },
                 ]}
                 style={{ height: 42, padding: 3, borderRadius: 'var(--radius-base)' }}
@@ -1141,11 +1166,11 @@ export const BookingsManagement = ({
               style={{ width: '100%', height: 42 }}
             >
               <Option value="general">
-                🏋️ General Gym Workout (Floor Access & Machines) — ₹150 / session
+                General Gym Access (Floor & Machines) — ₹{gymSingleSessionPrice} / session
               </Option>
               {gymSections.map((sec) => (
                 <Option key={sec._id || sec.id} value={sec._id || sec.id}>
-                  {sec.category === 'Yoga' ? '🧘' : sec.category === 'Zumba' ? '💃' : sec.category === 'CrossFit' ? '🏋️' : '⏱️'} {sec.title} ({sec.startTime} - {sec.endTime}) — ₹{sec.cost || 250} / session
+                  {sec.title} ({sec.startTime} - {sec.endTime}) — ₹{sec.cost || gymSingleSessionPrice} / session
                 </Option>
               ))}
             </Select>
@@ -1164,13 +1189,33 @@ export const BookingsManagement = ({
               onChange={(val) => setSelectedTrainerId(val)}
               style={{ width: '100%', height: 42 }}
             >
-              <Option value="none">No Personal Trainer (Independent / General)</Option>
-              {gymTrainers.map((tr) => (
-                <Option key={tr._id || tr.id || tr.employeeId} value={tr._id || tr.id || tr.employeeId}>
-                  👤 {tr.name} ({tr.specialty || tr.role || 'Certified Trainer'}) — +₹200 / session
-                </Option>
-              ))}
+              <Option value="none">No Personal Trainer (Independent Workout)</Option>
+              {availableSessionTrainers.map((tr) => {
+                const dailyFee = Number(tr.trainerPricing?.singleSession || 0);
+                let feeLabel = `+₹${dailyFee.toLocaleString('en-IN')} / session`;
+                if (sessionTier === 'WEEKLY') {
+                  feeLabel = `+₹${(dailyFee * 7).toLocaleString('en-IN')} / week (7 sessions)`;
+                } else if (sessionTier === 'CUSTOM') {
+                  const cnt = Math.max(1, customDatesList.length);
+                  feeLabel = `+₹${(dailyFee * cnt).toLocaleString('en-IN')} (${cnt} sessions)`;
+                }
+                return (
+                  <Option key={tr._id || tr.id || tr.employeeId} value={tr._id || tr.id || tr.employeeId}>
+                    <UserOutlined style={{ marginRight: 6, color: 'var(--color-primary)' }} />
+                    {tr.name} ({tr.specialty || tr.role || 'Certified Trainer'}) — {feeLabel}
+                  </Option>
+                );
+              })}
             </Select>
+            {availableSessionTrainers.length === 0 ? (
+              <div style={{ fontSize: 11, color: '#d97706', marginTop: 4 }}>
+                No personal trainers available for day/session passes.
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
+                Trainers who have configured single session / daily training pricing in their profile.
+              </div>
+            )}
           </div>
 
           {/* Custom Multi-Date Picker (Rendered only if CUSTOM is selected) */}
@@ -1216,7 +1261,7 @@ export const BookingsManagement = ({
                       color="blue"
                       style={{ padding: '3px 8px', fontSize: 12, borderRadius: 4 }}
                     >
-                      📅 {dStr}
+                      {dStr}
                     </Tag>
                   ))
                 )}
@@ -1242,7 +1287,7 @@ export const BookingsManagement = ({
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item label="Pass Fee (Amount in ₹)" name="amount" initialValue={150}>
+              <Form.Item label="Pass Fee (Amount in ₹)" name="amount" initialValue={gymSingleSessionPrice}>
                 <Input prefix="₹" type="number" style={{ height: 42, borderRadius: 'var(--radius-base)', fontWeight: 700 }} />
               </Form.Item>
             </Col>
@@ -1275,7 +1320,7 @@ export const BookingsManagement = ({
             <div>
               <strong>Price Calculation: </strong>
               {sessionTier === 'PER_DAY' && '1 Day Session Pass'}
-              {sessionTier === 'WEEKLY' && '7 Days Plan (1 Free Day Discount)'}
+              {sessionTier === 'WEEKLY' && '7 Days Consecutive Access Pass'}
               {sessionTier === 'CUSTOM' && `${customDatesList.length || 1} Selected Date(s)`}
               {selectedTrainerId !== 'none' && ' + Personal Trainer Add-on'}
             </div>
