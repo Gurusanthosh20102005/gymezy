@@ -188,6 +188,8 @@ export const EmployeeManagement = ({
 
   const addRoleWatch = Form.useWatch('role', addEmployeeForm);
   const editRoleWatch = Form.useWatch('role', editEmployeeForm);
+  const isTrainerRole = (role) => ['Trainer', 'Coach', 'Yoga Instructor', 'Zumba Instructor', 'Fitness Trainer'].includes(role);
+  const isAddTrainer = isTrainerRole(addRoleWatch || 'Trainer');
 
   // Map live gym trainers & staff from database fallback
   const mappedGymStaff = useMemo(() => {
@@ -2500,7 +2502,21 @@ export const EmployeeManagement = ({
                               name="certifications"
                               style={{ marginBottom: 14 }}
                             >
-                              <Select mode="tags" placeholder="Add certifications" style={{ width: '100%' }} />
+                              <Select
+                                mode="tags"
+                                placeholder="Type certification (e.g. ACE, ISSA, CPR) or select below"
+                                notFoundContent={null}
+                                style={{ width: '100%' }}
+                              >
+                                <Option value="ACE Certified Personal Trainer">ACE Certified Personal Trainer</Option>
+                                <Option value="ISSA Certified Fitness Trainer">ISSA Certified Fitness Trainer</Option>
+                                <Option value="ACSM Certified Personal Trainer">ACSM Certified Personal Trainer</Option>
+                                <Option value="NASM Certified Personal Trainer">NASM Certified Personal Trainer</Option>
+                                <Option value="CSCS (Strength & Conditioning)">CSCS (Strength & Conditioning)</Option>
+                                <Option value="CPR / AED Certified">CPR / AED Certified</Option>
+                                <Option value="Yoga Alliance RYT 200">Yoga Alliance RYT 200</Option>
+                                <Option value="CrossFit Level 1 Coach">CrossFit Level 1 Coach</Option>
+                              </Select>
                             </Form.Item>
                           </div>
                         ),
@@ -3093,81 +3109,97 @@ export const EmployeeManagement = ({
               </Card>
             )}
 
-            {/* Trainer Profile & Showcase (Shown in User App) */}
-            <div style={{ borderTop: `1px solid ${isDarkMode ? '#222222' : '#f1f5f9'}`, paddingTop: 14, marginTop: 6, marginBottom: 14 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#722ed1', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                <CrownOutlined /> Trainer Profile & Showcase (Shown in User App)
+            {/* Trainer Profile & Showcase (Only shown for Trainers) */}
+            {isAddTrainer && (
+              <div style={{ borderTop: `1px solid ${isDarkMode ? '#222222' : '#f1f5f9'}`, paddingTop: 14, marginTop: 6, marginBottom: 14 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#722ed1', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                  <CrownOutlined /> Trainer Profile & Showcase (Shown in User App)
+                </div>
+
+                <Form.Item
+                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>About Me / Trainer Description</span>}
+                  name="description"
+                  style={{ marginBottom: 12 }}
+                >
+                  <TextArea
+                    rows={3}
+                    placeholder="e.g. Certified fitness trainer helping clients achieve their fitness goals through personalized training."
+                    style={{ borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }}
+                  />
+                </Form.Item>
+
+                <Row gutter={12}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Services Offered</span>}
+                      name="servicesOffered"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select mode="multiple" placeholder="Select services offered" style={{ width: '100%' }}>
+                        <Option value="Weight Loss Program">Weight Loss Program</Option>
+                        <Option value="Muscle Gain">Muscle Gain</Option>
+                        <Option value="Strength Training">Strength Training</Option>
+                        <Option value="Fat Loss">Fat Loss</Option>
+                        <Option value="HIIT Workouts">HIIT Workouts</Option>
+                        <Option value="Diet & Nutrition">Diet & Nutrition</Option>
+                        <Option value="Body Transformation">Body Transformation</Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} sm={6}>
+                    <Form.Item
+                      label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Experience</span>}
+                      name="experience"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Input
+                        placeholder="e.g. 3+ Years"
+                        style={{ height: 40, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} sm={6}>
+                    <Form.Item
+                      label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Languages</span>}
+                      name="languages"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select mode="tags" placeholder="Languages spoken" style={{ width: '100%' }}>
+                        <Option value="English">English</Option>
+                        <Option value="Hindi">Hindi</Option>
+                        <Option value="Tamil">Tamil</Option>
+                        <Option value="Telugu">Telugu</Option>
+                        <Option value="Kannada">Kannada</Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Form.Item
+                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Certifications</span>}
+                  name="certifications"
+                  style={{ marginBottom: 12 }}
+                >
+                  <Select
+                    mode="tags"
+                    placeholder="Type certification (e.g. ACE, ISSA, CPR) or select below"
+                    notFoundContent={null}
+                    style={{ width: '100%' }}
+                  >
+                    <Option value="ACE Certified Personal Trainer">ACE Certified Personal Trainer</Option>
+                    <Option value="ISSA Certified Fitness Trainer">ISSA Certified Fitness Trainer</Option>
+                    <Option value="ACSM Certified Personal Trainer">ACSM Certified Personal Trainer</Option>
+                    <Option value="NASM Certified Personal Trainer">NASM Certified Personal Trainer</Option>
+                    <Option value="CSCS (Strength & Conditioning)">CSCS (Strength & Conditioning)</Option>
+                    <Option value="CPR / AED Certified">CPR / AED Certified</Option>
+                    <Option value="Yoga Alliance RYT 200">Yoga Alliance RYT 200</Option>
+                    <Option value="CrossFit Level 1 Coach">CrossFit Level 1 Coach</Option>
+                  </Select>
+                </Form.Item>
               </div>
-
-              <Form.Item
-                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>About Me / Trainer Description</span>}
-                name="description"
-                style={{ marginBottom: 12 }}
-              >
-                <TextArea
-                  rows={3}
-                  placeholder="e.g. Certified fitness trainer helping clients achieve their fitness goals through personalized training."
-                  style={{ borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }}
-                />
-              </Form.Item>
-
-              <Row gutter={12}>
-                <Col xs={24} sm={12}>
-                  <Form.Item
-                    label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Services Offered</span>}
-                    name="servicesOffered"
-                    style={{ marginBottom: 12 }}
-                  >
-                    <Select mode="multiple" placeholder="Select services offered" style={{ width: '100%' }}>
-                      <Option value="Weight Loss Program">Weight Loss Program</Option>
-                      <Option value="Muscle Gain">Muscle Gain</Option>
-                      <Option value="Strength Training">Strength Training</Option>
-                      <Option value="Fat Loss">Fat Loss</Option>
-                      <Option value="HIIT Workouts">HIIT Workouts</Option>
-                      <Option value="Diet & Nutrition">Diet & Nutrition</Option>
-                      <Option value="Body Transformation">Body Transformation</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} sm={6}>
-                  <Form.Item
-                    label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Experience</span>}
-                    name="experience"
-                    style={{ marginBottom: 12 }}
-                  >
-                    <Input
-                      placeholder="e.g. 3+ Years"
-                      style={{ height: 40, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }}
-                    />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24} sm={6}>
-                  <Form.Item
-                    label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Languages</span>}
-                    name="languages"
-                    style={{ marginBottom: 12 }}
-                  >
-                    <Select mode="tags" placeholder="Languages spoken" style={{ width: '100%' }}>
-                      <Option value="English">English</Option>
-                      <Option value="Hindi">Hindi</Option>
-                      <Option value="Tamil">Tamil</Option>
-                      <Option value="Telugu">Telugu</Option>
-                      <Option value="Kannada">Kannada</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Form.Item
-                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Certifications</span>}
-                name="certifications"
-                style={{ marginBottom: 12 }}
-              >
-                <Select mode="tags" placeholder="Type certification and press enter" style={{ width: '100%' }} />
-              </Form.Item>
-            </div>
+            )}
 
             {/* Previous Employment Details */}
             <div style={{ borderTop: `1px solid ${isDarkMode ? '#222222' : '#f1f5f9'}`, paddingTop: 14, marginTop: 6, marginBottom: 14 }}>
@@ -3519,104 +3551,106 @@ export const EmployeeManagement = ({
               </div>
             </div>
 
-            {/* Trainer Certificate (If Employee is a Trainer) */}
-            <div style={{ borderTop: `1px solid ${isDarkMode ? '#222222' : '#f1f5f9'}`, paddingTop: 14, marginTop: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#722ed1', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CrownOutlined /> Trainer Certificate ({trainerCerts.length})
+            {/* Trainer Certificate (Only shown if Employee is a Trainer) */}
+            {isAddTrainer && (
+              <div style={{ borderTop: `1px solid ${isDarkMode ? '#222222' : '#f1f5f9'}`, paddingTop: 14, marginTop: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#722ed1', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <CrownOutlined /> Trainer Certificate ({trainerCerts.length})
+                  </div>
+                  <Button
+                    size="small"
+                    type="primary"
+                    ghost
+                    icon={<PaperClipOutlined />}
+                    onClick={() => openAttachDocModal('trainer')}
+                    style={{
+                      borderRadius: 'var(--radius-base)',
+                      fontWeight: 600,
+                      fontSize: 12,
+                      borderColor: '#722ed1',
+                      color: '#722ed1',
+                    }}
+                  >
+                    Attach Certificate
+                  </Button>
                 </div>
-                <Button
-                  size="small"
-                  type="primary"
-                  ghost
-                  icon={<PaperClipOutlined />}
-                  onClick={() => openAttachDocModal('trainer')}
-                  style={{
-                    borderRadius: 'var(--radius-base)',
-                    fontWeight: 600,
-                    fontSize: 12,
-                    borderColor: '#722ed1',
-                    color: '#722ed1',
-                  }}
-                >
-                  Attach Certificate
-                </Button>
-              </div>
 
-              <div style={{ width: '100%', overflowX: 'hidden', borderRadius: 8, border: `1px solid ${isDarkMode ? '#333333' : '#f0f0f0'}` }}>
-                <Table
-                  size="small"
-                  pagination={false}
-                  tableLayout="fixed"
-                  dataSource={trainerCerts}
-                  columns={[
-                    {
-                      title: 'Certificate Type',
-                      dataIndex: 'certType',
-                      key: 'certType',
-                      width: 150,
-                      ellipsis: true,
-                      render: (t) => <span style={{ fontWeight: 600 }}>{t}</span>,
-                    },
-                    {
-                      title: 'Document Number',
-                      dataIndex: 'certNum',
-                      key: 'certNum',
-                      width: 140,
-                      ellipsis: true,
-                      render: (n) => <span style={{ fontFamily: 'monospace' }}>{n || '—'}</span>,
-                    },
-                    {
-                      title: 'File Name',
-                      dataIndex: 'fileName',
-                      key: 'fileName',
-                      ellipsis: true,
-                      render: (f) => (
-                        <span
-                          title={f}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            color: '#1677ff',
-                            cursor: 'pointer',
-                            maxWidth: 170,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                          onClick={() => message.info(`Viewing ${f}`)}
-                        >
-                          <FilePdfOutlined style={{ color: '#ef4444', flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f}</span>
-                        </span>
-                      ),
-                    },
-                    {
-                      title: 'Added On',
-                      dataIndex: 'addedOn',
-                      key: 'addedOn',
-                      width: 105,
-                    },
-                    {
-                      title: 'Action',
-                      key: 'action',
-                      width: 60,
-                      align: 'center',
-                      render: (_, rec) => (
-                        <Button
-                          type="text"
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          onClick={() => setTrainerCerts(trainerCerts.filter((c) => c.key !== rec.key))}
-                        />
-                      ),
-                    },
-                  ]}
-                />
+                <div style={{ width: '100%', overflowX: 'hidden', borderRadius: 8, border: `1px solid ${isDarkMode ? '#333333' : '#f0f0f0'}` }}>
+                  <Table
+                    size="small"
+                    pagination={false}
+                    tableLayout="fixed"
+                    dataSource={trainerCerts}
+                    columns={[
+                      {
+                        title: 'Certificate Type',
+                        dataIndex: 'certType',
+                        key: 'certType',
+                        width: 150,
+                        ellipsis: true,
+                        render: (t) => <span style={{ fontWeight: 600 }}>{t}</span>,
+                      },
+                      {
+                        title: 'Document Number',
+                        dataIndex: 'certNum',
+                        key: 'certNum',
+                        width: 140,
+                        ellipsis: true,
+                        render: (n) => <span style={{ fontFamily: 'monospace' }}>{n || '—'}</span>,
+                      },
+                      {
+                        title: 'File Name',
+                        dataIndex: 'fileName',
+                        key: 'fileName',
+                        ellipsis: true,
+                        render: (f) => (
+                          <span
+                            title={f}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              color: '#1677ff',
+                              cursor: 'pointer',
+                              maxWidth: 170,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            onClick={() => message.info(`Viewing ${f}`)}
+                          >
+                            <FilePdfOutlined style={{ color: '#ef4444', flexShrink: 0 }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f}</span>
+                          </span>
+                        ),
+                      },
+                      {
+                        title: 'Added On',
+                        dataIndex: 'addedOn',
+                        key: 'addedOn',
+                        width: 105,
+                      },
+                      {
+                        title: 'Action',
+                        key: 'action',
+                        width: 60,
+                        align: 'center',
+                        render: (_, rec) => (
+                          <Button
+                            type="text"
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => setTrainerCerts(trainerCerts.filter((c) => c.key !== rec.key))}
+                          />
+                        ),
+                      },
+                    ]}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Bottom Actions */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, alignItems: 'center', marginTop: 24, borderTop: `1px solid ${isDarkMode ? '#222222' : '#f1f5f9'}`, paddingTop: 16 }}>
