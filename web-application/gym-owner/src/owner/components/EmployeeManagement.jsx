@@ -875,10 +875,10 @@ export const EmployeeManagement = ({
 
     const dayWiseArray = isDifferentDays
       ? workingDays.map((d) => ({
-          day: d,
-          startTime: dayWiseHours[d]?.startTime ? dayWiseHours[d].startTime.format('hh:mm A') : '09:00 AM',
-          endTime: dayWiseHours[d]?.endTime ? dayWiseHours[d].endTime.format('hh:mm A') : '06:00 PM',
-        }))
+        day: d,
+        startTime: dayWiseHours[d]?.startTime ? dayWiseHours[d].startTime.format('hh:mm A') : '09:00 AM',
+        endTime: dayWiseHours[d]?.endTime ? dayWiseHours[d].endTime.format('hh:mm A') : '06:00 PM',
+      }))
       : [];
 
     const newStaffPayload = {
@@ -2122,34 +2122,34 @@ export const EmployeeManagement = ({
                         ((detailEmpType || '').toLowerCase() === 'temporary' ||
                           (detailEmpType || '').toLowerCase() === 'part-time' ||
                           (detailEmpType || '').toLowerCase() === 'parttime') && (
-                        <div
-                          style={{
-                            marginTop: 4,
-                            marginBottom: 16,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '10px 14px',
-                            borderRadius: 'var(--radius-base)',
-                            backgroundColor: isDarkMode ? '#1e1e1e' : '#f8fafc',
-                            border: `1px dashed ${isDarkMode ? '#333333' : '#cbd5e1'}`,
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: 12.5, color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>
-                              <CrownOutlined style={{ color: '#722ed1', marginRight: 6 }} />
-                              Showcase Trainer Profile in User App
+                          <div
+                            style={{
+                              marginTop: 4,
+                              marginBottom: 16,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '10px 14px',
+                              borderRadius: 'var(--radius-base)',
+                              backgroundColor: isDarkMode ? '#1e1e1e' : '#f8fafc',
+                              border: `1px dashed ${isDarkMode ? '#333333' : '#cbd5e1'}`,
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 12.5, color: isDarkMode ? '#e2e8f0' : '#1e293b' }}>
+                                <CrownOutlined style={{ color: '#722ed1', marginRight: 6 }} />
+                                Showcase Trainer Profile in User App
+                              </div>
+                              <div style={{ fontSize: 11.5, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                                By default, temporary/part-time staff profiles are hidden from the user app. Toggle on to customize their showcase card.
+                              </div>
                             </div>
-                            <div style={{ fontSize: 11.5, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                              By default, temporary/part-time staff profiles are hidden from the user app. Toggle on to customize their showcase card.
-                            </div>
+                            <Switch
+                              checked={showTrainerShowcaseTab}
+                              onChange={(checked) => setShowTrainerShowcaseTab(checked)}
+                            />
                           </div>
-                          <Switch
-                            checked={showTrainerShowcaseTab}
-                            onChange={(checked) => setShowTrainerShowcaseTab(checked)}
-                          />
-                        </div>
-                      )}
+                        )}
 
                       <Row gutter={16}>
                         <Col xs={24} sm={12}>
@@ -2290,14 +2290,14 @@ export const EmployeeManagement = ({
                                   detailAccessType === 'Admin'
                                     ? 'rgba(114, 46, 209, 0.12)'
                                     : detailAccessType === 'Employee'
-                                    ? 'rgba(22, 119, 255, 0.12)'
-                                    : isDarkMode ? '#262626' : '#f1f5f9',
+                                      ? 'rgba(22, 119, 255, 0.12)'
+                                      : isDarkMode ? '#262626' : '#f1f5f9',
                                 color:
                                   detailAccessType === 'Admin'
                                     ? '#722ed1'
                                     : detailAccessType === 'Employee'
-                                    ? '#1677ff'
-                                    : isDarkMode ? '#888888' : '#64748b',
+                                      ? '#1677ff'
+                                      : isDarkMode ? '#888888' : '#64748b',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -2320,8 +2320,8 @@ export const EmployeeManagement = ({
                                 {detailAccessType === 'Admin'
                                   ? 'Delegated Manager administrative access (governed by permissions above)'
                                   : detailAccessType === 'Employee'
-                                  ? 'Can check in members, scan QR codes, and view scheduled sessions'
-                                  : 'Staff roster profile only (no app console credentials needed)'}
+                                    ? 'Can check in members, scan QR codes, and view scheduled sessions'
+                                    : 'Staff roster profile only (no app console credentials needed)'}
                               </div>
                             </div>
                           </div>
@@ -2353,8 +2353,8 @@ export const EmployeeManagement = ({
                                 {detailRole === 'Manager'
                                   ? 'Administrative & Operations Skills'
                                   : isTrainerRole(detailRole)
-                                  ? 'Fitness Specialization / Training Focus'
-                                  : 'Specialization / Key Skills'}
+                                    ? 'Fitness Specialization / Training Focus'
+                                    : 'Specialization / Key Skills'}
                               </span>
                             }
                             name="specialty"
@@ -2365,8 +2365,8 @@ export const EmployeeManagement = ({
                                 detailRole === 'Manager'
                                   ? 'e.g. Gym Operations, Staff Management, Customer Retention'
                                   : isTrainerRole(detailRole)
-                                  ? 'e.g. Strength Training, HIIT, Yoga, Nutrition'
-                                  : 'e.g. Facility Maintenance, Front Desk Greeting'
+                                    ? 'e.g. Strength Training, HIIT, Yoga, Nutrition'
+                                    : 'e.g. Facility Maintenance, Front Desk Greeting'
                               }
                               style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                             />
@@ -2515,96 +2515,96 @@ export const EmployeeManagement = ({
                 },
                 ...(isTrainerRole(detailRole) && showTrainerShowcaseTab
                   ? [
-                      {
-                        key: 'trainer_profile',
-                        label: (
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>
-                            <CrownOutlined /> Trainer Profile & Showcase
-                          </span>
-                        ),
-                        children: (
-                          <div style={{ paddingTop: 8 }}>
-                            <Form.Item
-                              label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>About Me / Trainer Description</span>}
-                              name="description"
-                              style={{ marginBottom: 14 }}
-                            >
-                              <TextArea
-                                rows={3}
-                                placeholder="e.g. Certified fitness trainer helping clients achieve their fitness goals through personalized training."
-                                style={{ borderRadius: 'var(--radius-base)' }}
-                              />
-                            </Form.Item>
+                    {
+                      key: 'trainer_profile',
+                      label: (
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>
+                          <CrownOutlined /> Trainer Profile & Showcase
+                        </span>
+                      ),
+                      children: (
+                        <div style={{ paddingTop: 8 }}>
+                          <Form.Item
+                            label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>About Me / Trainer Description</span>}
+                            name="description"
+                            style={{ marginBottom: 14 }}
+                          >
+                            <TextArea
+                              rows={3}
+                              placeholder="e.g. Certified fitness trainer helping clients achieve their fitness goals through personalized training."
+                              style={{ borderRadius: 'var(--radius-base)' }}
+                            />
+                          </Form.Item>
 
-                            <Row gutter={16}>
-                              <Col xs={24} sm={12}>
-                                <Form.Item
-                                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Services Offered</span>}
-                                  name="servicesOffered"
-                                  style={{ marginBottom: 14 }}
-                                >
-                                  <Select mode="multiple" placeholder="Select services" style={{ width: '100%' }}>
-                                    <Option value="Weight Loss Program">Weight Loss Program</Option>
-                                    <Option value="Muscle Gain">Muscle Gain</Option>
-                                    <Option value="Strength Training">Strength Training</Option>
-                                    <Option value="Fat Loss">Fat Loss</Option>
-                                    <Option value="HIIT Workouts">HIIT Workouts</Option>
-                                    <Option value="Diet & Nutrition">Diet & Nutrition</Option>
-                                    <Option value="Body Transformation">Body Transformation</Option>
-                                  </Select>
-                                </Form.Item>
-                              </Col>
-                              <Col xs={24} sm={6}>
-                                <Form.Item
-                                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Experience</span>}
-                                  name="experience"
-                                  style={{ marginBottom: 14 }}
-                                >
-                                  <Input placeholder="e.g. 3+ Years" style={{ height: 40, borderRadius: 'var(--radius-base)' }} />
-                                </Form.Item>
-                              </Col>
-                              <Col xs={24} sm={6}>
-                                <Form.Item
-                                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Languages</span>}
-                                  name="languages"
-                                  style={{ marginBottom: 14 }}
-                                >
-                                  <Select mode="tags" placeholder="Languages" style={{ width: '100%' }}>
-                                    <Option value="English">English</Option>
-                                    <Option value="Hindi">Hindi</Option>
-                                    <Option value="Tamil">Tamil</Option>
-                                    <Option value="Telugu">Telugu</Option>
-                                    <Option value="Kannada">Kannada</Option>
-                                  </Select>
-                                </Form.Item>
-                              </Col>
-                            </Row>
-
-                            <Form.Item
-                              label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Certifications</span>}
-                              name="certifications"
-                              style={{ marginBottom: 14 }}
-                            >
-                              <Select
-                                mode="tags"
-                                placeholder="Type certification (e.g. ACE, ISSA, CPR) or select below"
-                                notFoundContent={null}
-                                style={{ width: '100%' }}
+                          <Row gutter={16}>
+                            <Col xs={24} sm={12}>
+                              <Form.Item
+                                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Services Offered</span>}
+                                name="servicesOffered"
+                                style={{ marginBottom: 14 }}
                               >
-                                <Option value="ACE Certified Personal Trainer">ACE Certified Personal Trainer</Option>
-                                <Option value="ISSA Certified Fitness Trainer">ISSA Certified Fitness Trainer</Option>
-                                <Option value="ACSM Certified Personal Trainer">ACSM Certified Personal Trainer</Option>
-                                <Option value="NASM Certified Personal Trainer">NASM Certified Personal Trainer</Option>
-                                <Option value="CSCS (Strength & Conditioning)">CSCS (Strength & Conditioning)</Option>
-                                <Option value="CPR / AED Certified">CPR / AED Certified</Option>
-                                <Option value="Yoga Alliance RYT 200">Yoga Alliance RYT 200</Option>
-                                <Option value="CrossFit Level 1 Coach">CrossFit Level 1 Coach</Option>
-                              </Select>
-                            </Form.Item>
-                          </div>
-                        ),
-                      },
-                    ]
+                                <Select mode="multiple" placeholder="Select services" style={{ width: '100%' }}>
+                                  <Option value="Weight Loss Program">Weight Loss Program</Option>
+                                  <Option value="Muscle Gain">Muscle Gain</Option>
+                                  <Option value="Strength Training">Strength Training</Option>
+                                  <Option value="Fat Loss">Fat Loss</Option>
+                                  <Option value="HIIT Workouts">HIIT Workouts</Option>
+                                  <Option value="Diet & Nutrition">Diet & Nutrition</Option>
+                                  <Option value="Body Transformation">Body Transformation</Option>
+                                </Select>
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={6}>
+                              <Form.Item
+                                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Experience</span>}
+                                name="experience"
+                                style={{ marginBottom: 14 }}
+                              >
+                                <Input placeholder="e.g. 3+ Years" style={{ height: 40, borderRadius: 'var(--radius-base)' }} />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={6}>
+                              <Form.Item
+                                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Languages</span>}
+                                name="languages"
+                                style={{ marginBottom: 14 }}
+                              >
+                                <Select mode="tags" placeholder="Languages" style={{ width: '100%' }}>
+                                  <Option value="English">English</Option>
+                                  <Option value="Hindi">Hindi</Option>
+                                  <Option value="Tamil">Tamil</Option>
+                                  <Option value="Telugu">Telugu</Option>
+                                  <Option value="Kannada">Kannada</Option>
+                                </Select>
+                              </Form.Item>
+                            </Col>
+                          </Row>
+
+                          <Form.Item
+                            label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Certifications</span>}
+                            name="certifications"
+                            style={{ marginBottom: 14 }}
+                          >
+                            <Select
+                              mode="tags"
+                              placeholder="Type certification (e.g. ACE, ISSA, CPR) or select below"
+                              notFoundContent={null}
+                              style={{ width: '100%' }}
+                            >
+                              <Option value="ACE Certified Personal Trainer">ACE Certified Personal Trainer</Option>
+                              <Option value="ISSA Certified Fitness Trainer">ISSA Certified Fitness Trainer</Option>
+                              <Option value="ACSM Certified Personal Trainer">ACSM Certified Personal Trainer</Option>
+                              <Option value="NASM Certified Personal Trainer">NASM Certified Personal Trainer</Option>
+                              <Option value="CSCS (Strength & Conditioning)">CSCS (Strength & Conditioning)</Option>
+                              <Option value="CPR / AED Certified">CPR / AED Certified</Option>
+                              <Option value="Yoga Alliance RYT 200">Yoga Alliance RYT 200</Option>
+                              <Option value="CrossFit Level 1 Coach">CrossFit Level 1 Coach</Option>
+                            </Select>
+                          </Form.Item>
+                        </div>
+                      ),
+                    },
+                  ]
                   : []),
                 {
                   key: 'schedule_pay',
@@ -2839,117 +2839,117 @@ export const EmployeeManagement = ({
                 },
                 ...(isTrainerRole(detailRole)
                   ? [
-                      {
-                        key: 'trainer_pricing',
-                        label: (
-                          <span style={{ fontWeight: 600, fontSize: 13, color: '#722ed1' }}>
-                            <DollarOutlined /> Membership Tier Rates
-                          </span>
-                        ),
-                        children: (
-                          <div style={{ paddingTop: 8 }}>
-                            <Alert
-                              type="info"
-                              showIcon
-                              message="Member Personal Training Pricing per Membership Tier"
-                              description="Specify what members are charged when they add this trainer to their Standard Membership package. These rates reflect directly in the user mobile app booking screen."
-                              style={{ marginBottom: 16, borderRadius: 'var(--radius-base)' }}
-                            />
-                            <Row gutter={16}>
-                              <Col xs={24} sm={12}>
-                                <Form.Item
-                                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Monthly Plan Add-on (₹)</span>}
-                                  name="trainerMonthly"
-                                  initialValue={0}
-                                  style={{ marginBottom: 14 }}
-                                >
-                                  <InputNumber
-                                    prefix="₹"
-                                    placeholder="e.g. 1,500"
-                                    min={0}
-                                    formatter={formatAmountWithCommas}
-                                    parser={parseAmountWithoutCommas}
-                                    style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
-                                  />
-                                </Form.Item>
-                              </Col>
-                              <Col xs={24} sm={12}>
-                                <Form.Item
-                                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Quarterly Plan Add-on (₹)</span>}
-                                  name="trainerQuarterly"
-                                  initialValue={0}
-                                  style={{ marginBottom: 14 }}
-                                >
-                                  <InputNumber
-                                    prefix="₹"
-                                    placeholder="e.g. 4,000"
-                                    min={0}
-                                    formatter={formatAmountWithCommas}
-                                    parser={parseAmountWithoutCommas}
-                                    style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
-                                  />
-                                </Form.Item>
-                              </Col>
-                            </Row>
-                            <Row gutter={16}>
-                              <Col xs={24} sm={12}>
-                                <Form.Item
-                                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Half Yearly Plan Add-on (₹)</span>}
-                                  name="trainerHalfYearly"
-                                  initialValue={0}
-                                  style={{ marginBottom: 14 }}
-                                >
-                                  <InputNumber
-                                    prefix="₹"
-                                    placeholder="e.g. 7,500"
-                                    min={0}
-                                    formatter={formatAmountWithCommas}
-                                    parser={parseAmountWithoutCommas}
-                                    style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
-                                  />
-                                </Form.Item>
-                              </Col>
-                              <Col xs={24} sm={12}>
-                                <Form.Item
-                                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Annual Plan Add-on (₹)</span>}
-                                  name="trainerAnnual"
-                                  initialValue={0}
-                                  style={{ marginBottom: 14 }}
-                                >
-                                  <InputNumber
-                                    prefix="₹"
-                                    placeholder="e.g. 14,000"
-                                    min={0}
-                                    formatter={formatAmountWithCommas}
-                                    parser={parseAmountWithoutCommas}
-                                    style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
-                                  />
-                                </Form.Item>
-                              </Col>
-                            </Row>
-                            <Row gutter={16}>
-                              <Col xs={24} sm={12}>
-                                <Form.Item
-                                  label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Single Session Rate (₹)</span>}
-                                  name="trainerSingleSession"
-                                  initialValue={0}
-                                  style={{ marginBottom: 14 }}
-                                >
-                                  <InputNumber
-                                    prefix="₹"
-                                    placeholder="e.g. 200"
-                                    min={0}
-                                    formatter={formatAmountWithCommas}
-                                    parser={parseAmountWithoutCommas}
-                                    style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
-                                  />
-                                </Form.Item>
-                              </Col>
-                            </Row>
-                          </div>
-                        ),
-                      },
-                    ]
+                    {
+                      key: 'trainer_pricing',
+                      label: (
+                        <span style={{ fontWeight: 600, fontSize: 13, color: '#722ed1' }}>
+                          <DollarOutlined /> Membership Tier Rates
+                        </span>
+                      ),
+                      children: (
+                        <div style={{ paddingTop: 8 }}>
+                          <Alert
+                            type="info"
+                            showIcon
+                            message="Member Personal Training Pricing per Membership Tier"
+                            description="Specify what members are charged when they add this trainer to their Standard Membership package. These rates reflect directly in the user mobile app booking screen."
+                            style={{ marginBottom: 16, borderRadius: 'var(--radius-base)' }}
+                          />
+                          <Row gutter={16}>
+                            <Col xs={24} sm={12}>
+                              <Form.Item
+                                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Monthly Plan Add-on (₹)</span>}
+                                name="trainerMonthly"
+                                initialValue={0}
+                                style={{ marginBottom: 14 }}
+                              >
+                                <InputNumber
+                                  prefix="₹"
+                                  placeholder="e.g. 1,500"
+                                  min={0}
+                                  formatter={formatAmountWithCommas}
+                                  parser={parseAmountWithoutCommas}
+                                  style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={12}>
+                              <Form.Item
+                                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Quarterly Plan Add-on (₹)</span>}
+                                name="trainerQuarterly"
+                                initialValue={0}
+                                style={{ marginBottom: 14 }}
+                              >
+                                <InputNumber
+                                  prefix="₹"
+                                  placeholder="e.g. 4,000"
+                                  min={0}
+                                  formatter={formatAmountWithCommas}
+                                  parser={parseAmountWithoutCommas}
+                                  style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                          <Row gutter={16}>
+                            <Col xs={24} sm={12}>
+                              <Form.Item
+                                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Half Yearly Plan Add-on (₹)</span>}
+                                name="trainerHalfYearly"
+                                initialValue={0}
+                                style={{ marginBottom: 14 }}
+                              >
+                                <InputNumber
+                                  prefix="₹"
+                                  placeholder="e.g. 7,500"
+                                  min={0}
+                                  formatter={formatAmountWithCommas}
+                                  parser={parseAmountWithoutCommas}
+                                  style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} sm={12}>
+                              <Form.Item
+                                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Annual Plan Add-on (₹)</span>}
+                                name="trainerAnnual"
+                                initialValue={0}
+                                style={{ marginBottom: 14 }}
+                              >
+                                <InputNumber
+                                  prefix="₹"
+                                  placeholder="e.g. 14,000"
+                                  min={0}
+                                  formatter={formatAmountWithCommas}
+                                  parser={parseAmountWithoutCommas}
+                                  style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                          <Row gutter={16}>
+                            <Col xs={24} sm={12}>
+                              <Form.Item
+                                label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Single Session Rate (₹)</span>}
+                                name="trainerSingleSession"
+                                initialValue={0}
+                                style={{ marginBottom: 14 }}
+                              >
+                                <InputNumber
+                                  prefix="₹"
+                                  placeholder="e.g. 200"
+                                  min={0}
+                                  formatter={formatAmountWithCommas}
+                                  parser={parseAmountWithoutCommas}
+                                  style={{ width: '100%', height: 40, borderRadius: 'var(--radius-base)' }}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                        </div>
+                      ),
+                    },
+                  ]
                   : []),
               ]}
             />
@@ -3803,8 +3803,8 @@ export const EmployeeManagement = ({
               {targetDocSection === 'personal'
                 ? 'Attach Personal Document'
                 : targetDocSection === 'employment'
-                ? 'Attach Employment Document'
-                : 'Attach Trainer Certificate'}
+                  ? 'Attach Employment Document'
+                  : 'Attach Trainer Certificate'}
             </span>
           </div>
         }
