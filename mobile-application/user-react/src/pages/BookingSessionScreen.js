@@ -44,7 +44,7 @@ const getCategoryBadgeStyle = (category, isDark) => {
       return {
         bg: isDark ? 'rgba(167,139,250,0.2)' : 'rgba(124,58,237,0.12)',
         text: isDark ? '#C4B5FD' : '#7C3AED',
-        icon: 'self-improvement',
+        icon: 'spa',
       };
     case 'zumba':
       return {
@@ -1280,6 +1280,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                 const capacity = sec.maxCapacity || 25;
                 const remaining = Math.max(0, capacity - enrolled);
                 const isFilled = remaining <= 0;
+                const isEnrolled = Boolean(getSectionBooking(sec));
 
                 return (
                   <TouchableOpacity
@@ -1293,52 +1294,83 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                       styles.sectionListCard,
                       {
                         backgroundColor: cardColor,
-                        borderColor: borderColor,
+                        borderColor: isEnrolled
+                          ? isDark ? 'rgba(16, 185, 129, 0.45)' : '#6EE7B7'
+                          : borderColor,
                       },
-                      isFilled && styles.sectionListCardFilled,
+                      isFilled && !isEnrolled && styles.sectionListCardFilled,
                     ]}
                   >
                     {/* Top: Category Pill & Capacity */}
                     <View style={styles.sectionCardHeader}>
-                      <View style={styles.sectionCatBadge}>
-                        <MaterialIcons name={catStyle.icon} size={15} color={catStyle.text} style={{ marginRight: 4 }} />
+                      <View style={[styles.sectionCatBadge, { backgroundColor: catStyle.bg }]}>
+                        <MaterialIcons name={catStyle.icon} size={13} color={catStyle.text} style={{ marginRight: 4 }} />
                         <Text style={[styles.sectionCatBadgeText, { color: catStyle.text }]}>
                           {(sec.category || 'workout').toUpperCase()}
                         </Text>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        {Boolean(getSectionBooking(sec)) && (
+                        {isEnrolled && (
                           <View
                             style={[
-                              styles.sectionCapacityPill,
+                              styles.enrolledUserBadge,
                               {
-                                backgroundColor: 'rgba(0, 191, 98, 0.12)',
-                                borderColor: 'rgba(0, 191, 98, 0.3)',
-                                borderWidth: 1,
+                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5',
+                                borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#A7F3D0',
                               },
                             ]}
                           >
-                            <MaterialIcons name="check-circle" size={13} color="#00BF62" style={{ marginRight: 3 }} />
-                            <Text style={[styles.sectionCapacityText, { color: '#00BF62', fontWeight: '800' }]}>
-                              Enrolled
-                            </Text>
+                            <MaterialIcons name="check-circle" size={12} color="#059669" style={{ marginRight: 3.5 }} />
+                            <Text style={styles.enrolledUserBadgeText}>Enrolled</Text>
                           </View>
                         )}
-                        <View style={styles.sectionCapacityPill}>
+                        <View
+                          style={[
+                            styles.sectionCapacityPill,
+                            {
+                              backgroundColor: isFilled
+                                ? isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2'
+                                : remaining <= 3
+                                ? isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB'
+                                : isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
+                              borderColor: isFilled
+                                ? isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA'
+                                : remaining <= 3
+                                ? isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A'
+                                : isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                            },
+                          ]}
+                        >
                           <MaterialIcons
-                            name={isFilled ? 'block' : 'person'}
-                            size={13}
-                            color={isFilled ? '#EF4444' : remaining <= 3 ? '#EF4444' : '#00BF62'}
-                            style={{ marginRight: 3 }}
+                            name={isFilled ? 'block' : 'people-outline'}
+                            size={12}
+                            color={
+                              isFilled
+                                ? '#EF4444'
+                                : remaining <= 3
+                                ? '#D97706'
+                                : subtitleColor
+                            }
+                            style={{ marginRight: 3.5 }}
                           />
                           <Text
                             style={[
                               styles.sectionCapacityText,
-                              { color: isFilled ? '#EF4444' : remaining <= 3 ? '#EF4444' : '#00BF62' },
-                              isFilled && { fontWeight: '700' },
+                              {
+                                color: isFilled
+                                  ? '#EF4444'
+                                  : remaining <= 3
+                                  ? '#D97706'
+                                  : subtitleColor,
+                                fontWeight: isFilled || remaining <= 3 ? '700' : '500',
+                              },
                             ]}
                           >
-                            {isFilled ? 'Slot Full' : remaining <= 3 ? `Only ${remaining} left` : `${enrolled}/${capacity} Enrolled`}
+                            {isFilled
+                              ? 'Slot Full'
+                              : remaining <= 3
+                              ? `Only ${remaining} left`
+                              : `${enrolled}/${capacity} Seats`}
                           </Text>
                         </View>
                       </View>
@@ -1400,26 +1432,36 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                       <View
                         style={[
                           styles.viewDetailsBtn,
-                          isFilled
-                            ? { backgroundColor: isDark ? 'rgba(239,68,68,0.18)' : 'rgba(239,68,68,0.1)' }
-                            : { backgroundColor: isDark ? 'rgba(96,165,250,0.15)' : 'rgba(0,56,130,0.08)' },
+                          isEnrolled
+                            ? {
+                                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.16)' : '#ECFDF5',
+                                borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : '#A7F3D0',
+                                borderWidth: 1,
+                              }
+                            : isFilled
+                            ? { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.18)' : 'rgba(239, 68, 68, 0.1)' }
+                            : { backgroundColor: isDark ? 'rgba(96, 165, 250, 0.15)' : 'rgba(0, 56, 130, 0.08)' },
                         ]}
                       >
                         <Text
                           style={[
                             styles.viewDetailsBtnText,
                             {
-                              color: isFilled ? '#EF4444' : (isDark ? '#93C5FD' : '#003882'),
-                              fontWeight: isFilled ? '700' : '600',
+                              color: isEnrolled
+                                ? '#059669'
+                                : isFilled
+                                ? '#EF4444'
+                                : (isDark ? '#93C5FD' : '#003882'),
+                              fontWeight: isEnrolled || isFilled ? '700' : '600',
                             },
                           ]}
                         >
-                          {isFilled ? 'Slot Full' : 'View Details'}
+                          {isEnrolled ? 'Enrolled • View Pass' : isFilled ? 'Slot Full' : 'View Details'}
                         </Text>
                         <MaterialIcons
-                          name={isFilled ? 'block' : 'arrow-forward'}
+                          name={isEnrolled ? 'confirmation-number' : isFilled ? 'block' : 'arrow-forward'}
                           size={14}
-                          color={isFilled ? '#EF4444' : (isDark ? '#93C5FD' : '#003882')}
+                          color={isEnrolled ? '#059669' : isFilled ? '#EF4444' : (isDark ? '#93C5FD' : '#003882')}
                           style={{ marginLeft: 4 }}
                         />
                       </View>
@@ -1479,40 +1521,105 @@ export const BookingSessionScreen = ({ route, navigation }) => {
             </ImageBackground>
 
             {/* Capacity & Availability Box */}
-            <View style={[styles.detailCard, { backgroundColor: cardColor, borderColor: borderColor }]}>
-              <View style={styles.detailCardHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.detailSectionHeading, { color: textColor }]}>Batch Capacity</Text>
-                  <Text style={[styles.detailSubtext, { color: subtitleColor }]}>
-                    {Boolean(getSectionBooking(selectedSection))
-                      ? 'You are enrolled in this batch! Tap "View Your Pass" below to view entry details.'
-                      : (selectedSection.enrolledCount || 0) >= (selectedSection.maxCapacity || 25)
-                      ? 'All slots filled! Admissions are currently closed.'
-                      : (selectedSection.maxCapacity || 25) - (selectedSection.enrolledCount || 0) <= 3
-                      ? 'Filling fast! Limited seats remaining.'
-                      : 'Open for admissions'}
-                  </Text>
+            {(() => {
+              const isDetailEnrolled = Boolean(getSectionBooking(selectedSection));
+              const isDetailFull = (selectedSection.enrolledCount || 0) >= (selectedSection.maxCapacity || 25);
+              const remainingDetail = Math.max(0, (selectedSection.maxCapacity || 25) - (selectedSection.enrolledCount || 0));
+
+              return (
+                <View
+                  style={[
+                    styles.detailCard,
+                    {
+                      backgroundColor: cardColor,
+                      borderColor: isDetailEnrolled
+                        ? isDark ? 'rgba(16, 185, 129, 0.45)' : '#6EE7B7'
+                        : borderColor,
+                    },
+                  ]}
+                >
+                  <View style={styles.detailCardHeader}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={[styles.detailSectionHeading, { color: textColor }]}>Batch Capacity & Status</Text>
+                      <Text style={[styles.detailSubtext, { color: subtitleColor }]}>
+                        {isDetailEnrolled
+                          ? 'You are active in this batch! Tap "View Your Pass" below to view entry pass & attendance.'
+                          : isDetailFull
+                          ? 'All slots filled! Admissions are currently closed.'
+                          : remainingDetail <= 3
+                          ? 'Filling fast! Limited seats remaining.'
+                          : 'Open for admissions'}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      {isDetailEnrolled && (
+                        <View
+                          style={[
+                            styles.enrolledUserBadge,
+                            {
+                              backgroundColor: isDark ? 'rgba(16, 185, 129, 0.18)' : '#ECFDF5',
+                              borderColor: isDark ? 'rgba(16, 185, 129, 0.4)' : '#A7F3D0',
+                            },
+                          ]}
+                        >
+                          <MaterialIcons name="check-circle" size={12} color="#059669" style={{ marginRight: 3.5 }} />
+                          <Text style={styles.enrolledUserBadgeText}>Enrolled</Text>
+                        </View>
+                      )}
+                      <View
+                        style={[
+                          styles.sectionCapacityPill,
+                          {
+                            backgroundColor: isDetailFull
+                              ? isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2'
+                              : remainingDetail <= 3
+                              ? isDark ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB'
+                              : isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
+                            borderColor: isDetailFull
+                              ? isDark ? 'rgba(239, 68, 68, 0.35)' : '#FECACA'
+                              : remainingDetail <= 3
+                              ? isDark ? 'rgba(245, 158, 11, 0.35)' : '#FDE68A'
+                              : isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                          },
+                        ]}
+                      >
+                        <MaterialIcons
+                          name={isDetailFull ? 'block' : 'people-outline'}
+                          size={12}
+                          color={
+                            isDetailFull
+                              ? '#EF4444'
+                              : remainingDetail <= 3
+                              ? '#D97706'
+                              : subtitleColor
+                          }
+                          style={{ marginRight: 3.5 }}
+                        />
+                        <Text
+                          style={[
+                            styles.sectionCapacityText,
+                            {
+                              color: isDetailFull
+                                ? '#EF4444'
+                                : remainingDetail <= 3
+                                ? '#D97706'
+                                : subtitleColor,
+                              fontWeight: isDetailFull || remainingDetail <= 3 ? '700' : '500',
+                            },
+                          ]}
+                        >
+                          {isDetailFull
+                            ? 'Slot Full'
+                            : remainingDetail <= 3
+                            ? `Only ${remainingDetail} left`
+                            : `${selectedSection.enrolledCount || 0} / ${selectedSection.maxCapacity || 25} Seats`}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.detailCapacityBadge}>
-                  <MaterialIcons
-                    name={(selectedSection.enrolledCount || 0) >= (selectedSection.maxCapacity || 25) ? 'block' : 'groups'}
-                    size={16}
-                    color={(selectedSection.enrolledCount || 0) >= (selectedSection.maxCapacity || 25) ? '#EF4444' : '#00BF62'}
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text
-                    style={[
-                      styles.detailCapacityBadgeText,
-                      (selectedSection.enrolledCount || 0) >= (selectedSection.maxCapacity || 25) && { color: '#EF4444' },
-                    ]}
-                  >
-                    {(selectedSection.enrolledCount || 0) >= (selectedSection.maxCapacity || 25)
-                      ? 'Slot Full'
-                      : `${selectedSection.enrolledCount || 0} / ${selectedSection.maxCapacity || 25} Enrolled`}
-                  </Text>
-                </View>
-              </View>
-            </View>
+              );
+            })()}
 
             {/* Trainer Profile Card */}
             <View style={[styles.detailCard, { backgroundColor: cardColor, borderColor: borderColor }]}>
@@ -2266,19 +2373,39 @@ const styles = StyleSheet.create({
   sectionCatBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 8,
   },
   sectionCatBadgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  enrolledUserBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  enrolledUserBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
   },
   sectionCapacityPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 8,
+    borderWidth: 1,
   },
   sectionCapacityText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '500',
   },
   sectionTitleText: {
     fontSize: 17,
