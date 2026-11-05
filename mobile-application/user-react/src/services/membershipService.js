@@ -111,8 +111,11 @@ class MembershipService {
     return this.cancelMembership(id, reason);
   }
 
-  async fetchMyCancellationNegotiations(userId) {
-    const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+  async fetchMyCancellationNegotiations(userId, membershipId) {
+    const params = [];
+    if (userId) params.push(`userId=${encodeURIComponent(userId)}`);
+    if (membershipId) params.push(`membershipId=${encodeURIComponent(membershipId)}`);
+    const query = params.length > 0 ? `?${params.join('&')}` : '';
     const response = await apiService.executeFetch(`/memberships/my/cancellation-negotiations${query}`, {
       method: 'GET',
       headers: apiService.getHeaders(),

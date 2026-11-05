@@ -262,33 +262,48 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
   const [showCancelSheet, setShowCancelSheet] = useState(false);
   const [selectedReason, setSelectedReason] = useState(CANCEL_REASONS[0]);
   const [cancellationNegotiation, setCancellationNegotiation] = useState(null);
+  const [showNegotiationModal, setShowNegotiationModal] = useState(false);
+  const [isRespondingQuote, setIsRespondingQuote] = useState(false);
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
 
   useEffect(() => {
     let active = true;
-    const membershipKey = String(membership._id || membership.id || '');
+    const resolvedUserId = user?._id || user?.id || user?.userId || membership?.userId;
+    const targetMembershipId = membership._id || membership.id || membership.membershipId;
+
     const loadCancellationNegotiation = async () => {
       try {
-        const negotiations = await membershipService.fetchMyCancellationNegotiations();
-        const membershipKey = String(membership._id || membership.id || '');
-        const current = negotiations.find((item) => {
-          const negotiationMembershipId =
-            typeof item.membershipId === 'object'
-              ? item.membershipId._id || item.membershipId.id || item.membershipId.membershipId
-              : item.membershipId;
-          return String(negotiationMembershipId) === membershipKey && item.status !== 'CANCELLED_BY_USER';
-        });
+        const negotiations = await membershipService.fetchMyCancellationNegotiations(
+          resolvedUserId,
+          targetMembershipId
+        );
+        const targetIds = [membership._id, membership.id, membership.membershipId].filter(Boolean).map(String);
+        const current = Array.isArray(negotiations)
+          ? negotiations.find((item) => {
+              if (!item || item.status === 'CANCELLED_BY_USER') return false;
+              const m = item.membershipId;
+              const itemIds = [
+                m && typeof m === 'object' ? (m._id ? String(m._id) : null) : (m ? String(m) : null),
+                m && typeof m === 'object' ? (m.membershipId ? String(m.membershipId) : null) : null,
+                m && typeof m === 'object' ? (m.id ? String(m.id) : null) : null,
+              ].filter(Boolean);
+              return targetIds.some((tid) => itemIds.includes(tid));
+            })
+          : null;
+
         if (active) setCancellationNegotiation(current || null);
       } catch (error) {
         console.warn('[CANCELLATION NEGOTIATION]', error.message);
       }
     };
-    if (membershipKey) loadCancellationNegotiation();
-    const refreshInterval = membershipKey ? setInterval(loadCancellationNegotiation, 5000) : null;
+
+    if (targetMembershipId) loadCancellationNegotiation();
+    const refreshInterval = targetMembershipId ? setInterval(loadCancellationNegotiation, 5000) : null;
     return () => {
       active = false;
       if (refreshInterval) clearInterval(refreshInterval);
     };
-  }, [membership._id, membership.id, membership.status]);
+  }, [membership._id, membership.id, membership.membershipId, membership.status, user?._id, user?.id]);
 
   // Plan Switch & Proration States
   const [showSwitchSheet, setShowSwitchSheet] = useState(false);
@@ -656,30 +671,34 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
   };
 
   const handleConfirmCancel = async () => {
+    setIsSubmittingCancel(true);
     try {
-      await cancelMembership(membership._id || membership.id, selectedReason);
-      const negotiations = await membershipService.fetchMyCancellationNegotiations();
-      setCancellationNegotiation(negotiations.find((item) =>
-        String(typeof item.membershipId === 'object' ? item.membershipId._id : item.membershipId) ===
-        String(membership._id || membership.id || '')
-      ) || null);
+      const negotiation = await cancelMembership(membership._id || membership.id, selectedReason);
+      if (negotiation) {
+        setCancellationNegotiation(negotiation);
+      }
       setShowCancelSheet(false);
       showToast({
-        message: 'Cancellation negotiation submitted successfully',
+        message: 'Cancellation negotiation submitted successfully to gym owner.',
         isSuccess: true,
       });
+      setShowNegotiationModal(true);
     } catch (error) {
       showToast({
         message: error.message || 'Failed to submit cancellation negotiation.',
         isSuccess: false,
       });
+    } finally {
+      setIsSubmittingCancel(false);
     }
   };
 
   const respondToCancellationQuote = async (action) => {
     if (!cancellationNegotiation) return;
+    setIsRespondingQuote(true);
     try {
-      const updated = await membershipService.respondToCancellationOffer(cancellationNegotiation._id, action);
+      const reqId = cancellationNegotiation.requestId || cancellationNegotiation._id;
+      const updated = await membershipService.respondToCancellationOffer(reqId, action);
       setCancellationNegotiation(updated);
       if (action === 'ACCEPT') {
         updateMembership({
@@ -688,6 +707,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
           cancellationNegotiation: updated,
           cancellationStatus: 'COMPLETED',
         });
+        setShowNegotiationModal(false);
       }
       showToast({
         message: action === 'ACCEPT' ? 'Refund offer accepted. Cancellation is complete.' : 'Quote declined. The gym owner can send a new refund quote.',
@@ -695,6 +715,8 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
       });
     } catch (error) {
       showToast({ message: error.message || 'Unable to respond to refund quote.', isSuccess: false });
+    } finally {
+      setIsRespondingQuote(false);
     }
   };
 
@@ -1197,15 +1219,19 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
         )}
 
         {cancellationNegotiation && (
-          <View style={[
-            styles.infoBanner,
-            {
-              marginTop: 12,
-              alignItems: 'flex-start',
-              backgroundColor: isDark ? '#2A2115' : '#FFF7ED',
-              borderColor: isDark ? '#9A5D23' : '#FDBA74',
-            },
-          ]}>
+          <TouchableOpacity
+            onPress={() => setShowNegotiationModal(true)}
+            activeOpacity={0.88}
+            style={[
+              styles.infoBanner,
+              {
+                marginTop: 12,
+                alignItems: 'flex-start',
+                backgroundColor: isDark ? '#2A2115' : '#FFF7ED',
+                borderColor: isDark ? '#9A5D23' : '#FDBA74',
+              },
+            ]}
+          >
             <View style={{
               width: 32,
               height: 32,
@@ -1218,33 +1244,40 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
               <Text style={{ fontSize: 18, lineHeight: 22, fontWeight: '800', color: '#EA580C' }}>₹</Text>
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#EA580C', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? 'Refund Offer Received' : 'Cancellation In Progress'}
+                </Text>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#EA580C' }}>View Details ›</Text>
+              </View>
               <Text style={[
                 styles.infoBannerText,
                 {
                   color: isDark ? '#FED7AA' : '#9A3412',
                   fontWeight: cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? '700' : '500',
+                  marginTop: 2,
                 },
               ]}>
                 {cancellationNegotiation.status === 'PENDING_GYM_APPROVAL'
                   ? 'Cancellation requested. The gym owner is preparing your refund quote.'
                   : cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL'
-                  ? `Refund quote: ₹${Number(cancellationNegotiation.currentOffer?.refundAmount || 0).toLocaleString('en-IN')}`
+                  ? `Gym offered refund: ₹${Number(cancellationNegotiation.currentOffer?.refundAmount || 0).toLocaleString('en-IN')}. Tap to review.`
                   : cancellationNegotiation.status === 'COMPLETED'
                   ? `Cancellation complete. Approved refund: ₹${Number(cancellationNegotiation.approvedRefundAmount || 0).toLocaleString('en-IN')}`
                   : `Cancellation status: ${cancellationNegotiation.status}`}
               </Text>
               {cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' && (
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-                  <TouchableOpacity onPress={() => respondToCancellationQuote('REJECT')} style={[styles.cancelModalBtn, { height: 44, backgroundColor: isDark ? '#334155' : '#E2E8F0', flex: 1 }]}>
-                    <Text style={[styles.cancelModalBtnText, { color: isDark ? '#FFFFFF' : '#475569' }]}>Re-request</Text>
+                  <TouchableOpacity onPress={() => respondToCancellationQuote('REJECT')} disabled={isRespondingQuote} style={[styles.cancelModalBtn, { height: 44, backgroundColor: isDark ? '#334155' : '#E2E8F0', flex: 1 }]}>
+                    <Text style={[styles.cancelModalBtnText, { color: isDark ? '#FFFFFF' : '#475569' }]}>Decline</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => respondToCancellationQuote('ACCEPT')} style={[styles.cancelModalBtn, { height: 44, backgroundColor: '#93C5FD', flex: 1 }]}>
-                    <Text style={[styles.cancelModalBtnText, { color: '#1E3A8A' }]}>Approve Refund</Text>
+                  <TouchableOpacity onPress={() => respondToCancellationQuote('ACCEPT')} disabled={isRespondingQuote} style={[styles.cancelModalBtn, { height: 44, backgroundColor: '#10B981', flex: 1 }]}>
+                    <Text style={[styles.cancelModalBtnText, { color: '#FFFFFF', fontWeight: '800' }]}>Approve Refund</Text>
                   </TouchableOpacity>
                 </View>
               )}
             </View>
-          </View>
+          </TouchableOpacity>
         )}
 
         {/* 5. Actions: Upgrade Membership & Cancel Membership */}
@@ -1293,28 +1326,63 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
               </TouchableOpacity>
             )}
 
-            {/* Request Cancel Membership */}
-            <TouchableOpacity
-              onPress={() => setShowCancelSheet(true)}
-              style={[
-                styles.actionOutlineBtn,
-                {
-                  borderColor: 'rgba(248, 113, 113, 0.6)',
-                  marginTop: 12,
-                },
-              ]}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons
-                name="cancel"
-                size={20}
-                color="#F87171"
-                style={{ marginRight: 8 }}
-              />
-              <Text style={[styles.actionOutlineText, { color: '#F87171' }]}>
-                Request to Cancel Membership
-              </Text>
-            </TouchableOpacity>
+            {/* Cancellation Action Button: View Active Negotiation OR Request Cancel */}
+            {cancellationNegotiation && (cancellationNegotiation.status === 'PENDING_GYM_APPROVAL' || cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL') ? (
+              <TouchableOpacity
+                onPress={() => setShowNegotiationModal(true)}
+                style={[
+                  styles.actionOutlineBtn,
+                  {
+                    borderColor: cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? '#F59E0B' : '#3B82F6',
+                    backgroundColor: cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? (isDark ? '#2D2012' : '#FEF3C7') : (isDark ? '#172554' : '#EFF6FF'),
+                    marginTop: 12,
+                  },
+                ]}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name="handshake"
+                  size={20}
+                  color={cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? '#D97706' : '#2563EB'}
+                  style={{ marginRight: 8 }}
+                />
+                <Text
+                  style={[
+                    styles.actionOutlineText,
+                    {
+                      color: cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? '#D97706' : '#2563EB',
+                      fontWeight: '700',
+                    },
+                  ]}
+                >
+                  {cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL'
+                    ? 'Review Refund Offer (Action Required)'
+                    : 'Cancellation Under Review'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowCancelSheet(true)}
+                style={[
+                  styles.actionOutlineBtn,
+                  {
+                    borderColor: 'rgba(248, 113, 113, 0.6)',
+                    marginTop: 12,
+                  },
+                ]}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name="cancel"
+                  size={20}
+                  color="#F87171"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={[styles.actionOutlineText, { color: '#F87171' }]}>
+                  Request to Cancel Membership
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </ScrollView>
@@ -1917,6 +1985,261 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================== */}
+      {/* CANCELLATION NEGOTIATION REVIEW MODAL      */}
+      {/* ========================================== */}
+      <Modal
+        visible={showNegotiationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNegotiationModal(false)}
+      >
+        <View style={styles.sheetBackdrop}>
+          <View
+            style={[
+              styles.sheetContainer,
+              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF', maxHeight: '90%' },
+            ]}
+          >
+            {/* Header */}
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={[styles.sheetTitle, { color: colors.text }]}>
+                  Cancellation Negotiation
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.subtitle, marginTop: 2 }}>
+                  Ref: {cancellationNegotiation?.requestId || 'CAN-REF'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowNegotiationModal(false)}>
+                <MaterialIcons name="close" size={24} color={colors.subtitle} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 12 }}>
+              {/* Status Banner */}
+              <View
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor:
+                    cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                      ? (isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7')
+                      : cancellationNegotiation?.status === 'COMPLETED'
+                      ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#D1FAE5')
+                      : (isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF'),
+                  borderWidth: 1,
+                  borderColor:
+                    cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                      ? '#F59E0B'
+                      : cancellationNegotiation?.status === 'COMPLETED'
+                      ? '#10B981'
+                      : '#3B82F6',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 16,
+                }}
+              >
+                <MaterialIcons
+                  name={
+                    cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                      ? 'notification-important'
+                      : cancellationNegotiation?.status === 'COMPLETED'
+                      ? 'check-circle'
+                      : 'hourglass-empty'
+                  }
+                  size={22}
+                  color={
+                    cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                      ? '#D97706'
+                      : cancellationNegotiation?.status === 'COMPLETED'
+                      ? '#10B981'
+                      : '#2563EB'
+                  }
+                  style={{ marginRight: 10 }}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: '700',
+                      color:
+                        cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                          ? '#D97706'
+                          : cancellationNegotiation?.status === 'COMPLETED'
+                          ? '#10B981'
+                          : '#2563EB',
+                    }}
+                  >
+                    {cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                      ? 'Refund Offer Ready for Your Review'
+                      : cancellationNegotiation?.status === 'COMPLETED'
+                      ? 'Cancellation Completed & Refund Initiated'
+                      : 'Awaiting Gym Owner Refund Quote'}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: isDark ? '#D1D5DB' : '#4B5563',
+                      marginTop: 2,
+                    }}
+                  >
+                    {cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                      ? 'The gym owner has reviewed your cancellation request and proposed the refund quote below.'
+                      : cancellationNegotiation?.status === 'COMPLETED'
+                      ? `Approved refund: ₹${Number(cancellationNegotiation?.approvedRefundAmount || 0).toLocaleString('en-IN')}`
+                      : 'Your cancellation request is with gym management. You will be notified once they calculate the refund quote.'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Financial Breakdown Card */}
+              <View
+                style={[
+                  styles.currentBookingCard,
+                  {
+                    backgroundColor: isDark ? '#262626' : '#F8FAFC',
+                    borderColor: colors.border,
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                    marginBottom: 16,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '700',
+                    color: colors.subtitle,
+                    textTransform: 'uppercase',
+                    marginBottom: 8,
+                  }}
+                >
+                  Negotiation Breakdown
+                </Text>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: colors.subtitle }}>Original Membership Fee</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+                    ₹{Number(cancellationNegotiation?.originalAmount || membership.amountPaid || 0).toLocaleString('en-IN')}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 }}>
+                  <Text style={{ fontSize: 13, color: colors.subtitle }}>Max Eligible Refund (Prorated)</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>
+                    ₹{Number(cancellationNegotiation?.maximumRefundAmount || 0).toLocaleString('en-IN')}
+                  </Text>
+                </View>
+
+                {cancellationNegotiation?.currentOffer && (
+                  <>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 }}>
+                      <Text style={{ fontSize: 13, color: colors.subtitle }}>Gym Deductions</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#EF4444' }}>
+                        -₹{Number(cancellationNegotiation.currentOffer.deductionAmount || 0).toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+
+                    <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 8 }} />
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
+                        Offered Refund to You
+                      </Text>
+                      <Text style={{ fontSize: 20, fontWeight: '800', color: '#10B981' }}>
+                        ₹{Number(cancellationNegotiation.currentOffer.refundAmount || 0).toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+
+                    {Boolean(cancellationNegotiation.currentOffer.message) && (
+                      <View
+                        style={{
+                          marginTop: 10,
+                          padding: 10,
+                          borderRadius: 8,
+                          backgroundColor: isDark ? '#1F2937' : '#F1F5F9',
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.subtitle }}>
+                          GYM OWNER NOTE:
+                        </Text>
+                        <Text style={{ fontSize: 12, color: colors.text, marginTop: 2 }}>
+                          {cancellationNegotiation.currentOffer.message}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
+
+              {/* Action Buttons */}
+              {cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL' && (
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+                  <TouchableOpacity
+                    onPress={() => respondToCancellationQuote('REJECT')}
+                    disabled={isRespondingQuote}
+                    style={[
+                      styles.cancelModalBtn,
+                      {
+                        flex: 1,
+                        height: 48,
+                        borderColor: colors.border,
+                        borderWidth: 1,
+                        backgroundColor: 'transparent',
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.cancelModalBtnText, { color: colors.text }]}>
+                      Decline & Re-request
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => respondToCancellationQuote('ACCEPT')}
+                    disabled={isRespondingQuote}
+                    style={[
+                      styles.cancelModalBtn,
+                      {
+                        flex: 1,
+                        height: 48,
+                        backgroundColor: '#10B981',
+                      },
+                    ]}
+                  >
+                    {isRespondingQuote ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={[styles.cancelModalBtnText, { color: '#FFFFFF', fontWeight: '800' }]}>
+                        Accept ₹{Number(cancellationNegotiation?.currentOffer?.refundAmount || 0).toLocaleString('en-IN')}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {cancellationNegotiation?.status !== 'PENDING_MEMBER_APPROVAL' && (
+                <TouchableOpacity
+                  onPress={() => setShowNegotiationModal(false)}
+                  style={[
+                    styles.cancelModalBtn,
+                    {
+                      height: 46,
+                      backgroundColor: isDark ? '#334155' : '#E2E8F0',
+                      marginBottom: 20,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.cancelModalBtnText, { color: isDark ? '#FFFFFF' : '#334155' }]}>
+                    Close
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
