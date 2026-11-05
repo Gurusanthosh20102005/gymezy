@@ -552,3 +552,4 @@ export const seed100ChennaiGyms = async () => {
 if (process.argv[1]?.endsWith('seed100ChennaiGyms.js')) {
   seed100ChennaiGyms();
 }
+
