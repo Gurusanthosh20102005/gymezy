@@ -325,3 +325,27 @@ In [`web-application/gym-owner/src/owner/components/EmployeeManagement.jsx`](../
    - `Pending Approval` badges highlight staff awaiting Gym Admin review.
 3. **Pending Approvals Drawer**:
    - Dedicated filter view for Gym Admin displaying manager submissions, diff comparison of requested edits, and 1-click **Approve** or **Reject** actions.
+4. **Role-Conditional Field Visibility**:
+   - **For Managers & Operational Roles (`Manager`, `Front Desk`, `Security`, etc.)**:
+     - Trainer-specific showcase fields (`About Me`, `Services Offered`, `Certifications`) and the `Trainer Certificate` table are **hidden**.
+     - Only managerial permissions (`requireStaffApproval`, `requirePlanSwitchApproval`, `requireCancellationApproval`, `requireProfileEditApproval`) and standard administrative employment/identity documents (`Aadhaar/ID Proof`, `Offer/Contract Letter`, `Resume`) are displayed.
+   - **For Trainers & Fitness Coaches (`Trainer`, `Coach`, `Yoga Instructor`, `Zumba Instructor`, `Fitness Trainer`)**:
+     - `Trainer Profile & Showcase` is displayed with bio, service offerings, and certification multi-select tags (preloaded with standard certifications such as ACE, ISSA, ACSM, NASM, CSCS, CPR/AED, Yoga Alliance, CrossFit).
+     - Dedicated `Trainer Certificate` document upload table is shown for fitness coaching credentials and licenses.
+
+---
+
+## 8. Manager Authentication & Role-Based Access Control (RBAC)
+
+To enable Managers to log into the Gym Owner Web Portal and Mobile App:
+
+1. **Password Setup on Onboarding & Edit**:
+   - In the **Add Employee Modal**, selecting `Role: Manager` reveals the **Manager Portal Login Password** section. Setting a password (min 6 characters) is required.
+   - In the **Edit Employee Modal**, an optional password reset card allows changing the Manager's portal credentials at any time.
+2. **User Account Synchronization**:
+   - Creating or updating a Manager in `Employee.create`/`updateEmployee` automatically creates or updates the corresponding `User` account in MongoDB with `role: USER_ROLES.MANAGER`, linking `gymId` and the Employee's `userId`.
+   - Passwords are securely hashed using bcrypt salts before storage.
+3. **Portal Login & RBAC Enforcement**:
+   - `/api/v1/auth/login` permits users with `role: USER_ROLES.MANAGER` to log in via the `gym-owner` portal identifier (email or phone + password).
+   - `authorizeRoles(USER_ROLES.GYM_OWNER)` automatically authorizes `USER_ROLES.MANAGER` for operational gym endpoints while isolating access from `SUPER_ADMIN` routes.
+   - Web and Mobile apps authenticate the manager, populate the gym context, set `isManager: true`, and land them on the gym dashboard. Feature-specific hiding based on delegation toggles is deferred to Phase 2.

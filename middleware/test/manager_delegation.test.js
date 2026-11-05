@@ -5,6 +5,8 @@ import { Employee } from '../src/models/employee.model.js';
 import { Gym } from '../src/models/gym.model.js';
 import { MembershipSwitchRequest } from '../src/models/membershipSwitchRequest.model.js';
 import { MembershipCancellation } from '../src/models/membershipCancellation.model.js';
+import { USER_ROLES } from '../src/models/user.model.js';
+import { authorizeRoles } from '../src/middlewares/role.middleware.js';
 
 test('Gym Manager vs. Gym Admin Delegation Architecture Tests', async (t) => {
   await t.test('1. Employee model schema initializes managerPermissions with 4 default booleans', () => {
@@ -98,6 +100,43 @@ test('Gym Manager vs. Gym Admin Delegation Architecture Tests', async (t) => {
     });
 
     assert.strictEqual(cancellation.status, 'PENDING_GYM_ADMIN_APPROVAL');
+  });
+
+  await t.test('6. Employee model links userId to User model for portal login', () => {
+    const linkedUserId = new mongoose.Types.ObjectId();
+    const manager = new Employee({
+      gymId: new mongoose.Types.ObjectId(),
+      gymPartnerId: 'GYM-TN-001',
+      employeeId: 'EMP-MGR-01',
+      name: 'Operations Manager',
+      role: 'Manager',
+      userId: linkedUserId,
+    });
+
+    assert.strictEqual(String(manager.userId), String(linkedUserId));
+    assert.strictEqual(USER_ROLES.MANAGER, 'MANAGER');
+  });
+
+  await t.test('7. authorizeRoles(GYM_OWNER) allows USER_ROLES.MANAGER and denies customer', () => {
+    const middleware = authorizeRoles(USER_ROLES.GYM_OWNER);
+    let managerAllowed = false;
+    let customerAllowed = false;
+    let customerError = null;
+
+    const mockManagerReq = { user: { role: USER_ROLES.MANAGER } };
+    middleware(mockManagerReq, {}, (err) => {
+      if (!err) managerAllowed = true;
+    });
+
+    const mockCustomerReq = { user: { role: USER_ROLES.CUSTOMER } };
+    middleware(mockCustomerReq, {}, (err) => {
+      if (!err) customerAllowed = true;
+      else customerError = err;
+    });
+
+    assert.strictEqual(managerAllowed, true, 'Manager must be authorized for GYM_OWNER routes');
+    assert.strictEqual(customerAllowed, false, 'Customer must not be authorized');
+    assert.ok(customerError, 'Customer receives forbidden error');
   });
 });
 
