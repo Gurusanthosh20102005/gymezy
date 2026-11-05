@@ -22,6 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../services/apiService';
 import { getSafeImageUri } from '../../utils/mediaUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useDebounce } from '../../hooks/useDebounce';
 import { AddTempStaffModal } from '../../widgets/AddTempStaffModal';
 import {
   AddEmployeeModal,
@@ -48,26 +49,63 @@ export const EmployeesTab = ({ topInset, navigation }) => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState(null);
   const [showTempStaffModal, setShowTempStaffModal] = useState(false);
 
+  // Pagination State (SSOT Server Pagination)
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [metrics, setMetrics] = useState(null);
 
-  // Fetch Employees
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Reset to page 1 on search or filter change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, activeTab]);
+
+  // Fetch Employees from Middleware (SSOT Server Search & Pagination)
   const fetchEmployees = useCallback(async () => {
     try {
       const targetGymId = gym?._id || gym?.partnerId;
-      const res = await apiService.getEmployees({
+      if (!targetGymId) return;
+
+      const params = {
         gymId: targetGymId,
-        limit: 'all',
-      });
+        page,
+        limit: 10,
+      };
+
+      if (debouncedSearch && debouncedSearch.trim()) {
+        params.search = debouncedSearch.trim();
+      }
+
+      if (activeTab === 'Trainers') {
+        params.role = 'Trainer';
+      } else if (activeTab === 'Pending Approval') {
+        params.approvalStatus = 'Pending Approval';
+      } else if (activeTab === 'Part-Time') {
+        params.type = 'Part-Time';
+      } else if (activeTab === 'Temporary') {
+        params.type = 'Temporary';
+      }
+
+      const res = await apiService.getEmployees(params);
       const list = res?.employees || (Array.isArray(res) ? res : []);
       setEmployees(list);
+      setTotalPages(res?.pagination?.totalPages || res?.totalPages || Math.ceil((res?.total || list.length) / 10) || 1);
+      setTotalCount(res?.pagination?.total ?? res?.total ?? list.length);
+      if (res?.summary) {
+        setMetrics(res.summary);
+      }
     } catch (err) {
       console.warn('Employees fetch warning:', err.message);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [gym?._id, gym?.partnerId]);
+  }, [gym?._id, gym?.partnerId, debouncedSearch, activeTab, page]);
 
   useEffect(() => {
     fetchEmployees();
@@ -78,51 +116,39 @@ export const EmployeesTab = ({ topInset, navigation }) => {
     fetchEmployees();
   };
 
-  // Metrics
+  // Metrics (Gym-Wide Summary with current fallback)
   const trainersCount = useMemo(() => {
+    if (metrics?.trainersCount !== undefined) return metrics.trainersCount;
     return employees.filter((e) => {
       const roleStr = (e.role || '').toLowerCase();
       return roleStr.includes('trainer') || roleStr.includes('coach');
     }).length;
-  }, [employees]);
+  }, [metrics, employees]);
 
   const staffCount = useMemo(() => {
+    if (metrics?.staffCount !== undefined) return metrics.staffCount;
     return employees.filter((e) => {
       const roleStr = (e.role || '').toLowerCase();
       return !roleStr.includes('trainer') && !roleStr.includes('coach');
     }).length;
-  }, [employees]);
+  }, [metrics, employees]);
 
   const pendingCount = useMemo(() => {
+    if (metrics?.pendingCount !== undefined) return metrics.pendingCount;
     return employees.filter((e) => e.approvalStatus === 'Pending Approval').length;
-  }, [employees]);
+  }, [metrics, employees]);
 
-  // Filtered List
+  // Filtered List (Server-filtered with Floor Staff client-side guard)
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
-      // Tab filter
-      const roleStr = (emp.role || '').toLowerCase();
-      const isTrainer = roleStr.includes('trainer') || roleStr.includes('coach');
-
-      if (activeTab === 'Trainers' && !isTrainer) return false;
-      if (activeTab === 'Floor Staff' && isTrainer) return false;
-      if (activeTab === 'Part-Time' && emp.type !== 'Part-Time') return false;
-      if (activeTab === 'Temporary' && emp.type !== 'Temporary') return false;
-      if (activeTab === 'Pending Approval' && emp.approvalStatus !== 'Pending Approval') return false;
-
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const nameMatch = (emp.name || '').toLowerCase().includes(q);
-        const roleMatch = (emp.role || '').toLowerCase().includes(q);
-        const idMatch = (emp.employeeId || '').toLowerCase().includes(q);
-        const phoneMatch = (emp.phone || '').toLowerCase().includes(q);
-        if (!nameMatch && !roleMatch && !idMatch && !phoneMatch) return false;
+      if (activeTab === 'Floor Staff') {
+        const roleStr = (emp.role || '').toLowerCase();
+        const isTrainer = roleStr.includes('trainer') || roleStr.includes('coach');
+        if (isTrainer) return false;
       }
-
       return true;
     });
-  }, [employees, activeTab, searchQuery]);
+  }, [employees, activeTab]);
 
 
 
@@ -230,7 +256,10 @@ export const EmployeesTab = ({ topInset, navigation }) => {
 
           <TouchableOpacity
             style={styles.addEmployeeBtn}
-            onPress={() => setShowAddModal(true)}
+            onPress={() => {
+              setEditingEmployee(null);
+              setShowAddModal(true);
+            }}
             activeOpacity={0.85}
           >
             <MaterialIcons name="person-add" size={16} color="#FFFFFF" />
@@ -456,7 +485,10 @@ export const EmployeesTab = ({ topInset, navigation }) => {
             {!searchQuery && (
               <TouchableOpacity
                 style={styles.emptyAddBtn}
-                onPress={() => setShowAddModal(true)}
+                onPress={() => {
+                  setEditingEmployee(null);
+                  setShowAddModal(true);
+                }}
               >
                 <MaterialIcons name="add" size={18} color="#FFFFFF" />
                 <Text style={styles.emptyAddBtnText}>Add First Employee</Text>
@@ -569,12 +601,32 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                       )}
                     </View>
 
-                    <Text
-                      style={[styles.empRole, { color: isDark ? 'rgba(255,255,255,0.7)' : '#64748B' }]}
-                      numberOfLines={1}
-                    >
-                      {emp.role}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                      <Text
+                        style={[styles.empRole, { color: isDark ? 'rgba(255,255,255,0.7)' : '#64748B' }]}
+                        numberOfLines={1}
+                      >
+                        {emp.role === 'Manager' ? 'Manager (Operational Admin)' : emp.role}
+                      </Text>
+                      {emp.role === 'Manager' && (
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: isDark ? 'rgba(79, 70, 229, 0.2)' : '#EEF2FF',
+                            paddingHorizontal: 6,
+                            paddingVertical: 1.5,
+                            borderRadius: 6,
+                            borderWidth: 1,
+                            borderColor: isDark ? '#4338CA' : '#C7D2FE',
+                            gap: 3,
+                          }}
+                        >
+                          <MaterialIcons name="workspace-premium" size={11} color="#4F46E5" />
+                          <Text style={{ fontSize: 9.5, fontWeight: '800', color: '#4F46E5' }}>ADMIN</Text>
+                        </View>
+                      )}
+                    </View>
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
                       <View
@@ -715,6 +767,70 @@ export const EmployeesTab = ({ topInset, navigation }) => {
           })
         )}
 
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <View
+            style={[
+              styles.paginationRow,
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}
+              disabled={page <= 1 || isLoading}
+              onPress={() => setPage((prev) => Math.max(1, prev - 1))}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons
+                name="chevron-left"
+                size={20}
+                color={page <= 1 ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor}
+              />
+              <Text
+                style={[
+                  styles.pageBtnText,
+                  { color: page <= 1 ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor },
+                ]}
+              >
+                Prev
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.pageInfoBox}>
+              <Text style={[styles.pageInfoText, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
+                Page <Text style={{ fontWeight: '700' }}>{page}</Text> of <Text style={{ fontWeight: '700' }}>{totalPages}</Text>
+              </Text>
+              <Text style={[styles.pageTotalSubtext, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                {totalCount} total staff
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}
+              disabled={page >= totalPages || isLoading}
+              onPress={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.pageBtnText,
+                  { color: page >= totalPages ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor },
+                ]}
+              >
+                Next
+              </Text>
+              <MaterialIcons
+                name="chevron-right"
+                size={20}
+                color={page >= totalPages ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -770,7 +886,7 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                       {selectedEmployee.name}
                     </Text>
                     <Text style={[styles.modalEmpRole, { color: AppColors.primaryColor }]}>
-                      {selectedEmployee.role}
+                      {selectedEmployee.role === 'Manager' ? 'Manager (Operational Admin)' : selectedEmployee.role}
                     </Text>
                     <Text style={[styles.modalEmpAccess, { color: isDark ? '#94A3B8' : '#64748B' }]}>
                       {selectedEmployee.type || 'Full Time'} • Access: {selectedEmployee.accessType || 'Employee'}
@@ -1076,23 +1192,46 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                 </View>
 
                 {/* Action Buttons in Modal */}
-                <View style={{ flexDirection: 'row', gap: 12, marginTop: 20, marginBottom: 24 }}>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 20, marginBottom: 24 }}>
                   <TouchableOpacity
                     style={[styles.modalActionBtn, { backgroundColor: AppColors.primaryColor, flex: 1 }]}
+                    onPress={() => {
+                      const empToEdit = selectedEmployee;
+                      setShowDetailModal(false);
+                      setEditingEmployee(empToEdit);
+                      setShowAddModal(true);
+                    }}
+                  >
+                    <MaterialIcons name="edit" size={17} color="#FFFFFF" />
+                    <Text style={styles.modalActionBtnText}>Edit</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.modalActionBtn,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
+                        borderWidth: 1,
+                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        flex: 1,
+                      },
+                    ]}
                     onPress={() => {
                       setShowDetailModal(false);
                       navigation?.navigate('Attendance');
                     }}
                   >
-                    <MaterialIcons name="how-to-reg" size={18} color="#FFFFFF" />
-                    <Text style={styles.modalActionBtnText}>Attendance</Text>
+                    <MaterialIcons name="how-to-reg" size={17} color={isDark ? '#FFFFFF' : '#0F172A'} />
+                    <Text style={[styles.modalActionBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                      Attendance
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={[styles.modalActionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.12)', flex: 1 }]}
                     onPress={() => handleDeactivate(selectedEmployee)}
                   >
-                    <MaterialIcons name="delete" size={18} color={AppColors.dangerRed} />
+                    <MaterialIcons name="delete" size={17} color={AppColors.dangerRed} />
                     <Text style={[styles.modalActionBtnText, { color: AppColors.dangerRed }]}>
                       Deactivate
                     </Text>
@@ -1104,11 +1243,18 @@ export const EmployeesTab = ({ topInset, navigation }) => {
         </View>
       </Modal>
 
-      {/* 8. Add Permanent Employee Modal */}
+      {/* 8. Add / Edit Permanent Employee Modal */}
       <AddEmployeeModal
         visible={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSuccess={() => fetchEmployees()}
+        initialEmployee={editingEmployee}
+        onClose={() => {
+          setShowAddModal(false);
+          setEditingEmployee(null);
+        }}
+        onSuccess={() => {
+          fetchEmployees();
+          setEditingEmployee(null);
+        }}
       />
 
       {/* 9. Add Temporary / Part-Time Staff Modal */}
@@ -1796,5 +1942,43 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  pageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 56, 130, 0.08)',
+  },
+  pageBtnDisabled: {
+    backgroundColor: 'transparent',
+    opacity: 0.5,
+  },
+  pageBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  pageInfoBox: {
+    alignItems: 'center',
+  },
+  pageInfoText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  pageTotalSubtext: {
+    fontSize: 11,
+    marginTop: 2,
   },
 });

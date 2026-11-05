@@ -88,8 +88,12 @@ const paymentSchema = new mongoose.Schema(
 
 const cancellationSchema = new mongoose.Schema(
   {
-    cancelledAt: { type: Date },
-    reason: { type: String, trim: true },
+    cancelledAt: { type: Date, default: Date.now },
+    reason: { type: String, trim: true, default: 'Cancelled by gym owner' },
+    refundAmount: { type: Number, default: 0, min: 0 },
+    notes: { type: String, trim: true, default: '' },
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    cancelledByName: { type: String, trim: true, default: '' },
   },
   { _id: false }
 );

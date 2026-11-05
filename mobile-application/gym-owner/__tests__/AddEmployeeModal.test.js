@@ -10,6 +10,7 @@ import {
   TRAINER_CERT_TYPES,
   AVAILABLE_SERVICES,
   getServiceIconName,
+  isManagerRole,
 } from '../src/widgets/AddEmployeeModal';
 
 // Mock dependencies
@@ -31,6 +32,7 @@ jest.mock('../src/context/AuthContext', () => ({
 jest.mock('../src/services/apiService', () => ({
   apiService: {
     createEmployee: jest.fn().mockResolvedValue({ message: 'Success' }),
+    updateEmployee: jest.fn().mockResolvedValue({ message: 'Updated' }),
   },
 }));
 
@@ -40,10 +42,20 @@ jest.mock('../src/utils/filePickerUtils', () => ({
 }));
 
 describe('AddEmployeeModal Constants & Utilities', () => {
-  test('ROLE_OPTIONS is defined and contains Trainer and Staff roles', () => {
+  test('ROLE_OPTIONS is defined and contains Manager (Operational Admin) and Staff roles', () => {
     expect(Array.isArray(ROLE_OPTIONS)).toBe(true);
+    expect(ROLE_OPTIONS).toContain('Manager (Operational Admin)');
     expect(ROLE_OPTIONS).toContain('Trainer');
     expect(ROLE_OPTIONS).toContain('Front Desk Manager');
+  });
+
+  test('isManagerRole correctly identifies manager roles', () => {
+    expect(isManagerRole('Manager')).toBe(true);
+    expect(isManagerRole('Manager (Operational Admin)')).toBe(true);
+    expect(isManagerRole('manager')).toBe(true);
+    expect(isManagerRole('Trainer')).toBe(false);
+    expect(isManagerRole('Front Desk Manager')).toBe(false);
+    expect(isManagerRole('Customer Support')).toBe(false);
   });
 
   test('ACCESS_LEVELS contains Admin, Employee, and None', () => {
@@ -123,5 +135,71 @@ describe('AddEmployeeModal Constants & Utilities', () => {
       component.unmount();
     });
   });
-});
 
+  test('AddEmployeeModal renders Manager delegation permissions and password cards when Manager is selected', () => {
+    const renderer = require('react-test-renderer');
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        <AddEmployeeModal
+          visible={true}
+          defaultRole="Manager (Operational Admin)"
+          onClose={jest.fn()}
+          onSuccess={jest.fn()}
+        />
+      );
+    });
+    const root = component.root;
+    // Check that Manager Delegation Permissions text is rendered
+    const textNodes = root.findAllByType('Text');
+    const texts = textNodes.map((n) => (typeof n.props.children === 'string' ? n.props.children : '')).filter(Boolean);
+    const hasDelegation = texts.some((t) => t.includes('Manager Delegation Permissions'));
+    expect(hasDelegation).toBe(true);
+
+    const hasPasswordCard = texts.some((t) => t.includes('Manager Portal Login Password'));
+    expect(hasPasswordCard).toBe(true);
+
+    renderer.act(() => {
+      component.unmount();
+    });
+  });
+
+  test('AddEmployeeModal populates initialEmployee data for editing a Manager', () => {
+    const renderer = require('react-test-renderer');
+    const existingManager = {
+      _id: 'emp-mgr-001',
+      name: 'Sarah Connor',
+      role: 'Manager',
+      phone: '+91 9876543210',
+      email: 'sarah@gym.com',
+      accessType: 'Admin',
+      managerPermissions: {
+        requireStaffApproval: false,
+        requirePlanSwitchApproval: true,
+        requireCancellationApproval: true,
+        requireProfileEditApproval: false,
+      },
+    };
+
+    let component;
+    renderer.act(() => {
+      component = renderer.create(
+        <AddEmployeeModal
+          visible={true}
+          initialEmployee={existingManager}
+          onClose={jest.fn()}
+          onSuccess={jest.fn()}
+        />
+      );
+    });
+
+    const root = component.root;
+    const textNodes = root.findAllByType('Text');
+    const texts = textNodes.map((n) => (typeof n.props.children === 'string' ? n.props.children : '')).filter(Boolean);
+    expect(texts.some((t) => t.includes('Edit Employee Details'))).toBe(true);
+
+    renderer.act(() => {
+      component.unmount();
+    });
+  });
+});

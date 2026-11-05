@@ -6,6 +6,7 @@ import Membership from '../models/membership.model.js';
 import Counter from '../models/counter.model.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { getSearchTerm, escapeRegex } from '../utils/searchHelper.js';
 import { ApiError } from '../utils/apiError.js';
 import { transformListWithIndex } from '../utils/responseTransformer.js';
 
@@ -170,9 +171,10 @@ export const getAdminCustomers = asyncHandler(async (req, res) => {
     filter.isActive = isAct;
   }
 
-  // Search filter
-  if (search && search.trim()) {
-    const regex = new RegExp(search.trim(), 'i');
+  // Search filter (SSOT)
+  const searchTerm = getSearchTerm(req.query);
+  if (searchTerm) {
+    const regex = new RegExp(escapeRegex(searchTerm), 'i');
     filter.$or = [
       { fullName: regex },
       { email: regex },

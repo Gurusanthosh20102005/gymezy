@@ -69,10 +69,15 @@ const mapMembership = (m) => {
     plan: m.membershipTier || 'Standard',
     startDate: startStr,
     expiryDate: endStr,
-    daysLeft: `${daysRemaining} days left`,
+    daysLeft: m.status === 'Cancelled' ? 'Cancelled' : `${daysRemaining} days left`,
     status: m.status || 'Active',
     paymentType: m.payment?.method || 'Online',
     amount: `₹${Number(m.pricing?.totalAmount || 0).toLocaleString('en-IN')}`,
+    rawAmount: Number(m.pricing?.totalAmount || 0),
+    isWalkIn: m.source === 'WALK_IN' || Boolean(m.walkInDetails),
+    source: m.source || (m.walkInDetails ? 'WALK_IN' : 'APP'),
+    walkInDetails: m.walkInDetails || null,
+    cancellation: m.cancellation || null,
     trainerName: m.trainerId?.name || (m.hasTrainer ? 'Assigned' : 'None'),
     emergencyContact: m.userId?.emergencyContact || m.emergencyContact || 'Not Specified',
     gender: m.userId?.gender || 'Not Specified',
@@ -143,6 +148,14 @@ export const MembersTab = ({ topInset, navigation }) => {
   const [showQuoteRefundModal, setShowQuoteRefundModal] = useState(false);
   const [selectedCancelRequestForQuote, setSelectedCancelRequestForQuote] = useState(null);
   const [cancelQuoteMessage, setCancelQuoteMessage] = useState('Refund quote from gym owner');
+
+  // Walk-in Direct Cancellation Modal State (No member approval needed)
+  const [showWalkInCancelModal, setShowWalkInCancelModal] = useState(false);
+  const [walkInCancelMember, setWalkInCancelMember] = useState(null);
+  const [walkInRefundAmount, setWalkInRefundAmount] = useState('0');
+  const [walkInCancelReason, setWalkInCancelReason] = useState('Customer requested cancellation at counter');
+  const [walkInCancelNotes, setWalkInCancelNotes] = useState('');
+  const [isCancellingWalkIn, setIsCancellingWalkIn] = useState(false);
 
   // Pending Counts for Top Navigation Badges
   const pendingSwitchesCount = useMemo(
@@ -420,20 +433,35 @@ export const MembersTab = ({ topInset, navigation }) => {
     });
   };
 
-  // Legacy gym-side cancellation entry (member requests now originate from the user app)
+  // Membership Cancellation Handler (SSOT: Walk-in direct cancel vs User app negotiation)
   const handleRequestCancellation = (member) => {
     if (!member) return;
 
+    if (member.isWalkIn) {
+      // Walk-in member: Open Direct Cancellation & Refund Quote Modal
+      setWalkInCancelMember(member);
+      setWalkInRefundAmount(String(member.rawAmount || 0));
+      setWalkInCancelReason('Customer requested cancellation at counter');
+      setWalkInCancelNotes('');
+      // CRITICAL FOR ANDROID: Close the Member Details Modal first before opening the cancellation modal
+      // because Android cannot render stacked native Modals simultaneously.
+      setSelectedMember(null);
+      setTimeout(() => {
+        setShowWalkInCancelModal(true);
+      }, 120);
+      return;
+    }
+
+    // Online User App Member: Negotiation request workflow
     Alert.alert(
       'Request Membership Cancellation',
-      `Cancellation requests must originate from the member's Membership Details screen for ${member.name}.`,
+      `Cancellation request will be dispatched to online member ${member.name}. User approval of the refund quote is required in their app.`,
       [
         { text: 'Keep Membership', style: 'cancel' },
         {
           text: 'Send Cancel Request',
           style: 'destructive',
           onPress: async () => {
-            // Call backend API if possible
             try {
               if (member.id) {
                 await apiService.requestCancellation(
@@ -445,7 +473,6 @@ export const MembersTab = ({ topInset, navigation }) => {
               console.warn('Cancellation api error:', err);
             }
 
-            // Update member status
             setMembers((prev) =>
               prev.map((m) =>
                 m.id === member.id
@@ -462,43 +489,66 @@ export const MembersTab = ({ topInset, navigation }) => {
               }));
             }
 
-            // Create Cancellation Request item
-            const newReq = {
-              key: `can-${Date.now()}`,
-              requestId: `CAN-2025-${String(cancellations.length + 1).padStart(3, '0')}`,
-              memberId: member.memberId || member.id,
-              memberName: member.name,
-              phone: member.phone,
-              avatar: member.avatar,
-              avatarInitials: member.avatarInitials,
-              plan: member.plan,
-              amount: member.amount,
-              refundableAmount: '₹1,500',
-              maximumRefundAmount: 1500,
-              requestDate:
-                new Date().toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: 'short',
-                  year: 'numeric',
-                }) +
-                ', ' +
-                new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              reason: 'Member requested cancellation directly via Gym Console',
-              notes: 'Awaiting refund quote from Gym Owner.',
-              status: 'Pending Gym Approval',
-              adminStatus: 'Pending Gym Approval',
-            };
-
-            setCancellations((prev) => [newReq, ...prev]);
-            showToast({
-              message: 'Cancel request has send to admin',
-              isSuccess: true,
-            });
+            Alert.alert(
+              'Cancellation Request Dispatched',
+              `Cancellation negotiation request sent to ${member.name}. The user can review and approve the refund quote in their app.`,
+              [{ text: 'OK' }]
+            );
             fetchSupportData();
           },
         },
       ]
     );
+  };
+
+  // Direct cancellation of walk-in member with refund quote
+  const handleConfirmWalkInCancel = async () => {
+    if (!walkInCancelMember) return;
+    setIsCancellingWalkIn(true);
+    const memberName = walkInCancelMember.name;
+    const memberCode = walkInCancelMember.memberId || walkInCancelMember.id;
+    const refundNum = Math.max(0, Number(walkInRefundAmount) || 0);
+    const reasonText = walkInCancelReason;
+    try {
+      await apiService.cancelMembership(walkInCancelMember.id, {
+        refundAmount: refundNum,
+        reason: reasonText,
+        notes: walkInCancelNotes,
+      });
+
+      // Update local state immediately
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === walkInCancelMember.id
+            ? { ...m, status: 'Cancelled', daysLeft: 'Cancelled' }
+            : m
+        )
+      );
+
+      setShowWalkInCancelModal(false);
+      setWalkInCancelMember(null);
+
+      // Switch filter to 'Cancelled' so the cancelled member is immediately displayed in the Cancelled tab
+      setMemberFilter('Cancelled');
+      fetchSupportData();
+
+      // Explicit Pop-up confirmation alert
+      setTimeout(() => {
+        Alert.alert(
+          'Membership Cancelled',
+          `Walk-in membership ${memberCode} (${memberName}) has been cancelled successfully.\n\nRefund Quote: ₹${refundNum.toLocaleString('en-IN')}\nReason: ${reasonText}`,
+          [{ text: 'OK' }]
+        );
+      }, 200);
+    } catch (err) {
+      Alert.alert(
+        'Cancellation Failed',
+        err.message || 'Failed to cancel walk-in membership. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsCancellingWalkIn(false);
+    }
   };
 
   // Send a refund quote to the member (Opens Quote Refund Sheet)
@@ -1481,11 +1531,11 @@ export const MembersTab = ({ topInset, navigation }) => {
             ) : (
               filteredMembers.map((member) => {
                 const isExpiring = member.status === 'Expiring Soon';
-                const isInactive = member.status === 'Inactive';
+                const isInactive = member.status === 'Inactive' || member.status === 'Expired';
                 const isCancelPending = member.status === 'Cancellation Requested';
+                const isCancelled = member.status === 'Cancelled';
 
-
-                const badgeColor = isCancelPending
+                const badgeColor = isCancelled || isCancelPending
                   ? AppColors.dangerRed
                   : isInactive
                   ? '#64748B'
@@ -2437,19 +2487,85 @@ export const MembersTab = ({ topInset, navigation }) => {
                       >
                         {selectedMember.name}
                       </Text>
-                      <Text style={[styles.sheetPlanText, { color: AppColors.primaryColor }]}>
-                        {selectedMember.plan}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+                        <Text style={[styles.sheetPlanText, { color: AppColors.primaryColor }]}>
+                          {selectedMember.plan}
+                        </Text>
+                        <View style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor: selectedMember.status === 'Cancelled'
+                              ? 'rgba(239, 68, 68, 0.15)'
+                              : selectedMember.status === 'Cancellation Requested'
+                              ? 'rgba(239, 68, 68, 0.15)'
+                              : selectedMember.status === 'Expiring Soon'
+                              ? 'rgba(245, 158, 11, 0.15)'
+                              : 'rgba(34, 197, 94, 0.15)',
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 6,
+                          }
+                        ]}>
+                          <Text style={[
+                            styles.statusBadgeText,
+                            {
+                              color: selectedMember.status === 'Cancelled'
+                                ? AppColors.dangerRed
+                                : selectedMember.status === 'Cancellation Requested'
+                                ? AppColors.dangerRed
+                                : selectedMember.status === 'Expiring Soon'
+                                ? AppColors.warningAmber
+                                : AppColors.secondaryColor,
+                              fontSize: 11,
+                              fontWeight: '700',
+                            }
+                          ]}>
+                            {selectedMember.status}
+                          </Text>
+                        </View>
+                      </View>
                       <Text
                         style={[
                           styles.sheetIdText,
-                          { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' },
+                          { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8', marginTop: 2 },
                         ]}
                       >
                         ID: {selectedMember.memberId || selectedMember.id} • Joined {selectedMember.joinDate || '21 Jul 2025'}
                       </Text>
                     </View>
                   </View>
+
+                  {/* Cancellation Alert Banner */}
+                  {selectedMember.status === 'Cancelled' && (
+                    <View
+                      style={{
+                        backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2',
+                        borderColor: AppColors.dangerRed,
+                        borderWidth: 1,
+                        borderRadius: 10,
+                        padding: 12,
+                        marginBottom: 14,
+                        gap: 4,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <MaterialIcons name="cancel" size={18} color={AppColors.dangerRed} />
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: AppColors.dangerRed }}>
+                          Membership is Cancelled
+                        </Text>
+                      </View>
+                      {selectedMember.cancellation?.refundAmount !== undefined && (
+                        <Text style={{ fontSize: 12, color: isDark ? '#FCA5A5' : '#B91C1C', fontWeight: '600' }}>
+                          Refund Quote: ₹{Number(selectedMember.cancellation.refundAmount || 0).toLocaleString('en-IN')}
+                        </Text>
+                      )}
+                      {selectedMember.cancellation?.reason ? (
+                        <Text style={{ fontSize: 11.5, color: isDark ? '#94A3B8' : '#64748B' }}>
+                          Reason: {selectedMember.cancellation.reason}
+                        </Text>
+                      ) : null}
+                    </View>
+                  )}
 
                   {/* 1-Tap Quick Action Buttons */}
                   <View style={styles.sheetQuickContactRow}>
@@ -2831,26 +2947,313 @@ export const MembersTab = ({ topInset, navigation }) => {
                       <Text style={styles.sheetMainBtnText}>Extend / Renew Plan</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.sheetSecondaryBtn,
-                        {
-                          borderColor: AppColors.dangerRed,
-                          backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                        },
-                      ]}
-                      onPress={() => handleRequestCancellation(selectedMember)}
-                    >
-                      <MaterialIcons name="cancel" size={18} color={AppColors.dangerRed} />
-                      <Text style={[styles.sheetSecondaryBtnText, { color: AppColors.dangerRed }]}>
-                        Cancel Membership
-                      </Text>
-                    </TouchableOpacity>
+                    {selectedMember.status !== 'Cancelled' ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.sheetSecondaryBtn,
+                          {
+                            borderColor: AppColors.dangerRed,
+                            backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                          },
+                        ]}
+                        onPress={() => handleRequestCancellation(selectedMember)}
+                      >
+                        <MaterialIcons name="cancel" size={18} color={AppColors.dangerRed} />
+                        <Text style={[styles.sheetSecondaryBtnText, { color: AppColors.dangerRed }]}>
+                          Cancel Membership
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View
+                        style={[
+                          styles.sheetSecondaryBtn,
+                          {
+                            borderColor: isDark ? '#334155' : '#E2E8F0',
+                            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2',
+                          },
+                        ]}
+                      >
+                        <MaterialIcons name="block" size={18} color={AppColors.dangerRed} />
+                        <Text style={[styles.sheetSecondaryBtnText, { color: AppColors.dangerRed }]}>
+                          Membership is Cancelled
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </ScrollView>
               </>
             )}
           </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 6.5 WALK-IN DIRECT CANCELLATION MODAL                                    */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showWalkInCancelModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isCancellingWalkIn) setShowWalkInCancelModal(false);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center' }}
+          >
+            <View
+              style={[
+                styles.modalContent,
+                {
+                  backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                  maxHeight: '90%',
+                  paddingBottom: Math.max(insets.bottom, 20) + 12,
+                },
+              ]}
+            >
+              <View style={styles.modalHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <MaterialIcons name="cancel" size={22} color={AppColors.dangerRed} />
+                  <Text style={[styles.modalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                    Cancel Walk-in Member
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  disabled={isCancellingWalkIn}
+                  onPress={() => setShowWalkInCancelModal(false)}
+                >
+                  <MaterialIcons name="close" size={24} color={isDark ? '#FFFFFF' : '#0F172A'} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {walkInCancelMember && (
+                  <>
+                    {/* Walk-in notice banner */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : '#F5F3FF',
+                        borderColor: '#8B5CF6',
+                        borderWidth: 1,
+                        padding: 10,
+                        borderRadius: 10,
+                        marginBottom: 14,
+                      }}
+                    >
+                      <MaterialIcons name="info-outline" size={18} color="#7C3AED" />
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: isDark ? '#DDD6FE' : '#6D28D9',
+                          flex: 1,
+                          lineHeight: 16,
+                          fontWeight: '600',
+                        }}
+                      >
+                        Front-desk walk-in cancellation: Direct gym owner execution. No user app approval required.
+                      </Text>
+                    </View>
+
+                    {/* Member Summary Card */}
+                    <View
+                      style={{
+                        backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+                        borderRadius: 12,
+                        padding: 12,
+                        borderWidth: 1,
+                        borderColor: isDark ? '#334155' : '#E2E8F0',
+                        marginBottom: 16,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0F172A' }}>
+                          {walkInCancelMember.name}
+                        </Text>
+                        <View
+                          style={{
+                            backgroundColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#EDE9FE',
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 6,
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#7C3AED' }}>
+                            {walkInCancelMember.memberId}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', marginTop: 4 }}>
+                        Plan: {walkInCancelMember.plan} • Paid: {walkInCancelMember.amount}
+                      </Text>
+                    </View>
+
+                    {/* Refund Quote Input */}
+                    <Text
+                      style={[
+                        styles.fieldLabel,
+                        { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155' },
+                      ]}
+                    >
+                      Refund Quote Amount (₹)
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.textInput,
+                        {
+                          backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+                          borderColor: isDark ? '#334155' : '#CBD5E1',
+                          color: isDark ? '#FFFFFF' : '#0F172A',
+                          fontSize: 16,
+                          fontWeight: '700',
+                          marginBottom: 14,
+                        },
+                      ]}
+                      value={walkInRefundAmount}
+                      onChangeText={setWalkInRefundAmount}
+                      keyboardType="numeric"
+                      placeholder="Enter refund quote amount"
+                      placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                    />
+
+                    {/* Quick Reason Chips */}
+                    <Text
+                      style={[
+                        styles.fieldLabel,
+                        { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155' },
+                      ]}
+                    >
+                      Reason for Cancellation
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                      {[
+                        'Counter Request',
+                        'Relocation',
+                        'Medical / Injury',
+                        'Customer Dissatisfied',
+                        'Other',
+                      ].map((chip) => {
+                        const isSelected = walkInCancelReason.includes(chip);
+                        return (
+                          <TouchableOpacity
+                            key={chip}
+                            style={{
+                              paddingHorizontal: 10,
+                              paddingVertical: 5,
+                              borderRadius: 14,
+                              borderWidth: 1,
+                              backgroundColor: isSelected
+                                ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2')
+                                : (isDark ? '#1E293B' : '#F1F5F9'),
+                              borderColor: isSelected ? AppColors.dangerRed : isDark ? '#334155' : '#E2E8F0',
+                            }}
+                            onPress={() => setWalkInCancelReason(chip === 'Other' ? '' : `${chip} - Cancelled at front desk`)}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11.5,
+                                fontWeight: '600',
+                                color: isSelected ? AppColors.dangerRed : isDark ? '#CBD5E1' : '#475569',
+                              }}
+                            >
+                              {chip}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <TextInput
+                      style={[
+                        styles.textInput,
+                        {
+                          backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+                          borderColor: isDark ? '#334155' : '#CBD5E1',
+                          color: isDark ? '#FFFFFF' : '#0F172A',
+                          marginBottom: 14,
+                        },
+                      ]}
+                      value={walkInCancelReason}
+                      onChangeText={setWalkInCancelReason}
+                      placeholder="Specify cancellation reason"
+                      placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                    />
+
+                    {/* Optional Notes */}
+                    <Text
+                      style={[
+                        styles.fieldLabel,
+                        { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155' },
+                      ]}
+                    >
+                      Internal Notes (Optional)
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.textInput,
+                        {
+                          backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
+                          borderColor: isDark ? '#334155' : '#CBD5E1',
+                          color: isDark ? '#FFFFFF' : '#0F172A',
+                          marginBottom: 20,
+                        },
+                      ]}
+                      value={walkInCancelNotes}
+                      onChangeText={setWalkInCancelNotes}
+                      placeholder="Any additional remarks..."
+                      placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
+                    />
+
+                    {/* Action Buttons */}
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          paddingVertical: 12,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: isDark ? '#334155' : '#CBD5E1',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                        disabled={isCancellingWalkIn}
+                        onPress={() => setShowWalkInCancelModal(false)}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#CBD5E1' : '#475569' }}>
+                          Keep Membership
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={{
+                          flex: 1.5,
+                          backgroundColor: AppColors.dangerRed,
+                          paddingVertical: 12,
+                          borderRadius: 10,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                        disabled={isCancellingWalkIn}
+                        onPress={handleConfirmWalkInCancel}
+                      >
+                        {isCancellingWalkIn ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>
+                            Cancel & Refund ₹{walkInRefundAmount || '0'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 

@@ -523,7 +523,131 @@ export const OverviewTab = ({
         <MaterialIcons name="chevron-right" size={22} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
       </TouchableOpacity>
 
-            {/* 5. Performance & Analytics Insights (Merged from Analytics Tab) */}
+            {/* 5. Live Member Check-Ins Activity Feed */}
+
+      <View style={styles.sectionHeaderRow}>
+        <Text
+          style={[
+            styles.sectionTitle,
+            { color: isDark ? '#FFFFFF' : '#0F172A' },
+          ]}
+        >
+          Live Member Check-Ins
+        </Text>
+        <TouchableOpacity onPress={onNavigateToMembers}>
+          <Text style={styles.viewAllText}>View All Members</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View
+        style={[
+          styles.checkinCard,
+          {
+            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+          },
+        ]}
+      >
+        {liveCheckins.length > 0 ? (
+          liveCheckins.map((item, index) => (
+            <View
+              key={item.id || index}
+              style={[
+                styles.checkinRow,
+                index < liveCheckins.length - 1 && [
+                  styles.checkinBorder,
+                  { borderColor: isDark ? AppColors.darkBorder : '#F1F5F9' },
+                ],
+              ]}
+            >
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>
+                  {item.avatar ||
+                    (item.name
+                      ? item.name
+                          .split(' ')
+                          .map((p) => p[0])
+                          .join('')
+                          .substring(0, 2)
+                          .toUpperCase()
+                      : 'MB')}
+                </Text>
+              </View>
+
+              <View style={styles.checkinInfo}>
+                <Text
+                  style={[
+                    styles.checkinName,
+                    { color: isDark ? '#FFFFFF' : '#0F172A' },
+                  ]}
+                >
+                  {item.name || 'Member'}
+                </Text>
+                <Text
+                  style={[
+                    styles.checkinMeta,
+                    { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' },
+                  ]}
+                >
+                  {item.plan || 'Standard Pass'} • {item.type || 'Workout'}
+                </Text>
+              </View>
+
+              <View style={styles.checkinStatusBox}>
+                <Text
+                  style={[
+                    styles.checkinStatusBadge,
+                    {
+                      color:
+                        item.status === 'Active'
+                          ? AppColors.secondaryColor
+                          : AppColors.warningAmber,
+                      backgroundColor:
+                        item.status === 'Active'
+                          ? 'rgba(0, 191, 98, 0.12)'
+                          : 'rgba(245, 158, 11, 0.12)',
+                    },
+                  ]}
+                >
+                  {item.status || 'Active'}
+                </Text>
+                <Text
+                  style={[
+                    styles.checkinTime,
+                    { color: isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8' },
+                  ]}
+                >
+                  {item.time || 'Just now'}
+                </Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyCheckinsBox}>
+            <MaterialIcons
+              name="qr-code-scanner"
+              size={32}
+              color={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
+            />
+            <Text style={[styles.emptyCheckinsTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+              No Check-ins Recorded Today
+            </Text>
+            <Text style={[styles.emptyCheckinsSub, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
+              Members checking in via QR scan or check-in verification will appear here in real-time.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyScanBtn}
+              onPress={() => navigation?.navigate('CheckIn', { initialMode: 'QR' })}
+              activeOpacity={0.88}
+            >
+              <MaterialIcons name="qr-code" size={18} color="#FFFFFF" />
+              <Text style={styles.emptyScanBtnText}>Scan Member Entry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* 6. Performance & Analytics Insights (Merged from Analytics Tab) */}
       <View style={[styles.sectionHeaderRow, { marginTop: 14 }]}>
         <View>
           <Text style={[styles.sectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
@@ -937,131 +1061,7 @@ export const OverviewTab = ({
         </View>
       </View>
 
-      {/* 6. Live Member Check-Ins Activity Feed */}
-
-      <View style={styles.sectionHeaderRow}>
-        <Text
-          style={[
-            styles.sectionTitle,
-            { color: isDark ? '#FFFFFF' : '#0F172A' },
-          ]}
-        >
-          Live Member Check-Ins
-        </Text>
-        <TouchableOpacity onPress={onNavigateToMembers}>
-          <Text style={styles.viewAllText}>View All Members</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View
-        style={[
-          styles.checkinCard,
-          {
-            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-          },
-        ]}
-      >
-        {liveCheckins.length > 0 ? (
-          liveCheckins.map((item, index) => (
-            <View
-              key={item.id || index}
-              style={[
-                styles.checkinRow,
-                index < liveCheckins.length - 1 && [
-                  styles.checkinBorder,
-                  { borderColor: isDark ? AppColors.darkBorder : '#F1F5F9' },
-                ],
-              ]}
-            >
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>
-                  {item.avatar ||
-                    (item.name
-                      ? item.name
-                          .split(' ')
-                          .map((p) => p[0])
-                          .join('')
-                          .substring(0, 2)
-                          .toUpperCase()
-                      : 'MB')}
-                </Text>
-              </View>
-
-              <View style={styles.checkinInfo}>
-                <Text
-                  style={[
-                    styles.checkinName,
-                    { color: isDark ? '#FFFFFF' : '#0F172A' },
-                  ]}
-                >
-                  {item.name || 'Member'}
-                </Text>
-                <Text
-                  style={[
-                    styles.checkinMeta,
-                    { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' },
-                  ]}
-                >
-                  {item.plan || 'Standard Pass'} • {item.type || 'Workout'}
-                </Text>
-              </View>
-
-              <View style={styles.checkinStatusBox}>
-                <Text
-                  style={[
-                    styles.checkinStatusBadge,
-                    {
-                      color:
-                        item.status === 'Active'
-                          ? AppColors.secondaryColor
-                          : AppColors.warningAmber,
-                      backgroundColor:
-                        item.status === 'Active'
-                          ? 'rgba(0, 191, 98, 0.12)'
-                          : 'rgba(245, 158, 11, 0.12)',
-                    },
-                  ]}
-                >
-                  {item.status || 'Active'}
-                </Text>
-                <Text
-                  style={[
-                    styles.checkinTime,
-                    { color: isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8' },
-                  ]}
-                >
-                  {item.time || 'Just now'}
-                </Text>
-              </View>
-            </View>
-          ))
-        ) : (
-          <View style={styles.emptyCheckinsBox}>
-            <MaterialIcons
-              name="qr-code-scanner"
-              size={32}
-              color={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
-            />
-            <Text style={[styles.emptyCheckinsTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-              No Check-ins Recorded Today
-            </Text>
-            <Text style={[styles.emptyCheckinsSub, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
-              Members checking in via QR scan or check-in verification will appear here in real-time.
-            </Text>
-            <TouchableOpacity
-              style={styles.emptyScanBtn}
-              onPress={() => navigation?.navigate('CheckIn', { initialMode: 'QR' })}
-              activeOpacity={0.88}
-            >
-              <MaterialIcons name="qr-code" size={18} color="#FFFFFF" />
-              <Text style={styles.emptyScanBtnText}>Scan Member Entry</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      {/* Front Desk Walk-in Booking Modal */}
+            {/* Front Desk Walk-in Booking Modal */}
       <AddWalkInBookingModal
         visible={showWalkInModal}
         onClose={() => setShowWalkInModal(false)}
