@@ -30,3 +30,4 @@ test('Membership Cancellation Negotiation Logic', async (t) => {
     assert.equal(quote.maximumRefundAmount, 1500);
   });
 });
+
