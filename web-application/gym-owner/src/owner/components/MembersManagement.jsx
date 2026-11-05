@@ -195,6 +195,13 @@ export const MembersManagement = ({
   const [isDateRangeModalOpen, setIsDateRangeModalOpen] = useState(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
+
+  // Walk-in Direct Cancellation States (No member approval needed)
+  const [walkInCancelModalOpen, setWalkInCancelModalOpen] = useState(false);
+  const [memberToCancelWalkIn, setMemberToCancelWalkIn] = useState(null);
+  const [walkInCancelRefund, setWalkInCancelRefund] = useState(0);
+  const [walkInCancelReason, setWalkInCancelReason] = useState('Customer requested cancellation at counter');
+  const [isSubmittingWalkInCancel, setIsSubmittingWalkInCancel] = useState(false);
   const [addedMemberData, setAddedMemberData] = useState(null);
   const [tempDateRange, setTempDateRange] = useState(null);
 
@@ -448,9 +455,11 @@ export const MembersManagement = ({
             expiryDate: endStr,
             daysLeft: `${daysRemaining} days left`,
             status: m.status,
-            source: m.source || 'APP',
+            source: m.source || (m.walkInDetails ? 'WALK_IN' : 'APP'),
+            isWalkIn: m.source === 'WALK_IN' || Boolean(m.walkInDetails),
             paymentType: m.payment?.method || 'Online',
             amount: `₹${m.pricing?.totalAmount || 0}`,
+            rawAmount: Number(m.pricing?.totalAmount || 0),
             trainerName: m.trainerId?.name || (m.hasTrainer ? 'Assigned' : 'None'),
           };
         });
@@ -698,6 +707,18 @@ export const MembersManagement = ({
 
   const handleCancelRequest = (member) => {
     if (!member) return;
+
+    const isWalkIn = member.source === 'WALK_IN' || member.isWalkIn;
+    if (isWalkIn) {
+      setIsViewModalOpen(false);
+      setMemberToCancelWalkIn(member);
+      const paid = member.rawAmount || Number(String(member.amount || '').replace(/[^0-9.]/g, '')) || 0;
+      setWalkInCancelRefund(paid);
+      setWalkInCancelReason('Customer requested cancellation at counter');
+      setWalkInCancelModalOpen(true);
+      return;
+    }
+
     Modal.confirm({
       title: 'Request Membership Cancellation',
       icon: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
@@ -707,7 +728,7 @@ export const MembersManagement = ({
             Are you sure you want to request cancellation for <strong>{member.name}</strong> (Member ID: <code>{member.memberId}</code>)?
           </p>
           <p style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', margin: 0 }}>
-            A formal cancellation request will be dispatched to the platform admin for verification and approval.
+            A formal cancellation request will be dispatched to the member's user app for verification and approval.
           </p>
         </div>
       ),
@@ -715,7 +736,15 @@ export const MembersManagement = ({
       okType: 'danger',
       cancelText: 'Keep Membership',
       centered: true,
-      onOk: () => {
+      onOk: async () => {
+        try {
+          await apiClient.post(`/memberships/${member.key || member.id}/cancellation-negotiation`, {
+            reason: 'Member requested cancellation directly via Gym Console',
+          });
+        } catch (e) {
+          console.warn('Backend cancellation negotiation request error:', e);
+        }
+
         setMembersList((prev) =>
           prev.map((m) =>
             m.key === member.key
@@ -731,29 +760,49 @@ export const MembersManagement = ({
           }));
         }
 
-        // Add a gym-owner cancellation request
-        const newReq = {
-          key: `can-${Date.now()}`,
-          requestId: `CAN-2025-00${cancellationRequests.length + 1}`,
-          memberId: member.memberId,
-          memberName: member.name,
-          phone: member.phone,
-          avatar: member.avatar,
-          plan: member.plan,
-          amount: member.amount,
-          refundableAmount: '₹1,500',
-          requestDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ', ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          reason: 'Member requested cancellation directly via Gym Console',
-          notes: 'Awaiting Gym Owner refund quote.',
-          status: 'Pending Gym Approval',
-          adminStatus: 'Pending Gym Approval',
-        };
-
-        setCancellationRequests((prev) => [newReq, ...prev]);
         setIsViewModalOpen(false);
-        message.success('Cancel request has send to admin');
+        message.success('Cancel request sent to member app for approval.');
+        void fetchCancellationNegotiations();
       },
     });
+  };
+
+  const handleConfirmWalkInCancel = async () => {
+    if (!memberToCancelWalkIn) return;
+    setIsSubmittingWalkInCancel(true);
+    try {
+      await apiClient.patch(`/memberships/${memberToCancelWalkIn.key || memberToCancelWalkIn.id}/cancel`, {
+        refundAmount: Number(walkInCancelRefund) || 0,
+        reason: walkInCancelReason,
+      });
+
+      const cancelledName = memberToCancelWalkIn.name;
+      const cancelledId = memberToCancelWalkIn.memberId || '';
+      const finalRefund = Number(walkInCancelRefund || 0);
+
+      setWalkInCancelModalOpen(false);
+      setMemberToCancelWalkIn(null);
+      setIsViewModalOpen(false);
+      void fetchGymMemberships(currentPage, pageSize, searchQuery, statusFilter, planFilter, sourceFilter);
+
+      Modal.success({
+        title: 'Walk-in Membership Cancelled',
+        content: (
+          <div>
+            <p style={{ margin: '6px 0 4px 0', fontSize: 13.5 }}>
+              Membership <strong>{cancelledId}</strong> ({cancelledName}) has been cancelled successfully.
+            </p>
+            <p style={{ margin: 0, fontSize: 13, color: '#16a34a', fontWeight: '600' }}>
+              Refund Quote: ₹{finalRefund.toLocaleString('en-IN')}
+            </p>
+          </div>
+        ),
+      });
+    } catch (err) {
+      message.error(err.message || 'Failed to cancel walk-in membership.');
+    } finally {
+      setIsSubmittingWalkInCancel(false);
+    }
   };
 
   const handleAcceptAndSendToAdmin = (req) => {

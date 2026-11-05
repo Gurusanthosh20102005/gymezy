@@ -15,6 +15,7 @@ import {
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../theme/ThemeContext';
+import { useDebounce } from '../../hooks/useDebounce';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppColors } from '../../theme/appTheme';
 import { useAuth } from '../../context/AuthContext';
@@ -52,25 +53,44 @@ export const SectionsTab = ({ topInset, navigation }) => {
   const [showRosterModal, setShowRosterModal] = useState(false);
   const [selectedSectionRoster, setSelectedSectionRoster] = useState(null);
 
+  // Pagination State (SSOT Server Pagination)
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
   // Fetch sections
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Reset to page 1 on category or search change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, activeCategory]);
+
   const fetchSectionsList = useCallback(async () => {
     try {
-      const data = await apiService.getSections({
+      const params = {
         gymId: targetGymId,
-        category: activeCategory !== 'all' ? activeCategory : undefined,
-      });
-      if (Array.isArray(data)) {
-        setSections(data);
-      } else {
-        setSections([]);
+        page,
+        limit: 10,
+      };
+      if (activeCategory !== 'all') {
+        params.category = activeCategory;
       }
+      if (debouncedSearch && debouncedSearch.trim()) {
+        params.search = debouncedSearch.trim();
+      }
+      const data = await apiService.getSections(params);
+      const rawList = data?.sections || (Array.isArray(data) ? data : []);
+      setSections(rawList);
+      setTotalPages(data?.pagination?.totalPages || data?.totalPages || Math.ceil((data?.total || rawList.length) / 10) || 1);
+      setTotalCount(data?.pagination?.total ?? data?.total ?? rawList.length);
     } catch (err) {
       console.warn('Failed to fetch sections:', err.message);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [targetGymId, activeCategory]);
+  }, [targetGymId, activeCategory, debouncedSearch, page]);
 
   useEffect(() => {
     fetchSectionsList();
@@ -562,6 +582,72 @@ export const SectionsTab = ({ topInset, navigation }) => {
             );
           })
         )}
+
+        {/* Sections Pagination Toolbar */}
+        {totalPages > 1 && (
+          <View
+            style={[
+              styles.paginationRow,
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}
+              disabled={page <= 1 || isLoading}
+              onPress={() => setPage((prev) => Math.max(1, prev - 1))}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons
+                name="chevron-left"
+                size={20}
+                color={page <= 1 ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor}
+              />
+              <Text
+                style={[
+                  styles.pageBtnText,
+                  { color: page <= 1 ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor },
+                ]}
+              >
+                Prev
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.pageInfoBox}>
+              <Text style={[styles.pageInfoText, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
+                Page <Text style={{ fontWeight: '700' }}>{page}</Text> of <Text style={{ fontWeight: '700' }}>{totalPages}</Text>
+              </Text>
+              <Text style={[styles.pageTotalSubtext, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                {totalCount} total batches
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}
+              disabled={page >= totalPages || isLoading}
+              onPress={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.pageBtnText,
+                  { color: page >= totalPages ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor },
+                ]}
+              >
+                Next
+              </Text>
+              <MaterialIcons
+                name="chevron-right"
+                size={20}
+                color={page >= totalPages ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* Create / Edit Section Modal */}

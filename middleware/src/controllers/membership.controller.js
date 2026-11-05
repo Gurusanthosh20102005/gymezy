@@ -15,6 +15,7 @@ import {
 } from '../services/cancellationNegotiation.service.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { getSearchTerm, escapeRegex } from '../utils/searchHelper.js';
 import { findOrCreateWalkInCustomer } from '../utils/walkInHelper.js';
 import { sanitizeDocument } from '../utils/responseTransformer.js';
 
@@ -534,7 +535,16 @@ export const getGymMemberships = async (req, res, next) => {
     // Build filter
     const filter = { gymId: gym._id };
     if (status && status !== 'All' && status !== 'ALL') {
-      filter.status = status;
+      if (status === 'Expiring Soon') {
+        const now = new Date();
+        const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        filter.$or = [
+          { status: 'Expiring Soon' },
+          { status: 'Active', endDate: { $gte: now, $lte: in30Days } },
+        ];
+      } else {
+        filter.status = status;
+      }
     }
     if (tier && tier !== 'All' && tier !== 'ALL') {
       filter.membershipTier = tier;
@@ -551,19 +561,23 @@ export const getGymMemberships = async (req, res, next) => {
         filter.createdAt.$lte = end;
       }
     }
-    if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+    const searchTerm = getSearchTerm(req.query);
+    if (searchTerm) {
+      const escaped = escapeRegex(searchTerm);
+      const searchRegex = new RegExp(escaped, 'i');
       const matchingUsers = await User.find({
         $or: [
           { fullName: searchRegex },
           { phone: searchRegex },
           { email: searchRegex },
+          { customerId: searchRegex },
         ],
       }).select('_id');
       const userIds = matchingUsers.map((u) => u._id);
 
       filter.$or = [
         { membershipId: searchRegex },
+        { 'walkInDetails.bookedByName': searchRegex },
         { userId: { $in: userIds } },
       ];
     }
@@ -582,7 +596,7 @@ export const getGymMemberships = async (req, res, next) => {
     const now = new Date();
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    const [totalMembers, activeMembers, expiringThisMonth, expiredMembers] = await Promise.all([
+    const [totalMembers, activeMembers, expiringThisMonth, expiredMembers, cancelledMembers] = await Promise.all([
       Membership.countDocuments({ gymId: gym._id }),
       Membership.countDocuments({ gymId: gym._id, status: 'Active' }),
       Membership.countDocuments({
@@ -596,6 +610,7 @@ export const getGymMemberships = async (req, res, next) => {
         ],
       }),
       Membership.countDocuments({ gymId: gym._id, status: 'Expired' }),
+      Membership.countDocuments({ gymId: gym._id, status: 'Cancelled' }),
     ]);
 
     return res.status(200).json(ApiResponse.success({
@@ -606,6 +621,7 @@ export const getGymMemberships = async (req, res, next) => {
         active: activeMembers,
         expiringSoon: expiringThisMonth,
         expired: expiredMembers,
+        cancelled: cancelledMembers,
       },
       page: Number(page),
       limit: Number(limit),
@@ -887,7 +903,12 @@ export const getAdminAllGymMemberships = async (req, res, next) => {
 export const cancelMembership = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { reason = 'Cancelled by member' } = req.body;
+    const {
+      reason = 'Cancelled by gym owner',
+      refundAmount,
+      deductionAmount,
+      notes = '',
+    } = req.body || {};
 
     const isObjectId = mongoose.Types.ObjectId.isValid(id);
     const query = isObjectId ? { $or: [{ _id: id }, { membershipId: id }] } : { membershipId: id };
@@ -901,8 +922,45 @@ export const cancelMembership = async (req, res, next) => {
       throw ApiError.badRequest('Membership is already cancelled.');
     }
 
+    // SSOT: Direct cancellation for WALK_IN members - no negotiation request or member approval needed
+    const isWalkIn = membership.source === 'WALK_IN' || Boolean(membership.walkInDetails);
+
+    if (isWalkIn) {
+      const totalPaid = Number(membership.pricing?.totalAmount || 0);
+      let calculatedRefund = 0;
+      if (refundAmount !== undefined && refundAmount !== null && refundAmount !== '') {
+        calculatedRefund = Math.max(0, Number(refundAmount) || 0);
+      } else if (deductionAmount !== undefined && deductionAmount !== null && deductionAmount !== '') {
+        calculatedRefund = Math.max(0, totalPaid - (Number(deductionAmount) || 0));
+      }
+
+      membership.status = 'Cancelled';
+      membership.cancellation = {
+        cancelledAt: new Date(),
+        reason: String(reason || 'Cancelled by gym owner').trim(),
+        refundAmount: calculatedRefund,
+        notes: String(notes || '').trim(),
+        cancelledBy: req.user?._id || req.user?.userId || null,
+        cancelledByName: req.user?.fullName || req.user?.name || 'Gym Admin',
+      };
+      await membership.save();
+
+      const populated = await Membership.findById(membership._id)
+        .populate('userId', 'fullName name email phone avatar customerId')
+        .populate('trainerId', 'name specialty avatar')
+        .lean();
+
+      return res.status(200).json(
+        ApiResponse.success(
+          sanitizeDocument(populated),
+          'Walk-in membership cancelled successfully and refund quote recorded.'
+        )
+      );
+    }
+
+    // App members go through standard cancellation negotiation
     return requestCancellationNegotiation(
-      { ...req, params: { id }, body: { reason } },
+      { ...req, params: { id }, body: { reason, refundAmount, deductionAmount, notes } },
       res,
       next
     );
@@ -923,6 +981,40 @@ export const requestCancellationNegotiation = async (req, res, next) => {
     if (!membership) throw ApiError.notFound('Membership not found.');
     if (membership.status === 'Cancelled') {
       throw ApiError.badRequest('Membership is already cancelled.');
+    }
+
+    // SSOT: If this is a walk-in member, cancel directly without creating a negotiation waiting for user approval
+    const isWalkIn = membership.source === 'WALK_IN' || Boolean(membership.walkInDetails);
+    if (isWalkIn) {
+      const totalPaid = Number(membership.pricing?.totalAmount || 0);
+      const refundAmount = req.body?.refundAmount !== undefined
+        ? Math.max(0, Number(req.body.refundAmount) || 0)
+        : (req.body?.deductionAmount !== undefined
+            ? Math.max(0, totalPaid - (Number(req.body.deductionAmount) || 0))
+            : totalPaid);
+
+      membership.status = 'Cancelled';
+      membership.cancellation = {
+        cancelledAt: new Date(),
+        reason,
+        refundAmount,
+        notes: String(req.body?.notes || '').trim(),
+        cancelledBy: req.user?._id || req.user?.userId || null,
+        cancelledByName: req.user?.fullName || req.user?.name || 'Gym Admin',
+      };
+      await membership.save();
+
+      const populated = await Membership.findById(membership._id)
+        .populate('userId', 'fullName name email phone avatar customerId')
+        .populate('trainerId', 'name specialty avatar')
+        .lean();
+
+      return res.status(200).json(
+        ApiResponse.success(
+          sanitizeDocument(populated),
+          'Walk-in membership cancelled directly without negotiation.'
+        )
+      );
     }
 
     const activeNegotiation = await MembershipCancellation.findOne({
@@ -983,10 +1075,19 @@ export const getGymCancellationNegotiations = async (req, res, next) => {
     if (req.query.status) filter.status = req.query.status;
     const negotiations = await MembershipCancellation.find(filter)
       .populate('userId', 'fullName email phone avatar profilePicture')
-      .populate('membershipId', 'membershipId membershipTier startDate endDate pricing')
+      .populate('membershipId', 'membershipId membershipTier startDate endDate pricing source walkInDetails')
       .sort({ createdAt: -1 })
       .lean();
-    return res.status(200).json(ApiResponse.success({ negotiations, total: negotiations.length }, 'Gym cancellation negotiations retrieved successfully.'));
+
+    // Filter out walk-in members so cancellation negotiations only display user app members
+    const appOnlyNegotiations = negotiations.filter((item) => {
+      const mem = item.membershipId;
+      if (!mem) return false;
+      const isWalkIn = mem.source === 'WALK_IN' || Boolean(mem.walkInDetails);
+      return !isWalkIn;
+    });
+
+    return res.status(200).json(ApiResponse.success({ negotiations: appOnlyNegotiations, total: appOnlyNegotiations.length }, 'Gym cancellation negotiations retrieved successfully.'));
   } catch (error) {
     next(error);
   }

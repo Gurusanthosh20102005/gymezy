@@ -8,6 +8,7 @@ import Gym from '../models/gym.model.js';
 import { autoCheckoutStaleRecords } from '../services/attendanceCron.service.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { getSearchTerm, escapeRegex } from '../utils/searchHelper.js';
 
 /**
  * Resolve Gym by ID or partnerId
@@ -642,7 +643,8 @@ export const getTodayAttendance = async (req, res, next) => {
  */
 export const searchGymMembersForCheckIn = async (req, res, next) => {
   try {
-    const { gymId, query = '' } = req.query;
+    const { gymId } = req.query;
+    const searchTerm = getSearchTerm(req.query) || (req.query.query ? String(req.query.query).trim() : '');
     if (!gymId) {
       throw ApiError.badRequest('Gym ID is required.');
     }
@@ -666,7 +668,7 @@ export const searchGymMembersForCheckIn = async (req, res, next) => {
         .lean(),
     ]);
 
-    const q = query.trim().toLowerCase();
+    const q = searchTerm.toLowerCase();
     const filteredMemberships = memberships
       .filter((m) => {
         if (!q) return true;

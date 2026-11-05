@@ -5,6 +5,7 @@ import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import User, { USER_ROLES } from '../models/user.model.js';
+import { getSearchTerm, buildRegexSearchQuery } from '../utils/searchHelper.js';
 
 /**
  * Synchronize approved trainers from Employee collection to the parent Gym's embedded trainers array
@@ -529,11 +530,19 @@ export const getEmployees = asyncHandler(async (req, res) => {
   if (status && status !== 'ALL') andConditions.push({ status });
   if (type && type !== 'ALL') andConditions.push({ type });
 
-  if (search) {
-    const regex = new RegExp(search.trim(), 'i');
-    andConditions.push({
-      $or: [{ name: regex }, { phone: regex }, { email: regex }, { employeeId: regex }],
-    });
+  const searchTerm = getSearchTerm(req.query);
+  if (searchTerm) {
+    const searchQuery = buildRegexSearchQuery(searchTerm, [
+      'name',
+      'phone',
+      'email',
+      'employeeId',
+      'role',
+      'specialty',
+    ]);
+    if (searchQuery) {
+      andConditions.push(searchQuery);
+    }
   }
 
   const finalFilter = andConditions.length > 0 ? { $and: andConditions } : {};
@@ -556,10 +565,24 @@ export const getEmployees = asyncHandler(async (req, res) => {
 
   const employees = await query;
 
+  const gymCondition = andConditions.length > 0 ? andConditions[0] : {};
+  const [totalGymStaff, trainersCount, pendingCount] = await Promise.all([
+    Employee.countDocuments(gymCondition),
+    Employee.countDocuments({ ...gymCondition, role: /trainer|coach/i }),
+    Employee.countDocuments({ ...gymCondition, approvalStatus: 'Pending Approval' }),
+  ]);
+  const staffCount = Math.max(0, totalGymStaff - trainersCount);
+
   return res.status(200).json(
     ApiResponse.success(
       {
         employees,
+        summary: {
+          trainersCount,
+          staffCount,
+          pendingCount,
+          totalEmployees: totalGymStaff,
+        },
         pagination: {
           total: totalEmployees,
           page: parsedPage,

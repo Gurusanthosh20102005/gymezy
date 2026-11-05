@@ -4,6 +4,7 @@ import { Employee } from '../models/employee.model.js';
 import { Gym } from '../models/gym.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { getSearchTerm, escapeRegex, parsePagination } from '../utils/searchHelper.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 /**
@@ -169,18 +170,55 @@ export const getSections = asyncHandler(async (req, res) => {
     query.isActive = isActive === 'true' || isActive === true;
   }
 
-  if (search && typeof search === 'string' && search.trim()) {
-    query.title = { $regex: search.trim(), $options: 'i' };
+  const searchTerm = getSearchTerm(req.query);
+  if (searchTerm) {
+    const escaped = escapeRegex(searchTerm);
+    const regex = new RegExp(escaped, 'i');
+
+    const matchingTrainers = await Employee.find({
+      $or: [{ name: regex }, { phone: regex }, { employeeId: regex }],
+    }).select('_id').lean();
+    const trainerIds = matchingTrainers.map((t) => t._id);
+
+    query.$or = [
+      { title: regex },
+      { category: regex },
+      { batchCode: regex },
+      { trainerId: { $in: trainerIds } },
+    ];
   }
 
-  const sections = await Section.find(query)
+  const { page, limit, skip, isFetchAll } = parsePagination(req.query, 10);
+  const totalSections = await Section.countDocuments(query);
+  const totalPages = limit > 0 ? Math.ceil(totalSections / limit) : 1;
+
+  let queryBuilder = Section.find(query)
     .populate('trainerId', 'name employeeId phone avatar specialization specialty experienceYears experience description aboutMe servicesOffered certifications languages rating reviewsCount')
-    .sort({ createdAt: -1 })
-    .lean();
+    .sort({ createdAt: -1 });
+
+  if (!isFetchAll && limit > 0) {
+    queryBuilder = queryBuilder.skip(skip).limit(limit);
+  }
+
+  const sections = await queryBuilder.lean();
 
   return res
     .status(200)
-    .json(ApiResponse.success(sections, 'Sections retrieved successfully.'));
+    .json(
+      ApiResponse.success(
+        sections,
+        'Sections retrieved successfully.',
+        200,
+        {
+          total: totalSections,
+          page,
+          limit,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        }
+      )
+    );
 });
 
 /**

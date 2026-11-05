@@ -2,8 +2,8 @@ import { NativeModules } from 'react-native';
 import { getCloudApiUrl } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
-const CURRENT_MAC_IP = '10.117.236.244';
-const LOCAL_WIFI_IP = '192.168.0.102';
+const CURRENT_MAC_IP = '192.168.0.107';
+const LOCAL_WIFI_IP = '192.168.0.107';
 
 const getMetroHost = () => {
   try {
@@ -116,6 +116,10 @@ class ApiService {
       const targetUrl = `${currentBase}${endpoint}`;
       try {
         const response = await fetchWithTimeout(targetUrl, options, i === 0 && this.verifiedBase ? timeoutMs : 2000);
+        const contentType = response.headers?.get?.('content-type') || '';
+        if (contentType.includes('text/html')) {
+          throw new Error(`Candidate ${currentBase} returned HTML instead of JSON.`);
+        }
         if (response.status === 401 && !endpoint.includes('/auth/login')) {
           if (typeof this.unauthorizedHandler === 'function') {
             this.unauthorizedHandler();
@@ -564,6 +568,20 @@ class ApiService {
     return result.data;
   }
 
+  async cancelMembership(membershipId, payload = {}) {
+    if (!membershipId) throw new Error('Membership ID is required.');
+    const response = await this.executeFetch(`/memberships/${membershipId}/cancel`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to cancel membership.');
+    }
+    return result.data;
+  }
+
   async requestCancellation(membershipId, reason = 'Cancelled by gym owner') {
     if (!membershipId) throw new Error('Membership ID is required.');
     const response = await this.executeFetch(`/memberships/${membershipId}/cancellation-negotiation`, {
@@ -608,6 +626,11 @@ class ApiService {
     const result = await response.json();
     if (!response.ok || !result.success) {
       throw new Error(result.message || 'Failed to fetch sections.');
+    }
+    if (result.meta && Array.isArray(result.data)) {
+      result.data.pagination = result.meta;
+      result.data.total = result.meta.total;
+      result.data.totalPages = result.meta.totalPages;
     }
     return result.data;
   }
@@ -683,10 +706,11 @@ class ApiService {
   async getGymBookings(gymId, params = {}) {
     if (!gymId) throw new Error('Gym ID is required.');
     const queryParts = [];
-    if (params.source) queryParts.push(`source=${encodeURIComponent(params.source)}`);
-    if (params.status) queryParts.push(`status=${encodeURIComponent(params.status)}`);
-    if (params.page) queryParts.push(`page=${encodeURIComponent(params.page)}`);
-    if (params.limit) queryParts.push(`limit=${encodeURIComponent(params.limit)}`);
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(val)}`);
+      }
+    });
     const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
 
     const response = await this.executeFetch(`/bookings/gym/${gymId}${queryString}`, {
@@ -696,6 +720,11 @@ class ApiService {
     const result = await response.json();
     if (!response.ok || !result.success) {
       throw new Error(result.message || 'Failed to fetch gym bookings.');
+    }
+    if (result.meta && Array.isArray(result.data)) {
+      result.data.pagination = result.meta;
+      result.data.total = result.meta.total;
+      result.data.totalPages = result.meta.totalPages;
     }
     return result.data;
   }

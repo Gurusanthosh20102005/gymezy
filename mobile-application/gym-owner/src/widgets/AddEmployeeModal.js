@@ -21,7 +21,7 @@ import { apiService } from '../services/apiService';
 import { pickImageFromDevice, capturePhotoFromCamera } from '../utils/filePickerUtils';
 
 export const ROLE_OPTIONS = [
-  'Manager',
+  'Manager (Operational Admin)',
   'Trainer',
   'Front Desk Manager',
   'Customer Support',
@@ -30,6 +30,12 @@ export const ROLE_OPTIONS = [
   'Maintenance',
   'Security',
 ];
+
+export const isManagerRole = (r) => {
+  const norm = String(r || '').toLowerCase().trim();
+  if (norm.includes('front desk') || norm.includes('reception')) return false;
+  return norm.includes('manager');
+};
 
 export const ACCESS_LEVELS = [
   { value: 'Admin', label: 'Admin', desc: 'Full branch access & operations' },
@@ -105,9 +111,12 @@ export const AddEmployeeModal = ({
   onClose,
   onSuccess,
   defaultRole = ROLE_OPTIONS[0],
-  title = 'Add New Employee',
-  subtitle = 'Add trainer, coach, or operational gym employee',
+  initialEmployee = null,
+  title,
+  subtitle,
 }) => {
+  const modalTitle = title || (initialEmployee ? 'Edit Employee Details' : 'Add New Employee');
+  const modalSubtitle = subtitle || (initialEmployee ? 'Update employee role, delegation permissions, and info' : 'Add trainer, coach, or operational gym employee');
   const { isDark } = useTheme();
   const { showToast } = useToast();
   const { gym } = useAuth();
@@ -118,6 +127,9 @@ export const AddEmployeeModal = ({
   const [countryCode, setCountryCode] = useState('+91');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [accessType, setAccessType] = useState('Admin');
   const [avatar, setAvatar] = useState(null);
 
@@ -164,21 +176,79 @@ export const AddEmployeeModal = ({
   const [attachDocNum, setAttachDocNum] = useState('');
   const [attachDocFile, setAttachDocFile] = useState(null);
 
-  // Sync role when defaultRole changes or modal opens
+  // Sync form states when visible, initialEmployee, or defaultRole changes
   useEffect(() => {
     if (visible) {
-      if (defaultRole) setRole(defaultRole);
+      if (initialEmployee) {
+        setName(initialEmployee.name || '');
+        const empRole = initialEmployee.role === 'Manager' ? 'Manager (Operational Admin)' : (initialEmployee.role || defaultRole);
+        setRole(empRole);
+        if (initialEmployee.phone) {
+          const parts = initialEmployee.phone.split(' ');
+          if (parts.length > 1 && parts[0].startsWith('+')) {
+            setCountryCode(parts[0]);
+            setPhone(parts.slice(1).join(' '));
+          } else {
+            setPhone(initialEmployee.phone.replace(/^\+91\s*/, ''));
+          }
+        } else {
+          setPhone('');
+        }
+        setEmail(initialEmployee.email || '');
+        setAccessType(isManagerRole(empRole) ? 'Admin' : (initialEmployee.accessType || 'Employee'));
+        setAvatar(initialEmployee.avatar || null);
+        setPassword('');
+        setShowPassword(false);
+        setShowRoleDropdown(false);
+        if (initialEmployee.managerPermissions) {
+          setRequireStaffApproval(initialEmployee.managerPermissions.requireStaffApproval !== false);
+          setRequirePlanSwitchApproval(initialEmployee.managerPermissions.requirePlanSwitchApproval !== false);
+          setRequireCancellationApproval(initialEmployee.managerPermissions.requireCancellationApproval !== false);
+          setRequireProfileEditApproval(initialEmployee.managerPermissions.requireProfileEditApproval !== false);
+        }
+        if (initialEmployee.description || initialEmployee.aboutMe) {
+          setAboutMe(initialEmployee.description || initialEmployee.aboutMe);
+        }
+        if (initialEmployee.experience) setExperience(initialEmployee.experience);
+        if (Array.isArray(initialEmployee.servicesOffered)) setServicesOffered(initialEmployee.servicesOffered);
+        if (Array.isArray(initialEmployee.certifications)) {
+          setCertifications(initialEmployee.certifications.join('\n'));
+        }
+        if (Array.isArray(initialEmployee.languages)) {
+          setLanguages(initialEmployee.languages.join(', '));
+        } else if (typeof initialEmployee.languages === 'string') {
+          setLanguages(initialEmployee.languages);
+        }
+        if (initialEmployee.emergencyContact) {
+          setEmergencyName(initialEmployee.emergencyContact.name || '');
+          setEmergencyPhone(initialEmployee.emergencyContact.phone || '');
+          setEmergencyRelation(initialEmployee.emergencyContact.relationship || initialEmployee.emergencyContact.relation || 'Spouse');
+        }
+      } else {
+        const initialR = defaultRole === 'Manager' ? 'Manager (Operational Admin)' : (defaultRole || ROLE_OPTIONS[0]);
+        setRole(initialR);
+        if (isManagerRole(initialR)) {
+          setAccessType('Admin');
+        }
+        setPassword('');
+        setShowPassword(false);
+        setShowRoleDropdown(false);
+      }
     }
-  }, [visible, defaultRole]);
+  }, [visible, defaultRole, initialEmployee]);
 
   // Reset form
   const resetForm = () => {
     setName('');
-    setRole(defaultRole || ROLE_OPTIONS[0]);
+    const initialR = defaultRole === 'Manager' ? 'Manager (Operational Admin)' : (defaultRole || ROLE_OPTIONS[0]);
+    setRole(initialR);
     setCountryCode('+91');
     setPhone('');
     setEmail('');
-    setAccessType('Admin');
+    setPassword('');
+    setShowPassword(false);
+    setShowRoleDropdown(false);
+    setAccessType(isManagerRole(initialR) ? 'Admin' : 'Admin');
     setAvatar(null);
     setRequireStaffApproval(true);
     setRequirePlanSwitchApproval(true);
@@ -325,6 +395,9 @@ export const AddEmployeeModal = ({
 
   // Form Submission
   const handleSubmit = async () => {
+    const isManager = isManagerRole(role);
+    const backendRole = isManager ? 'Manager' : role;
+
     if (!name.trim()) {
       showToast({ message: 'Employee name is required', isError: true });
       return;
@@ -335,6 +408,14 @@ export const AddEmployeeModal = ({
     }
     if (!email.trim()) {
       showToast({ message: 'Email ID is required', isError: true });
+      return;
+    }
+    if (isManager && !initialEmployee && (!password || password.trim().length < 6)) {
+      showToast({ message: 'Portal Login Password is required (min 6 characters) for Manager', isError: true });
+      return;
+    }
+    if (isManager && password && password.trim().length < 6) {
+      showToast({ message: 'Password must be at least 6 characters long', isError: true });
       return;
     }
     if (!emergencyName.trim() || !emergencyPhone.trim()) {
@@ -348,26 +429,27 @@ export const AddEmployeeModal = ({
 
       const payload = {
         name: name.trim(),
-        role,
+        role: backendRole,
         phone: fullPhone,
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         avatar:
           avatar ||
           'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop',
-        joinDate: new Date().toLocaleDateString('en-GB', {
+        joinDate: initialEmployee?.joinDate || new Date().toLocaleDateString('en-GB', {
           day: '2-digit',
           month: 'short',
           year: 'numeric',
         }),
-        status: 'Active',
-        attendance: 'Present',
-        accessType,
+        status: initialEmployee?.status || 'Active',
+        attendance: initialEmployee?.attendance || 'Present',
+        accessType: isManager ? 'Admin' : accessType,
         managerPermissions: {
           requireStaffApproval,
           requirePlanSwitchApproval,
           requireCancellationApproval,
           requireProfileEditApproval,
         },
+        ...(password?.trim() ? { password: password.trim() } : {}),
         previousEmployments: prevEmployments.filter(
           (p) => p.companyName?.trim() || p.designation?.trim()
         ),
@@ -411,11 +493,19 @@ export const AddEmployeeModal = ({
         gymName: gym?.name || 'Main Facility',
       };
 
-      const res = await apiService.createEmployee(payload);
+      let res;
+      if (initialEmployee?._id) {
+        res = await apiService.updateEmployee(initialEmployee._id, payload);
+      } else {
+        res = await apiService.createEmployee(payload);
+      }
+
       showToast({
         message:
           res.message ||
-          (res.data?.approvalStatus === 'Approved'
+          (initialEmployee
+            ? `Employee "${name.trim()}" updated successfully!`
+            : res.data?.approvalStatus === 'Approved'
             ? `Employee "${name.trim()}" added successfully!`
             : `Employee "${name.trim()}" submitted for Gym Admin approval!`),
         isSuccess: true,
@@ -451,10 +541,10 @@ export const AddEmployeeModal = ({
             <View style={styles.modalHeader}>
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <Text style={[styles.modalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                  {title}
+                  {modalTitle}
                 </Text>
                 <Text style={[styles.modalSub, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
-                  {subtitle}
+                  {modalSubtitle}
                 </Text>
               </View>
               <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -576,98 +666,241 @@ export const AddEmployeeModal = ({
                 onChangeText={setEmail}
               />
 
-              {/* Role Picker */}
+              {/* Role Picker (Dropdown Selector matching Web & Mobile Designs) */}
               <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 Role <Text style={{ color: '#EF4444' }}>*</Text>
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                {ROLE_OPTIONS.map((r) => {
-                  const isSel = role === r;
-                  return (
-                    <TouchableOpacity
-                      key={r}
-                      style={[
-                        styles.chipBtn,
-                        isSel && { backgroundColor: AppColors.primaryColor, borderColor: AppColors.primaryColor },
-                        {
-                          backgroundColor: isSel
-                            ? AppColors.primaryColor
-                            : isDark
-                            ? 'rgba(255,255,255,0.05)'
-                            : '#F8FAFC',
-                          borderColor: isSel
-                            ? AppColors.primaryColor
-                            : isDark
-                            ? AppColors.darkBorder
-                            : '#E2E8F0',
-                        },
-                      ]}
-                      onPress={() => setRole(r)}
-                    >
-                      <Text
-                        style={[
-                          styles.chipBtnText,
-                          { color: isSel ? '#FFFFFF' : isDark ? '#FFFFFF' : '#0F172A' },
-                        ]}
-                      >
-                        {r}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <TouchableOpacity
+                style={[
+                  styles.formInput,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
+                    borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    height: 48,
+                    marginBottom: showRoleDropdown ? 6 : 14,
+                  },
+                ]}
+                onPress={() => setShowRoleDropdown(!showRoleDropdown)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: isDark ? '#FFFFFF' : '#0F172A',
+                  }}
+                >
+                  {isManagerRole(role) ? 'Manager (Operational Admin)' : role}
+                </Text>
+                <MaterialIcons
+                  name={showRoleDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                  size={24}
+                  color={isDark ? '#94A3B8' : '#64748B'}
+                />
+              </TouchableOpacity>
 
-              {/* Manager Delegation Permissions */}
-              {role === 'Manager' && (
+              {showRoleDropdown && (
+                <View
+                  style={{
+                    backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                    borderRadius: 12,
+                    marginBottom: 16,
+                    overflow: 'hidden',
+                    elevation: 4,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 6,
+                  }}
+                >
+                  {ROLE_OPTIONS.map((r) => {
+                    const isSel = (isManagerRole(r) && isManagerRole(role)) || role === r;
+                    return (
+                      <TouchableOpacity
+                        key={r}
+                        style={{
+                          paddingVertical: 12,
+                          paddingHorizontal: 14,
+                          backgroundColor: isSel
+                            ? (isDark ? 'rgba(79, 70, 229, 0.18)' : '#EEF2FF')
+                            : 'transparent',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          borderBottomWidth: 1,
+                          borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                        }}
+                        onPress={() => {
+                          setRole(r);
+                          if (isManagerRole(r)) {
+                            setAccessType('Admin');
+                          }
+                          setShowRoleDropdown(false);
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: isSel ? '700' : '500',
+                            color: isSel ? '#4F46E5' : (isDark ? '#FFFFFF' : '#0F172A'),
+                          }}
+                        >
+                          {r}
+                        </Text>
+                        {isSel && <MaterialIcons name="check" size={18} color="#4F46E5" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Manager Delegation Permissions Card (Admin Approval Required) */}
+              {isManagerRole(role) && (
                 <View
                   style={{
                     backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',
-                    borderRadius: 12,
-                    padding: 14,
+                    borderRadius: 14,
+                    padding: 16,
                     marginBottom: 16,
                     borderWidth: 1,
                     borderColor: isDark ? '#4338CA' : '#C7D2FE',
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 }}>
-                    <MaterialIcons name="security" size={18} color="#4F46E5" />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#4F46E5' }}>
-                      Manager Delegation Permissions
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 }}>
+                    <MaterialIcons name="workspace-premium" size={20} color="#4F46E5" />
+                    <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#4F46E5', flex: 1 }}>
+                      Manager Delegation Permissions (Admin Approval Required)
                     </Text>
                   </View>
-                  <Text style={{ fontSize: 11, color: isDark ? '#C7D2FE' : '#475569', marginBottom: 10 }}>
-                    Require Admin approval for operations performed by this manager:
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: isDark ? '#C7D2FE' : '#475569',
+                      marginBottom: 14,
+                      lineHeight: 18,
+                    }}
+                  >
+                    Check the operations that require your (Gym Admin) approval before taking effect. Uncheck to allow direct manager execution.
                   </Text>
 
-                  {[
-                    { label: 'Staff & Trainers (Add/Edit/Remove)', val: requireStaffApproval, set: setRequireStaffApproval },
-                    { label: 'Plan Switches & Upgrades', val: requirePlanSwitchApproval, set: setRequirePlanSwitchApproval },
-                    { label: 'Cancellations & Refunds', val: requireCancellationApproval, set: setRequireCancellationApproval },
-                    { label: 'Gym Profile & Timings', val: requireProfileEditApproval, set: setRequireProfileEditApproval },
-                  ].map((perm, idx) => (
-                    <TouchableOpacity
-                      key={idx}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 }}>
+                    {[
+                      { label: 'Staff & Trainers (Add/Edit/Remove)', val: requireStaffApproval, set: setRequireStaffApproval },
+                      { label: 'Plan Switches & Prorations', val: requirePlanSwitchApproval, set: setRequirePlanSwitchApproval },
+                      { label: 'Cancellations & Refund Claims', val: requireCancellationApproval, set: setRequireCancellationApproval },
+                      { label: 'Gym Profile & Operating Timings', val: requireProfileEditApproval, set: setRequireProfileEditApproval },
+                    ].map((perm, idx) => (
+                      <View key={idx} style={{ width: '50%', paddingHorizontal: 4, marginBottom: 12 }}>
+                        <TouchableOpacity
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                          }}
+                          onPress={() => perm.set(!perm.val)}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons
+                            name={perm.val ? 'check-box' : 'check-box-outline-blank'}
+                            size={20}
+                            color={perm.val ? '#4F46E5' : isDark ? '#64748B' : '#94A3B8'}
+                          />
+                          <Text
+                            style={{
+                              fontSize: 11.5,
+                              fontWeight: '500',
+                              color: isDark ? '#E2E8F0' : '#1E293B',
+                              flexShrink: 1,
+                              lineHeight: 16,
+                            }}
+                          >
+                            {perm.label}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Manager Portal Login Password Card */}
+              {isManagerRole(role) && (
+                <View
+                  style={{
+                    backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',
+                    borderRadius: 14,
+                    padding: 16,
+                    marginBottom: 16,
+                    borderWidth: 1,
+                    borderColor: isDark ? '#4338CA' : '#C7D2FE',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 }}>
+                    <MaterialIcons name="lock" size={20} color="#4F46E5" />
+                    <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#4F46E5', flex: 1 }}>
+                      Manager Portal Login Password
+                    </Text>
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      color: isDark ? '#C7D2FE' : '#475569',
+                      marginBottom: 14,
+                      lineHeight: 18,
+                    }}
+                  >
+                    {initialEmployee
+                      ? 'Set or reset the login password for this Manager. Leave blank to keep existing password.'
+                      : 'Set a secure password for this Manager. They will use their email and this password to log in to the Gym Owner Web Portal & Mobile App.'}
+                  </Text>
+
+                  <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A', marginTop: 0, marginBottom: 6 }]}>
+                    {initialEmployee ? 'New Portal Password (Optional)' : 'Portal Login Password'} <Text style={{ color: '#EF4444' }}>*</Text>
+                  </Text>
+
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                      borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                      borderWidth: 1,
+                      borderRadius: 10,
+                      height: 46,
+                      paddingHorizontal: 12,
+                    }}
+                  >
+                    <TextInput
                       style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingVertical: 7,
-                        borderBottomWidth: idx < 3 ? 1 : 0,
-                        borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : '#E0E7FF',
+                        flex: 1,
+                        fontSize: 13.5,
+                        color: isDark ? '#FFFFFF' : '#0F172A',
+                        paddingVertical: 0,
                       }}
-                      onPress={() => perm.set(!perm.val)}
-                      activeOpacity={0.7}
+                      placeholder={initialEmployee ? 'Leave blank to keep existing password' : 'Enter password (min 6 characters)'}
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
+                      secureTextEntry={!showPassword}
+                      value={password}
+                      onChangeText={setPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowPassword(!showPassword)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? '#E2E8F0' : '#1E293B', flex: 1, marginRight: 8 }}>
-                        {perm.label}
-                      </Text>
                       <MaterialIcons
-                        name={perm.val ? 'check-box' : 'check-box-outline-blank'}
+                        name={showPassword ? 'visibility' : 'visibility-off'}
                         size={20}
-                        color={perm.val ? '#4F46E5' : isDark ? '#64748B' : '#94A3B8'}
+                        color={isDark ? '#94A3B8' : '#64748B'}
                       />
                     </TouchableOpacity>
-                  ))}
+                  </View>
                 </View>
               )}
 
@@ -723,10 +956,11 @@ export const AddEmployeeModal = ({
                 Define what this employee can access in the system.
               </Text>
 
-              {/* Trainer Profile & Showcase (Shown in User App) */}
-              <View
-                style={[
-                  styles.trainerShowcaseBox,
+              {/* Trainer Profile & Showcase (Shown in User App for Trainers) */}
+              {!isManagerRole(role) && (
+                <View
+                  style={[
+                    styles.trainerShowcaseBox,
                   {
                     backgroundColor: isDark ? 'rgba(0,102,204,0.06)' : '#F0F7FF',
                     borderColor: isDark ? 'rgba(0,102,204,0.25)' : '#BAE6FD',
@@ -886,6 +1120,7 @@ export const AddEmployeeModal = ({
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                 />
               </View>
+            )}
 
               {/* Previous Employment Details */}
               <View

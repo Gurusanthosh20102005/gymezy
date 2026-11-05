@@ -8,6 +8,7 @@ import Counter from '../models/counter.model.js';
 import { syncGymTrainersFromEmployees } from './employee.controller.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { getSearchTerm, escapeRegex } from '../utils/searchHelper.js';
 import { ApiError } from '../utils/apiError.js';
 import {
   formatAndCompressFile,
@@ -912,11 +913,12 @@ export const getGyms = asyncHandler(async (req, res) => {
     query.workouts = { $regex: new RegExp(workout.trim(), 'i') };
   }
 
-  // Keyword Search
-  if (search && search.trim()) {
-    const s = search.trim();
+  // Keyword Search (SSOT)
+  const gymSearch = getSearchTerm(req.query);
+  if (gymSearch) {
+    const s = escapeRegex(gymSearch);
     const searchRegex = new RegExp(s, 'i');
-    query.$or = [
+    const searchOr = [
       { partnerId: searchRegex },
       { name: searchRegex },
       { ownerName: searchRegex },
@@ -927,6 +929,13 @@ export const getGyms = asyncHandler(async (req, res) => {
       { workouts: searchRegex },
       { facilities: searchRegex },
     ];
+    if (query.$or) {
+      const existingOr = query.$or;
+      delete query.$or;
+      query.$and = (query.$and || []).concat([{ $or: existingOr }, { $or: searchOr }]);
+    } else {
+      query.$or = searchOr;
+    }
   }
 
   // Optimized lean projection: fetch only essential card fields (exclude heavy photos, gallery, trainers, reviews, rules, documents)
@@ -2160,8 +2169,9 @@ export const getGymOptions = asyncHandler(async (req, res) => {
     query.status = status;
   }
 
-  if (search && search.trim()) {
-    const s = search.trim();
+  const optionSearch = getSearchTerm(req.query);
+  if (optionSearch) {
+    const s = escapeRegex(optionSearch);
     const searchRegex = new RegExp(s, 'i');
     query.$or = [
       { name: searchRegex },

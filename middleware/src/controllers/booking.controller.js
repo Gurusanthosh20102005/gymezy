@@ -9,6 +9,7 @@ import Counter from '../models/counter.model.js';
 import { Wallet } from '../models/wallet.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { getSearchTerm, escapeRegex, parsePagination } from '../utils/searchHelper.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { findOrCreateWalkInCustomer } from '../utils/walkInHelper.js';
 
@@ -639,7 +640,7 @@ export const getBookingById = asyncHandler(async (req, res) => {
  */
 export const getGymBookings = asyncHandler(async (req, res) => {
   const { gymId } = req.params;
-  const { source, status } = req.query;
+  const { source, status, bookingType } = req.query;
   const isObjectId = mongoose.Types.ObjectId.isValid(gymId);
 
   const gym = await Gym.findOne(
@@ -650,20 +651,71 @@ export const getGymBookings = asyncHandler(async (req, res) => {
   }
 
   const filter = { gymId: gym._id };
-  if (source && source !== 'ALL') {
+  if (source && source !== 'ALL' && source !== 'All') {
     filter.source = source.toUpperCase();
   }
-  if (status && status !== 'ALL') {
+  if (status && status !== 'ALL' && status !== 'All') {
     filter.status = status;
   }
+  if (bookingType && bookingType !== 'ALL' && bookingType !== 'All') {
+    filter.bookingType = bookingType;
+  }
 
-  const bookings = await Booking.find(filter)
+  const searchTerm = getSearchTerm(req.query);
+  if (searchTerm) {
+    const escaped = escapeRegex(searchTerm);
+    const regex = new RegExp(escaped, 'i');
+
+    const matchingUsers = await User.find({
+      $or: [
+        { fullName: regex },
+        { phone: regex },
+        { email: regex },
+        { customerId: regex },
+      ],
+    }).select('_id').lean();
+    const userIds = matchingUsers.map((u) => u._id);
+
+    filter.$or = [
+      { bookingId: regex },
+      { title: regex },
+      { planName: regex },
+      { 'walkInDetails.name': regex },
+      { 'walkInDetails.phone': regex },
+      { 'walkInDetails.email': regex },
+      { userId: { $in: userIds } },
+    ];
+  }
+
+  const { page, limit, skip, isFetchAll } = parsePagination(req.query, 10);
+  const totalBookings = await Booking.countDocuments(filter);
+  const totalPages = limit > 0 ? Math.ceil(totalBookings / limit) : 1;
+
+  const queryBuilder = Booking.find(filter)
     .populate('userId', 'fullName name email phone avatar customerId')
-    .sort({ createdAt: -1 })
-    .lean();
+    .sort({ createdAt: -1 });
 
+  if (!isFetchAll && limit > 0) {
+    queryBuilder.skip(skip).limit(limit);
+  }
+
+  const bookings = await queryBuilder.lean();
   const enriched = bookings.map((b) => enrichBookingWithCustomSchedule(b));
-  return res.status(200).json(ApiResponse.success(enriched, 'Gym bookings retrieved successfully'));
+  return res.status(200).json(
+    ApiResponse.success(
+      enriched,
+      'Gym bookings retrieved successfully',
+      200,
+      {
+        total: totalBookings,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      }
+    )
+  );
 });
 
 /**

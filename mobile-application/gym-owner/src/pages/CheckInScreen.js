@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useDebounce } from '../hooks/useDebounce';
 import {
   View,
   Text,
@@ -69,7 +70,9 @@ export const CheckInScreen = ({ navigation, route }) => {
   const [hasCameraPermission, setHasCameraPermission] = useState(null);
   const isScanningRef = useRef(false);
 
-  // Fetch live members for check-in
+  const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Fetch live members for check-in (Server search from middleware)
   useEffect(() => {
     const gymId = gym?.id || gym?._id || gym?.partnerId;
     if (!gymId) return;
@@ -77,7 +80,11 @@ export const CheckInScreen = ({ navigation, route }) => {
     const fetchLiveMembers = async () => {
       try {
         setIsLoadingMembers(true);
-        const res = await apiService.searchAttendanceMembers({ gymId, query: '' });
+        const res = await apiService.searchAttendanceMembers({
+          gymId,
+          search: debouncedSearch.trim(),
+          query: debouncedSearch.trim(),
+        });
         if (Array.isArray(res)) {
           setLiveMembers(res);
         }
@@ -89,7 +96,7 @@ export const CheckInScreen = ({ navigation, route }) => {
     };
 
     fetchLiveMembers();
-  }, [gym?.id, gym?._id, gym?.partnerId]);
+  }, [gym?.id, gym?._id, gym?.partnerId, debouncedSearch]);
 
   // Animated laser bar for QR scanner
   const laserAnim = useRef(new Animated.Value(0)).current;
