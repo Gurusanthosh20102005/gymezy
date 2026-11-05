@@ -322,6 +322,20 @@ export const BookingsManagement = ({
     if (onStatusChange) onStatusChange(record.key, 'Checked-in');
   };
 
+  const handleReviewCancellation = async (record, action) => {
+    try {
+      const targetId = record._id || record.id || record.key;
+      await apiClient.patch(`/bookings/${targetId}/cancellation-review`, {
+        action,
+        rejectionReason: action === 'REJECT' ? 'Rejected by gym owner' : '',
+      });
+      message.success(action === 'ACCEPT' ? 'Cancellation approved and prorated refund initiated.' : 'Cancellation rejected. Booking restored to active.');
+      fetchBookings();
+    } catch (err) {
+      message.error(err.response?.data?.message || err.message || 'Failed to process cancellation.');
+    }
+  };
+
   const handleView = (record) => {
     setSelectedBooking(record);
     setIsViewModalOpen(true);
@@ -639,6 +653,27 @@ export const BookingsManagement = ({
             </Tag>
           );
         }
+        if (status === 'Cancellation_Requested') {
+          return (
+            <Tag
+              icon={<ClockCircleOutlined style={{ fontSize: 11 }} />}
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(250, 140, 22, 0.15)' : '#fef4e8',
+                color: '#fa8c16',
+                border: 'none',
+                borderRadius: 'var(--radius-base)',
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '2px 10px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              Review Requested
+            </Tag>
+          );
+        }
         if (status === 'Completed') {
           return (
             <Tag
@@ -817,6 +852,28 @@ export const BookingsManagement = ({
       key: 'action',
       width: 140,
       render: (_, record) => {
+        if (record.status === 'Cancellation_Requested') {
+          return (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Button
+                type="primary"
+                size="small"
+                style={{ backgroundColor: '#00bf62', borderColor: '#00bf62', fontSize: 11, fontWeight: 600 }}
+                onClick={() => handleReviewCancellation(record, 'ACCEPT')}
+              >
+                Accept
+              </Button>
+              <Button
+                danger
+                size="small"
+                style={{ fontSize: 11, fontWeight: 600 }}
+                onClick={() => handleReviewCancellation(record, 'REJECT')}
+              >
+                Reject
+              </Button>
+            </div>
+          );
+        }
         const isUpcoming = record.status === 'Upcoming';
         return (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, width: 124 }}>

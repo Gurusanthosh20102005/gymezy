@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 import crypto from 'node:crypto';
 
 export const BOOKING_TYPES = ['SECTION', 'GROUP_CLASS', 'GYM_SESSION'];
-export const BOOKING_STATUS = ['Upcoming', 'Active', 'Completed', 'Cancelled'];
+export const BOOKING_STATUS = ['Upcoming', 'Active', 'Completed', 'Cancelled', 'Cancellation_Requested'];
+export const BOOKING_CANCELLATION_STATUS = ['PENDING_GYM_APPROVAL', 'APPROVED', 'REJECTED', 'DIRECT_CANCELLED'];
 export const BOOKING_SOURCES = ['APP', 'WALK_IN'];
 export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Cash', 'Wallet', 'Online', 'GPay', 'POS', 'COD'];
 export const PAYMENT_STATUS = ['Completed', 'Pending', 'Failed', 'Refunded'];
@@ -141,6 +142,24 @@ const bookingSchema = new mongoose.Schema(
     cancellation: {
       cancelledAt: { type: Date, default: null },
       reason: { type: String, trim: true, default: '' },
+      refundAmount: { type: Number, default: 0, min: 0 },
+      deductedAmount: { type: Number, default: 0, min: 0 },
+      consumedDays: { type: Number, default: 0, min: 0 },
+      totalDays: { type: Number, default: 0, min: 0 },
+      refundStatus: {
+        type: String,
+        enum: ['NONE', 'INITIATED', 'COMPLETED', 'FAILED'],
+        default: 'NONE',
+      },
+      cancellationStatus: {
+        type: String,
+        enum: ['PENDING_GYM_APPROVAL', 'APPROVED', 'REJECTED', 'DIRECT_CANCELLED'],
+        default: null,
+      },
+      requestedAt: { type: Date, default: null },
+      reviewedAt: { type: Date, default: null },
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      rejectionReason: { type: String, trim: true, default: '' },
     },
     isCustomDates: {
       type: Boolean,

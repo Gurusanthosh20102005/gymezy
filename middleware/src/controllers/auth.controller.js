@@ -348,6 +348,51 @@ export const updateProfile = asyncHandler(async (req, res) => {
     }
   }
 
+  // Handle customerProfile body metrics & target (SSOT)
+  const incomingProfile = (req.body.customerProfile && typeof req.body.customerProfile === 'object')
+    ? req.body.customerProfile
+    : {};
+  const heightVal = req.body.heightCm !== undefined ? req.body.heightCm : incomingProfile.heightCm;
+  const weightVal = req.body.weightKg !== undefined ? req.body.weightKg : incomingProfile.weightKg;
+  const targetWeightVal = req.body.targetWeightKg !== undefined ? req.body.targetWeightKg : incomingProfile.targetWeightKg;
+  const goalVal = req.body.fitnessGoal !== undefined ? req.body.fitnessGoal : incomingProfile.fitnessGoal;
+
+  const profileUpdates = {};
+  if (heightVal !== undefined && heightVal !== null && heightVal !== '') {
+    profileUpdates.heightCm = Math.max(0, Number(heightVal) || 0);
+  }
+  if (weightVal !== undefined && weightVal !== null && weightVal !== '') {
+    profileUpdates.weightKg = Math.max(0, Number(weightVal) || 0);
+  }
+  if (targetWeightVal !== undefined && targetWeightVal !== null && targetWeightVal !== '') {
+    profileUpdates.targetWeightKg = Math.max(0, Number(targetWeightVal) || 0);
+  }
+  if (goalVal !== undefined && goalVal !== null && String(goalVal).trim() !== '') {
+    profileUpdates.fitnessGoal = String(goalVal).trim();
+  }
+
+  // Lookup existing user to calculate BMI accurately and retain missing values
+  const existingUser = await User.findById(userId);
+  if (!existingUser) {
+    throw ApiError.notFound('User account not found.');
+  }
+
+  const effectiveHeight = profileUpdates.heightCm !== undefined
+    ? profileUpdates.heightCm
+    : existingUser.customerProfile?.heightCm;
+  const effectiveWeight = profileUpdates.weightKg !== undefined
+    ? profileUpdates.weightKg
+    : existingUser.customerProfile?.weightKg;
+
+  if (effectiveHeight && effectiveWeight && effectiveHeight > 0) {
+    const hM = effectiveHeight / 100;
+    profileUpdates.bmi = Number((effectiveWeight / (hM * hM)).toFixed(1));
+  }
+
+  for (const [k, v] of Object.entries(profileUpdates)) {
+    updates[`customerProfile.${k}`] = v;
+  }
+
   const user = await User.findByIdAndUpdate(userId, { $set: updates }, { new: true, runValidators: true });
   if (!user) {
     throw ApiError.notFound('User account not found.');

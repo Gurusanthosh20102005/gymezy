@@ -1,5 +1,5 @@
 import { NativeModules } from 'react-native';
-import { getCloudApiUrl } from '../config/envConfig';
+import { getCloudApiUrl, ACTIVE_ENV, ENV_TARGETS } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
 const CURRENT_MAC_IP = '192.168.0.107';
@@ -94,14 +94,17 @@ class ApiService {
 
     // Priority candidates: In development mode (__DEV__ === true), prioritize localhost, Metro host, and LAN IP.
     // In production/release builds, connect directly to the targeted cloud API.
-    const candidateBases = __DEV__
+    // Priority candidates: In development mode (__DEV__ === true), prioritize working candidate, Metro host, and LAN IP.
+    // Notice: Over wireless debugging, LOCAL_WIFI_IP must precede loopbacks (localhost/127.0.0.1) which require USB adb reverse.
+    const isDev = (typeof __DEV__ !== 'undefined' && __DEV__) || ACTIVE_ENV === ENV_TARGETS.DEV;
+    const candidateBases = isDev
       ? [
           this.verifiedBase,
-          `http://localhost:${BACKEND_PORT}/api/v1`,
-          `http://127.0.0.1:${BACKEND_PORT}/api/v1`,
+          `http://${LOCAL_WIFI_IP}:${BACKEND_PORT}/api/v1`,
           metroHost ? `http://${metroHost}:${BACKEND_PORT}/api/v1` : null,
           `http://${CURRENT_MAC_IP}:${BACKEND_PORT}/api/v1`,
-          `http://${LOCAL_WIFI_IP}:${BACKEND_PORT}/api/v1`,
+          `http://localhost:${BACKEND_PORT}/api/v1`,
+          `http://127.0.0.1:${BACKEND_PORT}/api/v1`,
           `http://10.0.2.2:${BACKEND_PORT}/api/v1`,
           cloudUrl,
         ]
@@ -115,26 +118,63 @@ class ApiService {
       const currentBase = uniqueBases[i];
       const targetUrl = `${currentBase}${endpoint}`;
       try {
-        const response = await fetchWithTimeout(targetUrl, options, i === 0 && this.verifiedBase ? timeoutMs : 2000);
-        const contentType = response.headers?.get?.('content-type') || '';
-        if (contentType.includes('text/html')) {
-          throw new Error(`Candidate ${currentBase} returned HTML instead of JSON.`);
+        const attemptTimeout = i === 0 && this.verifiedBase ? timeoutMs : 4000;
+        const response = await fetchWithTimeout(targetUrl, options, attemptTimeout);
+
+        // Safely extract response text to inspect before treating as valid JSON
+        const rawText = await response.text();
+        const trimmed = (rawText || '').trim();
+
+        // Reject HTML error pages, captive portals, ISP redirection pages, or Cloudflare challenges
+        const isHtml =
+          trimmed.startsWith('<') ||
+          trimmed.toLowerCase().includes('<!doctype') ||
+          trimmed.toLowerCase().includes('<html') ||
+          trimmed.toLowerCase().includes('<head');
+
+        if (isHtml) {
+          throw new Error(
+            `Server at ${currentBase} returned HTML instead of JSON (${response.status} ${response.statusText}): ${trimmed.slice(0, 100)}`
+          );
         }
+
+        // Validate JSON payload
+        let parsedData = null;
+        if (trimmed) {
+          try {
+            parsedData = JSON.parse(rawText);
+          } catch (jsonErr) {
+            throw new Error(
+              `Server at ${currentBase} returned invalid JSON format: ${jsonErr.message}. Content: ${trimmed.slice(0, 80)}`
+            );
+          }
+        }
+
+        // Cache the parsed JSON and raw text on response so existing callers of await response.json() succeed without re-reading stream
+        response.json = async () => parsedData;
+        response.text = async () => rawText;
+        response._parsedData = parsedData;
+
         if (response.status === 401 && !endpoint.includes('/auth/login')) {
           if (typeof this.unauthorizedHandler === 'function') {
             this.unauthorizedHandler();
           }
         }
-        this.verifiedBase = currentBase; // Lock in the working base URL for subsequent calls
+
+        this.verifiedBase = currentBase; // Lock in the verified working base URL
         this.baseUrl = currentBase;
         return response;
       } catch (err) {
+        if (this.verifiedBase === currentBase) {
+          this.verifiedBase = null; // Clear invalidated base if it failed
+        }
         lastError = err;
       }
     }
 
     throw new Error(
-      `Unable to connect to backend server on port ${BACKEND_PORT}. If using a physical phone, please connect to the same Wi-Fi (${LOCAL_WIFI_IP}) or connect via USB with USB debugging enabled.`
+      lastError?.message ||
+      `Unable to connect to backend server on port ${BACKEND_PORT}. If using a physical phone, please connect to the same Wi-Fi (${LOCAL_WIFI_IP}) or verify backend is running.`
     );
   }
 
@@ -746,6 +786,34 @@ class ApiService {
     }
     return result.data;
   }
+  async reviewBookingCancellation(bookingId, payload) {
+    if (!bookingId) throw new Error('Booking ID is required.');
+    const response = await this.executeFetch(`/bookings/${bookingId}/cancellation-review`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to review cancellation request.');
+    }
+    return result.data;
+  }
+
+  async cancelBooking(bookingId, payload = {}) {
+    if (!bookingId) throw new Error('Booking ID is required.');
+    const response = await this.executeFetch(`/bookings/${bookingId}/cancel`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to cancel booking.');
+    }
+    return result.data;
+  }
+
 }
 
 export const apiService = new ApiService();

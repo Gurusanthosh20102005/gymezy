@@ -39,14 +39,14 @@ export const MyBookingsScreen = ({ navigation }) => {
   };
 
   const upcomingCount = bookings.filter(
-    (b) => b.status === 'Upcoming' || b.status === 'Active' || b.status === 'Confirmed'
+    (b) => b.status === 'Upcoming' || b.status === 'Active' || b.status === 'Confirmed' || b.status === 'Cancellation_Requested'
   ).length;
   const completedCount = bookings.filter((b) => b.status === 'Completed').length;
   const cancelledCount = bookings.filter((b) => b.status === 'Cancelled').length;
 
   const filteredBookings = bookings.filter((b) => {
     if (selectedTab === 'Upcoming') {
-      return b.status === 'Upcoming' || b.status === 'Active' || b.status === 'Confirmed';
+      return b.status === 'Upcoming' || b.status === 'Active' || b.status === 'Confirmed' || b.status === 'Cancellation_Requested';
     }
     return b.status === selectedTab;
   });
@@ -269,24 +269,23 @@ export const MyBookingsScreen = ({ navigation }) => {
                           </Text>
                         </View>
                         {booking.status === 'Active' && (
-                          <View
-                            style={{
-                              backgroundColor: 'rgba(0, 191, 98, 0.12)',
-                              paddingHorizontal: 7,
-                              paddingVertical: 2,
-                              borderRadius: 6,
-                            }}
-                          >
-                            <Text
-                              style={{
-                                color: '#00BF62',
-                                fontSize: 10,
-                                fontWeight: '800',
-                                letterSpacing: 0.5,
-                              }}
-                            >
-                              ACTIVE
-                            </Text>
+                          <View style={{ backgroundColor: 'rgba(0, 191, 98, 0.12)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ color: '#00BF62', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>ACTIVE</Text>
+                          </View>
+                        )}
+                        {booking.status === 'Cancellation_Requested' && (
+                          <View style={{ backgroundColor: 'rgba(217, 119, 6, 0.12)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ color: '#D97706', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>UNDER REVIEW</Text>
+                          </View>
+                        )}
+                        {booking.status === 'Completed' && (
+                          <View style={{ backgroundColor: 'rgba(107, 114, 128, 0.12)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ color: '#6B7280', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>COMPLETED</Text>
+                          </View>
+                        )}
+                        {booking.status === 'Cancelled' && (
+                          <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>CANCELLED</Text>
                           </View>
                         )}
                       </View>
