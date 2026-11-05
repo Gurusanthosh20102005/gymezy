@@ -148,7 +148,7 @@ const getNormalizedPricingPlans = (data) => {
   return [];
 };
 
-export const SettingsTab = ({ topInset, navigation }) => {
+export const SettingsTab = ({ topInset, navigation, onBack }) => {
   const { isDark, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
@@ -841,6 +841,33 @@ export const SettingsTab = ({ topInset, navigation }) => {
         />
       }
     >
+      {/* Top Back Header (when navigated from top-right corner) */}
+      {onBack && (
+        <View style={styles.topBackHeaderRow}>
+          <TouchableOpacity
+            style={[
+              styles.topBackBtn,
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+              },
+            ]}
+            onPress={onBack}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="arrow-back" size={22} color={isDark ? '#FFFFFF' : '#0F172A'} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={[styles.topBackHeaderTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+              Settings & Preferences
+            </Text>
+            <Text style={[styles.topBackHeaderSubtitle, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
+              Gym facility, operating hours & account
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Gym Profile Hero Card with Logo & Quick Change */}
       <View
         style={[
@@ -3982,6 +4009,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     fontSize: 13,
     fontWeight: '600',
+  },
+  topBackHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 4,
+  },
+  topBackBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topBackHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  topBackHeaderSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
   },
 });
 
