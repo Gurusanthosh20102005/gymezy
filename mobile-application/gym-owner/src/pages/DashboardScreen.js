@@ -6,9 +6,9 @@ import { AppColors } from '../theme/appTheme';
 import { CustomFloatingNavBar } from '../widgets/CustomFloatingNavBar';
 import { OverviewTab } from './tabs/OverviewTab';
 import { MembersTab } from './tabs/MembersTab';
+import { BookingsTab } from './tabs/BookingsTab';
 import { EmployeesTab } from './tabs/EmployeesTab';
-import { AnalyticsTab } from './tabs/AnalyticsTab';
-import { SettingsTab } from './tabs/SettingsTab';
+import { SectionsTab } from './tabs/SectionsTab';
 import { notificationService } from '../services/notificationService';
 
 export const DashboardScreen = ({ navigation }) => {
@@ -45,19 +45,26 @@ export const DashboardScreen = ({ navigation }) => {
             topInset={topInset}
             navigation={navigation}
             onNavigateToMembers={() => setCurrentTab(1)}
-            onNavigateToEmployees={() => setCurrentTab(2)}
+            onNavigateToBookings={() => setCurrentTab(2)}
+            onNavigateToEmployees={() => setCurrentTab(3)}
+            onNavigateToSections={() => setCurrentTab(4)}
           />
         )}
         {currentTab === 1 && <MembersTab topInset={topInset} />}
         {currentTab === 2 && (
+          <BookingsTab
+            topInset={topInset}
+            navigation={navigation}
+          />
+        )}
+        {currentTab === 3 && (
           <EmployeesTab
             topInset={topInset}
             navigation={navigation}
           />
         )}
-        {currentTab === 3 && <AnalyticsTab topInset={topInset} />}
         {currentTab === 4 && (
-          <SettingsTab
+          <SectionsTab
             topInset={topInset}
             navigation={navigation}
           />

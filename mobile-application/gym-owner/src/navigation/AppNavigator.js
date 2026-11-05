@@ -9,6 +9,7 @@ import { DashboardScreen } from '../pages/DashboardScreen';
 import { ApplicationStatusScreen } from '../pages/ApplicationStatusScreen';
 import { CheckInScreen } from '../pages/CheckInScreen';
 import { AttendanceScreen } from '../pages/AttendanceScreen';
+import { SettingsScreen } from '../pages/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -68,6 +69,13 @@ export const AppNavigator = () => {
         <Stack.Screen
           name="Attendance"
           component={AttendanceScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="Settings"
+          component={SettingsScreen}
           options={{
             animation: 'slide_from_right',
           }}

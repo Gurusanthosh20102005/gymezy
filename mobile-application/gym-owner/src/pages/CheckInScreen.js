@@ -26,6 +26,7 @@ import { AppColors } from '../theme/appTheme';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
+import { AddWalkInBookingModal } from '../widgets/AddWalkInBookingModal';
 
 const SEARCH_FILTER_CHIPS = [
   'Customer Name',
@@ -63,6 +64,7 @@ export const CheckInScreen = ({ navigation, route }) => {
   const [selectedMember, setSelectedMember] = useState(null);
   const [selectedArea, setSelectedArea] = useState('General Workout');
   const [showAreaModal, setShowAreaModal] = useState(false);
+  const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [flashlight, setFlashlight] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState(null);
   const isScanningRef = useRef(false);
@@ -430,6 +432,32 @@ export const CheckInScreen = ({ navigation, route }) => {
           </Text>
           <Text style={[styles.hubActionDesc, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
             Search customer / member by Name, Phone, or Member ID
+          </Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
+      </TouchableOpacity>
+
+      {/* Option 3: Desk Walk-in Pass */}
+      <TouchableOpacity
+        style={[
+          styles.hubActionCard,
+          {
+            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+          },
+        ]}
+        onPress={() => setShowWalkInModal(true)}
+        activeOpacity={0.85}
+      >
+        <View style={[styles.hubActionIconBox, { backgroundColor: 'rgba(124, 58, 237, 0.12)' }]}>
+          <MaterialIcons name="person-add" size={28} color="#7C3AED" />
+        </View>
+        <View style={styles.hubActionTextBox}>
+          <Text style={[styles.hubActionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+            Desk Walk-in Pass
+          </Text>
+          <Text style={[styles.hubActionDesc, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
+            Issue 1-Day, 7-Day, or custom pass with immediate gate check-in
           </Text>
         </View>
         <MaterialIcons name="chevron-right" size={24} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
@@ -1443,6 +1471,18 @@ export const CheckInScreen = ({ navigation, route }) => {
       {currentStep === 'SEARCH' && renderSearchView()}
       {currentStep === 'DETAILS' && renderDetailsView()}
       {currentStep === 'SUCCESS' && renderSuccessView()}
+
+      {/* Front Desk Walk-in Booking Modal */}
+      <AddWalkInBookingModal
+        visible={showWalkInModal}
+        onClose={() => setShowWalkInModal(false)}
+        onSuccess={(created) => {
+          showToast({
+            message: `Walk-in pass issued for ${created?.customerName || 'customer'}!`,
+            isSuccess: true,
+          });
+        }}
+      />
     </View>
   );
 };

@@ -209,6 +209,25 @@ class ApiService {
     return result.data;
   }
 
+  async createWalkInMembership(gymId, payload) {
+    if (!gymId) throw new Error('Gym ID is required.');
+    const response = await this.executeFetch(`/memberships/gym/${gymId}/walk-in`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      const errMsg =
+        Array.isArray(result.errors) && result.errors.length > 0
+          ? result.errors.join(', ')
+          : result.message || 'Failed to create walk-in membership.';
+      throw new Error(errMsg);
+    }
+    return result.data;
+  }
+
+
   async getGym(gymId) {
     if (!gymId) throw new Error('Gym ID is required to fetch gym profile.');
     const response = await this.executeFetch(`/gyms/${gymId}`, {
@@ -656,6 +675,45 @@ class ApiService {
     const result = await response.json();
     if (!response.ok || !result.success) {
       throw new Error(result.message || 'Failed to fetch section enrollments.');
+    }
+    return result.data;
+  }
+
+  // --- WALK-IN & BOOKINGS MANAGEMENT METHODS (Industry Standard) ---
+  async getGymBookings(gymId, params = {}) {
+    if (!gymId) throw new Error('Gym ID is required.');
+    const queryParts = [];
+    if (params.source) queryParts.push(`source=${encodeURIComponent(params.source)}`);
+    if (params.status) queryParts.push(`status=${encodeURIComponent(params.status)}`);
+    if (params.page) queryParts.push(`page=${encodeURIComponent(params.page)}`);
+    if (params.limit) queryParts.push(`limit=${encodeURIComponent(params.limit)}`);
+    const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+
+    const response = await this.executeFetch(`/bookings/gym/${gymId}${queryString}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to fetch gym bookings.');
+    }
+    return result.data;
+  }
+
+  async createWalkInBooking(gymId, payload) {
+    if (!gymId) throw new Error('Gym ID is required.');
+    const response = await this.executeFetch(`/bookings/gym/${gymId}/walk-in`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      const errMsg =
+        Array.isArray(result.errors) && result.errors.length > 0
+          ? result.errors.join(', ')
+          : result.message || 'Failed to create walk-in booking.';
+      throw new Error(errMsg);
     }
     return result.data;
   }
