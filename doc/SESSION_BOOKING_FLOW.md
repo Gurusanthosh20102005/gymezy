@@ -6,7 +6,10 @@ This document details the architecture, component hierarchy, data models, and en
 
 ## 1. System Architecture
 
-The **Unified Session Booking System** provides a standardized, component-driven booking pipeline for all facility pass types and fitness classes (Gym Access, Group Classes, Yoga Classes, Zumba Sessions, HIIT, CrossFit, Pilates, Kickboxing, and Dance Fitness).
+The **Unified Session Booking System** provides a standardized, component-driven booking pipeline for all facility pass types and fitness classes (Gym Access, Yoga Classes, Zumba Sessions, HIIT, CrossFit, Pilates, Kickboxing, and Dance Fitness).
+
+> **Group Classes Navigation Rule:**  
+> Group Classes represent pre-scheduled, trainer-led cohort batches with set start/end dates, max capacities, and batch fees. Unlike generic floor passes, selecting **Group Classes** bypasses the generic booking type selector (Per Session, Weekly, Custom Dates) and navigates directly to the **Group Classes & Batches** catalog view (`currentView: 'group_classes'`), allowing users to browse and enroll into specific trainer-led batches immediately.
 
 ```mermaid
 flowchart TD

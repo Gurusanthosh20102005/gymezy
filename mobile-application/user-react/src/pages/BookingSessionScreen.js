@@ -179,7 +179,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
   const resolveInitialSessionKey = (cat) => {
     if (!cat) return null;
     if (cat === 'Gym') return 'Gym Access';
-    if (cat === 'Group Classes') return 'Group Classes';
+    if (cat === 'Group Classes' || cat === 'group_classes') return null; // Group Classes navigates directly to 'group_classes' view
     if (cat === 'Yoga') return 'Yoga Classes';
     if (cat === 'Zumba') return 'Zumba Sessions';
     if (SESSION_CONFIGS[cat]) return cat;
@@ -187,10 +187,13 @@ export const BookingSessionScreen = ({ route, navigation }) => {
   };
 
   const initialSessionKey = resolveInitialSessionKey(initialCategory);
+  const isInitialGroupClasses = initialCategory === 'Group Classes' || initialCategory === 'group_classes';
 
   // Navigation views: 'categories', 'session_booking', 'other_classes', 'group_classes', 'group_class_detail'
   const [currentView, setCurrentView] = useState(
-    initialSessionKey
+    isInitialGroupClasses
+      ? 'group_classes'
+      : initialSessionKey
       ? 'session_booking'
       : initialCategory === 'Other Classes'
       ? 'other_classes'
@@ -385,9 +388,8 @@ export const BookingSessionScreen = ({ route, navigation }) => {
       setSessionSubView('plan_select');
       setCurrentView('session_booking');
     } else if (cat === 'Group Classes') {
-      setActiveSessionKey('Group Classes');
-      setSessionSubView('plan_select');
-      setCurrentView('session_booking');
+      setSelectedGroupCategory('all');
+      setCurrentView('group_classes');
       if (sections.length === 0) {
         loadSections();
       }
@@ -695,9 +697,11 @@ export const BookingSessionScreen = ({ route, navigation }) => {
       return;
     }
     if (currentView === 'group_classes') {
-      setCurrentView('session_booking');
-      setActiveSessionKey('Group Classes');
-      setSessionSubView('plan_select');
+      if (isInitialGroupClasses) {
+        navigation.goBack();
+      } else {
+        setCurrentView('categories');
+      }
       return;
     }
     if (currentView === 'other_classes') {
@@ -710,6 +714,18 @@ export const BookingSessionScreen = ({ route, navigation }) => {
   // Hardware Back Handler for Android devices
   useEffect(() => {
     const onHardwareBack = () => {
+      if (currentView === 'group_class_detail') {
+        setCurrentView('group_classes');
+        return true;
+      }
+      if (currentView === 'group_classes') {
+        if (isInitialGroupClasses) {
+          navigation.goBack();
+          return true;
+        }
+        setCurrentView('categories');
+        return true;
+      }
       if (currentView === 'session_booking') {
         if (
           sessionSubView === 'single_session' ||
@@ -728,7 +744,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
           return true;
         }
       }
-      if (currentView === 'session_booking' || currentView === 'group_classes' || currentView === 'other_classes') {
+      if (currentView === 'session_booking' || currentView === 'other_classes') {
         if (
           activeSessionKey === 'HIIT' ||
           activeSessionKey === 'CrossFit' ||
@@ -749,7 +765,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
 
     const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
     return () => sub.remove();
-  }, [currentView, sessionSubView, activeSessionKey]);
+  }, [currentView, sessionSubView, activeSessionKey, isInitialGroupClasses]);
 
   const filteredSections =
     selectedGroupCategory === 'all'
