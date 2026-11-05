@@ -140,12 +140,15 @@ export const HomeScreen = ({ navigation }) => {
       .catch(() => {});
   }, []);
 
+  const PAGE_SIZE = 15;
+
   // Gyms State: Initialize synchronously from in-memory cache so no loading spinner appears after splashscreen
   const [gyms, setGyms] = useState(() => {
     const cached = gymService?.getCachedGyms?.({
       lat: locationService?.currentLocation?.latitude,
       lng: locationService?.currentLocation?.longitude,
-      limit: 50,
+      page: 1,
+      limit: PAGE_SIZE,
     });
     return cached?.gyms || [];
   });
@@ -153,10 +156,27 @@ export const HomeScreen = ({ navigation }) => {
     const cached = gymService?.getCachedGyms?.({
       lat: locationService?.currentLocation?.latitude,
       lng: locationService?.currentLocation?.longitude,
-      limit: 50,
+      page: 1,
+      limit: PAGE_SIZE,
     });
     return Boolean(!cached?.gyms || cached.gyms.length === 0);
   });
+
+  // Server-side infinite scroll pagination state
+  const [gymsPage, setGymsPage] = useState(1);
+  const [hasMoreGyms, setHasMoreGyms] = useState(true);
+  const [totalGymsCount, setTotalGymsCount] = useState(() => {
+    const cached = gymService?.getCachedGyms?.({
+      lat: locationService?.currentLocation?.latitude,
+      lng: locationService?.currentLocation?.longitude,
+      page: 1,
+      limit: PAGE_SIZE,
+    });
+    return cached?.pagination?.total || 0;
+  });
+  const [isLoadingMoreGyms, setIsLoadingMoreGyms] = useState(false);
+  const gymsPageRef = React.useRef(1);
+  gymsPageRef.current = gymsPage;
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -273,6 +293,8 @@ export const HomeScreen = ({ navigation }) => {
   // Fetch Nearest Gyms on location/filter/search changes with instant cache reuse
   useEffect(() => {
     let isMounted = true;
+    setGymsPage(1);
+    gymsPageRef.current = 1;
 
     // Check synchronous cache first
     const cached = gymService?.getCachedGyms?.({
@@ -283,11 +305,15 @@ export const HomeScreen = ({ navigation }) => {
       type: selectedType,
       facility: selectedFacility,
       workout: selectedWorkout,
-      limit: 50,
+      page: 1,
+      limit: PAGE_SIZE,
     });
 
     if (cached?.gyms?.length > 0) {
       setGyms(cached.gyms);
+      setTotalGymsCount(cached.pagination?.total || cached.gyms.length);
+      const more = cached.pagination?.hasMore ?? (cached.pagination?.page < cached.pagination?.pages);
+      setHasMoreGyms(Boolean(more));
       setIsLoadingGyms(false);
     } else {
       setIsLoadingGyms(true);
@@ -304,11 +330,17 @@ export const HomeScreen = ({ navigation }) => {
           type: selectedType,
           facility: selectedFacility,
           workout: selectedWorkout,
-          limit: 50,
+          page: 1,
+          limit: PAGE_SIZE,
         })
         .then((res) => {
           if (isMounted) {
-            setGyms(res.gyms || []);
+            const fetchedGyms = res.gyms || [];
+            setGyms(fetchedGyms);
+            const total = res.pagination?.total || fetchedGyms.length;
+            setTotalGymsCount(total);
+            const more = res.pagination?.hasMore ?? (res.pagination?.page < res.pagination?.pages);
+            setHasMoreGyms(Boolean(more && fetchedGyms.length >= PAGE_SIZE));
             setIsLoadingGyms(false);
           }
         })
@@ -332,6 +364,57 @@ export const HomeScreen = ({ navigation }) => {
     selectedFacility,
     selectedWorkout,
   ]);
+
+  // Server-Side Infinite Scroll: Load Next Page
+  const loadMoreGyms = async () => {
+    if (isLoadingMoreGyms || isLoadingGyms || !hasMoreGyms) return;
+
+    setIsLoadingMoreGyms(true);
+    const nextPage = gymsPageRef.current + 1;
+
+    try {
+      const res = await gymService.fetchGyms({
+        lat: userLocation.latitude,
+        lng: userLocation.longitude,
+        category: selectedCategory,
+        search: searchQuery,
+        type: selectedType,
+        facility: selectedFacility,
+        workout: selectedWorkout,
+        page: nextPage,
+        limit: PAGE_SIZE,
+      });
+
+      const newGyms = res?.gyms || [];
+      if (newGyms.length > 0) {
+        setGyms((prev) => {
+          const existingIds = new Set(prev.map((g) => (g.id || g._id || g.partnerId)?.toString()));
+          const uniqueNew = newGyms.filter((g) => !existingIds.has((g.id || g._id || g.partnerId)?.toString()));
+          return [...prev, ...uniqueNew];
+        });
+        setGymsPage(nextPage);
+        gymsPageRef.current = nextPage;
+      }
+
+      const total = res?.pagination?.total ?? totalGymsCount;
+      setTotalGymsCount(total);
+      const more = res?.pagination?.hasMore ?? (res?.pagination?.page < res?.pagination?.pages);
+      setHasMoreGyms(Boolean(more && newGyms.length > 0));
+    } catch (err) {
+      console.warn('[HOME] Failed to load more gyms:', err.message);
+    } finally {
+      setIsLoadingMoreGyms(false);
+    }
+  };
+
+  const handleHomeScroll = (event) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const paddingToBottom = 400;
+    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    if (isCloseToBottom && hasMoreGyms && !isLoadingMoreGyms && !isLoadingGyms) {
+      loadMoreGyms();
+    }
+  };
 
   const handleDetectLocation = async (showFeedback = true) => {
     setIsLocating(true);
@@ -464,6 +547,8 @@ export const HomeScreen = ({ navigation }) => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.exploreScroll}
+        onScroll={handleHomeScroll}
+        scrollEventThrottle={16}
       >
         {/* 1. Header Bar: Dynamic Greeting + Location */}
         <View style={styles.headerBar}>
@@ -962,7 +1047,9 @@ export const HomeScreen = ({ navigation }) => {
               {selectedCategory === 'All' ? 'Nearby Gyms' : `${selectedCategory} Gyms`}
             </Text>
             <View style={styles.gymsCountBadge}>
-              <Text style={styles.gymsCountText}>{filteredGyms.length}</Text>
+              <Text style={styles.gymsCountText}>
+                {totalGymsCount > 0 ? totalGymsCount : filteredGyms.length}
+              </Text>
             </View>
           </View>
 
@@ -1141,6 +1228,26 @@ export const HomeScreen = ({ navigation }) => {
               </View>
             );
           })
+        )}
+
+        {/* Infinite Scroll Footer: Loading indicator & End of list message */}
+        {isLoadingMoreGyms && (
+          <View style={styles.loadingMoreContainer}>
+            <ActivityIndicator size="small" color={AppColors.primaryColor} />
+            <Text style={[styles.loadingMoreText, { color: colors.subtitle }]}>
+              Loading more gyms near {userLocation.name}...
+            </Text>
+          </View>
+        )}
+
+        {!hasMoreGyms && filteredGyms.length > 0 && !isLoadingGyms && (
+          <View style={styles.endOfListContainer}>
+            <View style={[styles.endOfListDivider, { backgroundColor: colors.border }]} />
+            <Text style={[styles.endOfListText, { color: colors.subtitle }]}>
+              You've explored all {totalGymsCount || filteredGyms.length} gyms near you
+            </Text>
+            <View style={[styles.endOfListDivider, { backgroundColor: colors.border }]} />
+          </View>
         )}
 
         {/* 8. 'GYMEZY for you' and Watermark Branding Section at the bottom of the feed */}
@@ -2667,6 +2774,33 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 13.5,
     fontWeight: '600',
+  },
+  loadingMoreContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    gap: 8,
+  },
+  loadingMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  endOfListContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  endOfListDivider: {
+    flex: 1,
+    height: 1,
+  },
+  endOfListText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 
   /* Price Preference Styles */

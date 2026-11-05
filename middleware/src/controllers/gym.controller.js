@@ -778,7 +778,7 @@ export const getGyms = asyncHandler(async (req, res) => {
     radius_km,
     sortBy,
     page = 1,
-    limit = 50,
+    limit = 15,
   } = req.query;
 
   const isSuperAdmin = req.user?.role === USER_ROLES.SUPER_ADMIN;
@@ -786,7 +786,7 @@ export const getGyms = asyncHandler(async (req, res) => {
   const userLng = Number(lng || longitude);
   const hasCoordinates = !Number.isNaN(userLat) && !Number.isNaN(userLng);
   const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 50));
+  const limitNum = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 15));
   const skip = (pageNum - 1) * limitNum;
   const maxRadius = Number(radius_km || radius);
 
@@ -1036,6 +1036,7 @@ export const getGyms = asyncHandler(async (req, res) => {
         page: pageNum,
         limit: limitNum,
         pages: Math.ceil(processedGyms.length / limitNum) || 1,
+        hasMore: skip + limitNum < processedGyms.length,
       },
     },
     'Gyms retrieved successfully'
