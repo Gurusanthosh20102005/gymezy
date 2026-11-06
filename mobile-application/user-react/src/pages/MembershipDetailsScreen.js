@@ -673,16 +673,32 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
   const handleConfirmCancel = async () => {
     setIsSubmittingCancel(true);
     try {
+      const isUpcoming =
+        membership.status === 'Upcoming' ||
+        (membership.rawStartDate && new Date(membership.rawStartDate) > new Date());
       const negotiation = await cancelMembership(membership._id || membership.id, selectedReason);
-      if (negotiation) {
-        setCancellationNegotiation(negotiation);
-      }
       setShowCancelSheet(false);
-      showToast({
-        message: 'Cancellation negotiation submitted successfully to gym owner.',
-        isSuccess: true,
-      });
-      setShowNegotiationModal(true);
+      if (negotiation?.status === 'COMPLETED' || isUpcoming) {
+        updateMembership({
+          ...membership,
+          status: 'Cancelled',
+          cancellationNegotiation: negotiation,
+          cancellationStatus: 'COMPLETED',
+        });
+        showToast({
+          message: 'Membership cancelled successfully with 100% full refund.',
+          isSuccess: true,
+        });
+      } else {
+        if (negotiation) {
+          setCancellationNegotiation(negotiation);
+        }
+        showToast({
+          message: 'Cancellation negotiation submitted successfully to gym owner.',
+          isSuccess: true,
+        });
+        setShowNegotiationModal(true);
+      }
     } catch (error) {
       showToast({
         message: error.message || 'Failed to submit cancellation negotiation.',
@@ -1281,49 +1297,51 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
         )}
 
         {/* 5. Actions: Upgrade Membership & Cancel Membership */}
-        {membership.status === 'Active' && (
+        {(membership.status === 'Active' || membership.status === 'Upcoming') && (
           <View style={{ marginTop: 24 }}>
-            {/* Plan Action: Upgrade Plan / Change Plan / Downgrade Plan */}
-            {pendingSwitchRequest ? (
-              <View
-                style={[
-                  styles.actionOutlineBtn,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: isDark ? '#262626' : '#F1F5F9',
-                    opacity: 0.8,
-                  },
-                ]}
-              >
-                <MaterialIcons
-                  name="hourglass-top"
-                  size={20}
-                  color={colors.subtitle}
-                  style={{ marginRight: 8 }}
-                />
-                <Text style={[styles.actionOutlineText, { color: colors.subtitle }]}>
-                  Plan Switch Under Review
-                </Text>
-              </View>
-            ) : (
-              <TouchableOpacity
-                onPress={openPlanSwitchSheet}
-                style={[
-                  styles.actionOutlineBtn,
-                  { borderColor: primaryNavy },
-                ]}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons
-                  name={planActionConfig.icon}
-                  size={20}
-                  color={primaryNavy}
-                  style={{ marginRight: 8 }}
-                />
-                <Text style={[styles.actionOutlineText, { color: primaryNavy }]}>
-                  {planActionConfig.label}
-                </Text>
-              </TouchableOpacity>
+            {/* Plan Action: Upgrade Plan / Change Plan / Downgrade Plan (Active Only) */}
+            {membership.status === 'Active' && (
+              pendingSwitchRequest ? (
+                <View
+                  style={[
+                    styles.actionOutlineBtn,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: isDark ? '#262626' : '#F1F5F9',
+                      opacity: 0.8,
+                    },
+                  ]}
+                >
+                  <MaterialIcons
+                    name="hourglass-top"
+                    size={20}
+                    color={colors.subtitle}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={[styles.actionOutlineText, { color: colors.subtitle }]}>
+                    Plan Switch Under Review
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={openPlanSwitchSheet}
+                  style={[
+                    styles.actionOutlineBtn,
+                    { borderColor: primaryNavy },
+                  ]}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons
+                    name={planActionConfig.icon}
+                    size={20}
+                    color={primaryNavy}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={[styles.actionOutlineText, { color: primaryNavy }]}>
+                    {planActionConfig.label}
+                  </Text>
+                </TouchableOpacity>
+              )
             )}
 
             {/* Cancellation Action Button: View Active Negotiation OR Request Cancel */}
@@ -1379,7 +1397,9 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                   style={{ marginRight: 8 }}
                 />
                 <Text style={[styles.actionOutlineText, { color: '#F87171' }]}>
-                  Request to Cancel Membership
+                  {membership.status === 'Upcoming'
+                    ? 'Cancel Upcoming Pass (100% Refund)'
+                    : 'Request to Cancel Membership'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -1916,7 +1936,9 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
             </View>
 
             <Text style={[styles.sheetDescription, { color: colors.subtitle }]}>
-              Please select a reason for cancellation. Note that cancellation requests are subject to gym refund policies.
+              {membership.status === 'Upcoming'
+                ? `Your pass has not started yet. Cancelling now will not charge for any days and you will receive a 100% full refund of ₹${Math.round(membership.amountPaid || membership.pricing?.totalAmount || 0)}.`
+                : 'Please select a reason for cancellation. Note that cancellation requests are subject to gym refund policies.'}
             </Text>
 
             {/* Reason Radio List */}
@@ -1981,7 +2003,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                 activeOpacity={0.85}
               >
                 <Text style={[styles.cancelModalBtnText, { color: '#FFFFFF' }]}>
-                  Confirm Cancel
+                  {membership.status === 'Upcoming' ? 'Confirm & Refund 100%' : 'Confirm Cancel'}
                 </Text>
               </TouchableOpacity>
             </View>

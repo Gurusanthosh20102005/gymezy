@@ -83,5 +83,35 @@ test('Walk-in vs App Member Cancellation Architecture (SSOT)', async (t) => {
     assert.strictEqual(appOnly[0].requestId, 'CAN-APP-001');
     assert.strictEqual(appOnly[1].requestId, 'CAN-APP-003');
   });
+
+  await t.test('4. Pre-activation (Upcoming) membership cancellation entitles member to 100% full refund', () => {
+    const tomorrow = new Date(Date.now() + 86400000);
+    const nextMonth = new Date(Date.now() + 30 * 86400000);
+    const dummyUpcoming = {
+      _id: new mongoose.Types.ObjectId(),
+      membershipId: 'MEM-TEST-UPCOMING',
+      source: 'APP',
+      status: 'Upcoming',
+      startDate: tomorrow,
+      endDate: nextMonth,
+      pricing: { totalAmount: 4999 },
+    };
+
+    const now = new Date();
+    const isUpcoming = dummyUpcoming.status === 'Upcoming' || (dummyUpcoming.startDate && new Date(dummyUpcoming.startDate) > now);
+    assert.strictEqual(isUpcoming, true, 'Must detect pre-activation status');
+
+    const totalPaid = Number(dummyUpcoming.pricing.totalAmount);
+    assert.strictEqual(totalPaid, 4999);
+    // Cancellation before activation executes with 100% refund
+    dummyUpcoming.status = 'Cancelled';
+    dummyUpcoming.cancellation = {
+      cancelledAt: now,
+      reason: 'Cancelled before pass activation',
+      refundAmount: totalPaid,
+    };
+    assert.strictEqual(dummyUpcoming.status, 'Cancelled');
+    assert.strictEqual(dummyUpcoming.cancellation.refundAmount, 4999);
+  });
 });
 

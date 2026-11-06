@@ -932,28 +932,74 @@ export const cancelMembership = async (req, res, next) => {
       throw ApiError.badRequest('Membership is already cancelled.');
     }
 
-    // SSOT: Direct cancellation for WALK_IN members - no negotiation request or member approval needed
+    // SSOT: Direct cancellation for WALK_IN members or PRE-ACTIVATION UPCOMING members
     const isWalkIn = isWalkInMembership(membership);
+    const now = new Date();
+    const isUpcoming = membership.status === 'Upcoming' || (membership.startDate && new Date(membership.startDate) > now);
 
-    if (isWalkIn) {
+    if (isWalkIn || isUpcoming) {
       const totalPaid = Number(membership.pricing?.totalAmount || 0);
-      let calculatedRefund = 0;
-      if (refundAmount !== undefined && refundAmount !== null && refundAmount !== '') {
-        calculatedRefund = Math.max(0, Number(refundAmount) || 0);
-      } else if (deductionAmount !== undefined && deductionAmount !== null && deductionAmount !== '') {
-        calculatedRefund = Math.max(0, totalPaid - (Number(deductionAmount) || 0));
+      let calculatedRefund = totalPaid;
+      if (isWalkIn && !isUpcoming) {
+        if (refundAmount !== undefined && refundAmount !== null && refundAmount !== '') {
+          calculatedRefund = Math.max(0, Number(refundAmount) || 0);
+        } else if (deductionAmount !== undefined && deductionAmount !== null && deductionAmount !== '') {
+          calculatedRefund = Math.max(0, totalPaid - (Number(deductionAmount) || 0));
+        }
       }
 
       membership.status = 'Cancelled';
       membership.cancellation = {
-        cancelledAt: new Date(),
-        reason: String(reason || 'Cancelled by gym owner').trim(),
+        cancelledAt: now,
+        reason: String(reason || (isUpcoming ? 'Cancelled before pass activation' : 'Cancelled by gym owner')).trim(),
         refundAmount: calculatedRefund,
-        notes: String(notes || '').trim(),
+        notes: String(notes || (isUpcoming ? 'Pre-activation 100% full refund' : '')).trim(),
         cancelledBy: req.user?._id || req.user?.userId || null,
-        cancelledByName: req.user?.fullName || req.user?.name || 'Gym Admin',
+        cancelledByName: req.user?.fullName || req.user?.name || (isUpcoming ? 'Member' : 'Gym Admin'),
       };
       await membership.save();
+
+      // If upcoming membership, record completed negotiation for reporting and wallet refund if applicable
+      if (isUpcoming) {
+        if (membership.userId && membership.gymId) {
+          const walletAppliedPaise = Math.round(Number(membership.payment?.walletAmountApplied || 0) * 100);
+          if (walletAppliedPaise > 0) {
+            const userWallet = await Wallet.findOne({ userId: membership.userId, gymId: membership.gymId });
+            if (userWallet) {
+              userWallet.balancePaise += walletAppliedPaise;
+              userWallet.history.push({
+                amountPaise: walletAppliedPaise,
+                type: 'CREDIT',
+                description: `Wallet refund for pre-activation cancelled membership (${membership.membershipTier})`,
+                transactionId: `REF_${Date.now()}`,
+                createdAt: now,
+              });
+              await userWallet.save();
+            }
+          }
+        }
+
+        await MembershipCancellation.create({
+          requestId: createCancellationRequestId(),
+          membershipId: membership._id,
+          gymId: membership.gymId,
+          userId: membership.userId,
+          reason: membership.cancellation.reason,
+          originalAmount: totalPaid,
+          maximumRefundAmount: totalPaid,
+          currentOffer: {
+            round: 1,
+            deductionAmount: 0,
+            refundAmount: totalPaid,
+            message: 'Pre-activation cancellation: 100% full refund approved.',
+            offeredAt: now,
+            offeredBy: 'SYSTEM',
+          },
+          status: 'COMPLETED',
+          approvedRefundAmount: totalPaid,
+          completedAt: now,
+        });
+      }
 
       const populated = await Membership.findById(membership._id)
         .populate('userId', 'fullName name email phone avatar customerId')
@@ -963,7 +1009,9 @@ export const cancelMembership = async (req, res, next) => {
       return res.status(200).json(
         ApiResponse.success(
           sanitizeDocument(populated),
-          'Walk-in membership cancelled successfully and refund quote recorded.'
+          isUpcoming
+            ? 'Membership cancelled before pass activation with 100% full refund.'
+            : 'Walk-in membership cancelled successfully and refund quote recorded.'
         )
       );
     }
@@ -1023,6 +1071,73 @@ export const requestCancellationNegotiation = async (req, res, next) => {
         ApiResponse.success(
           sanitizeDocument(populated),
           'Walk-in membership cancelled directly without negotiation.'
+        )
+      );
+    }
+
+    // SSOT: If the pass has not activated yet (status is Upcoming or startDate is in the future), cancel directly with 100% full refund
+    const now = new Date();
+    const isUpcoming = membership.status === 'Upcoming' || (membership.startDate && new Date(membership.startDate) > now);
+
+    if (isUpcoming) {
+      const totalPaid = Number(membership.pricing?.totalAmount || 0);
+
+      membership.status = 'Cancelled';
+      membership.cancellation = {
+        cancelledAt: now,
+        reason,
+        refundAmount: totalPaid,
+        notes: String(req.body?.notes || 'Cancelled before pass activation (100% Full Refund)').trim(),
+        cancelledBy: req.user?._id || req.user?.userId || null,
+        cancelledByName: req.user?.fullName || req.user?.name || 'Member',
+      };
+      await membership.save();
+
+      // If user paid partially or fully with wallet, refund wallet balance immediately
+      if (membership.userId && membership.gymId) {
+        const walletAppliedPaise = Math.round(Number(membership.payment?.walletAmountApplied || 0) * 100);
+        if (walletAppliedPaise > 0) {
+          const userWallet = await Wallet.findOne({ userId: membership.userId, gymId: membership.gymId });
+          if (userWallet) {
+            userWallet.balancePaise += walletAppliedPaise;
+            userWallet.history.push({
+              amountPaise: walletAppliedPaise,
+              type: 'CREDIT',
+              description: `Wallet refund for pre-activation cancelled membership (${membership.membershipTier})`,
+              transactionId: `REF_${Date.now()}`,
+              createdAt: now,
+            });
+            await userWallet.save();
+          }
+        }
+      }
+
+      // Record COMPLETED negotiation for audit, gym owner dashboard, and user tracking
+      const negotiation = await MembershipCancellation.create({
+        requestId: createCancellationRequestId(),
+        membershipId: membership._id,
+        gymId: membership.gymId,
+        userId: membership.userId,
+        reason,
+        originalAmount: totalPaid,
+        maximumRefundAmount: totalPaid,
+        currentOffer: {
+          round: 1,
+          deductionAmount: 0,
+          refundAmount: totalPaid,
+          message: 'Pre-activation cancellation: 100% full refund approved.',
+          offeredAt: now,
+          offeredBy: 'SYSTEM',
+        },
+        status: 'COMPLETED',
+        approvedRefundAmount: totalPaid,
+        completedAt: now,
+      });
+
+      return res.status(200).json(
+        ApiResponse.success(
+          negotiation,
+          'Membership cancelled before pass activation with 100% full refund.'
         )
       );
     }
