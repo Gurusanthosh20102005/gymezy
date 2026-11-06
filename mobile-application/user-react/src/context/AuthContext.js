@@ -250,6 +250,20 @@ export const AuthProvider = ({ children }) => {
     });
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const freshUser = await apiService.getCurrentUser();
+      if (freshUser) {
+        setUser(freshUser);
+        await AsyncStorage.setItem(USER_KEY, JSON.stringify(freshUser)).catch(() => {});
+        return freshUser;
+      }
+    } catch (err) {
+      console.warn('[AUTH] refreshUser notice:', err.message);
+    }
+    return null;
+  }, []);
+
   const clearSessionExpiredMessage = useCallback(() => {
     setSessionExpiredMessage(null);
   }, []);
@@ -269,6 +283,7 @@ export const AuthProvider = ({ children }) => {
     continueAsGuest,
     logout,
     updateUser,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

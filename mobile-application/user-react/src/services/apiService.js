@@ -2,8 +2,8 @@ import { NativeModules } from 'react-native';
 import { getCloudApiUrl } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
-const CURRENT_MAC_IP = '192.168.0.107';
-const LOCAL_WIFI_IP = '192.168.0.107';
+const CURRENT_MAC_IP = '192.168.0.104';
+const LOCAL_WIFI_IP = '192.168.0.104';
 
 const getMetroHost = () => {
   try {
@@ -102,14 +102,17 @@ class ApiService {
 
     // Priority candidates: In development mode (__DEV__ === true), prioritize localhost, Metro host, and LAN IP.
     // In production/release builds, connect directly to the targeted cloud API.
+    // Priority candidates: In development mode (__DEV__ === true), prioritize working candidate, Metro host, and LAN IP.
+    // Notice: Over wireless debugging, LOCAL_WIFI_IP must precede loopbacks (localhost/127.0.0.1) which require USB adb reverse.
     const candidateBases = __DEV__
       ? [
           this.verifiedBase,
-          `http://localhost:${BACKEND_PORT}/api/v1`,
           metroHost ? `http://${metroHost}:${BACKEND_PORT}/api/v1` : null,
+          `http://${LOCAL_WIFI_IP}:${BACKEND_PORT}/api/v1`,
           `http://${CURRENT_MAC_IP}:${BACKEND_PORT}/api/v1`,
-          `http://10.0.2.2:${BACKEND_PORT}/api/v1`,
+          `http://localhost:${BACKEND_PORT}/api/v1`,
           `http://127.0.0.1:${BACKEND_PORT}/api/v1`,
+          `http://10.0.2.2:${BACKEND_PORT}/api/v1`,
           cloudUrl,
         ]
       : [cloudUrl];
@@ -121,12 +124,46 @@ class ApiService {
       const currentBase = uniqueBases[i];
       const targetUrl = `${currentBase}${endpoint}`;
       try {
-        const attemptTimeout = this.verifiedBase === currentBase ? timeoutMs : 10000;
+        const attemptTimeout = this.verifiedBase === currentBase ? timeoutMs : 5000;
         const response = await fetchWithTimeout(
           targetUrl,
           options,
           attemptTimeout
         );
+
+        // Safely extract response text to inspect before treating as valid JSON
+        const rawText = await response.text();
+        const trimmed = (rawText || '').trim();
+
+        // Reject HTML error pages, captive portals, ISP redirection pages, or Cloudflare challenges
+        const isHtml =
+          trimmed.startsWith('<') ||
+          trimmed.toLowerCase().includes('<!doctype') ||
+          trimmed.toLowerCase().includes('<html') ||
+          trimmed.toLowerCase().includes('<head');
+
+        if (isHtml) {
+          throw new Error(
+            `Server at ${currentBase} returned HTML instead of JSON (${response.status} ${response.statusText}): ${trimmed.slice(0, 100)}`
+          );
+        }
+
+        // Validate JSON payload
+        let parsedData = null;
+        if (trimmed) {
+          try {
+            parsedData = JSON.parse(rawText);
+          } catch (jsonErr) {
+            throw new Error(
+              `Server at ${currentBase} returned invalid JSON format: ${jsonErr.message}. Content: ${trimmed.slice(0, 80)}`
+            );
+          }
+        }
+
+        // Cache the parsed JSON and raw text on response so existing callers of await response.json() succeed without re-reading stream
+        response.json = async () => parsedData;
+        response.text = async () => rawText;
+        response._parsedData = parsedData;
 
         // Handle 401 Unauthorized globally
         if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/register')) {
@@ -241,6 +278,10 @@ class ApiService {
     }
 
     return json.data;
+  }
+
+  async getMe() {
+    return this.getCurrentUser();
   }
 
   /**
@@ -515,6 +556,21 @@ class ApiService {
     const json = await response.json();
     if (!response.ok || !json.success) {
       throw new Error(json.message || 'Failed to fetch booking details.');
+    }
+    return json.data;
+  }
+
+  /**
+   * Get cancellation and refund quote preview
+   */
+  async getBookingCancellationQuote(bookingId) {
+    const response = await this.executeFetch(`/bookings/${bookingId}/cancellation-quote`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Failed to fetch cancellation quote.');
     }
     return json.data;
   }

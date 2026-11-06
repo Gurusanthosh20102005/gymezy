@@ -1048,10 +1048,38 @@ export const getMyCancellationNegotiations = async (req, res, next) => {
       req.user?._id ||
       req.query.userId ||
       req.query.user;
-    if (!userId) return res.status(200).json(ApiResponse.success([], 'Cancellation negotiations retrieved.'));
-    const filter = mongoose.Types.ObjectId.isValid(userId)
-      ? { userId: new mongoose.Types.ObjectId(userId) }
-      : { userId };
+    const rawMembershipId = req.query.membershipId;
+
+    let filter = null;
+
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      filter = { userId: new mongoose.Types.ObjectId(userId) };
+    } else if (userId) {
+      filter = { userId };
+    }
+
+    if (rawMembershipId) {
+      let resolvedMemId = null;
+      if (mongoose.Types.ObjectId.isValid(rawMembershipId)) {
+        resolvedMemId = new mongoose.Types.ObjectId(rawMembershipId);
+      } else {
+        const memDoc = await Membership.findOne({ membershipId: rawMembershipId }).select('_id').lean();
+        if (memDoc) resolvedMemId = memDoc._id;
+      }
+
+      if (resolvedMemId) {
+        if (filter) {
+          filter = { $or: [filter, { membershipId: resolvedMemId }] };
+        } else {
+          filter = { membershipId: resolvedMemId };
+        }
+      }
+    }
+
+    if (!filter) {
+      return res.status(200).json(ApiResponse.success([], 'Cancellation negotiations retrieved.'));
+    }
+
     const negotiations = await MembershipCancellation.find(filter)
       .populate('gymId', 'name partnerId logo address')
       .populate('membershipId', 'membershipId membershipTier startDate endDate pricing')

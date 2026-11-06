@@ -18,16 +18,28 @@ export const mapBackendBookingToClient = (b) => {
 
   const now = new Date();
   let resolvedStatus = b.status || 'Upcoming';
-  if (resolvedStatus !== 'Cancelled' && resolvedStatus !== 'Completed') {
-    const sDate = b.startDate ? new Date(b.startDate) : null;
-    if (sDate) sDate.setHours(0, 0, 0, 0);
-    const eDate = b.endDate ? new Date(b.endDate) : null;
-    if (eDate) eDate.setHours(23, 59, 59, 999);
+  if (resolvedStatus !== 'Cancelled' && resolvedStatus !== 'Cancellation_Requested' && resolvedStatus !== 'Completed') {
+    if (b.isCustomDates && Array.isArray(b.customDates) && b.customDates.length > 0) {
+      const allCustomDatesPassed = b.customDates.every((cd) => {
+        if (!cd || !cd.date) return true;
+        const endOfDay = new Date(cd.date);
+        endOfDay.setHours(23, 59, 59, 999);
+        return now > endOfDay || cd.status === 'Attended' || cd.status === 'Missed';
+      });
+      if (allCustomDatesPassed) {
+        resolvedStatus = 'Completed';
+      }
+    } else {
+      const sDate = b.startDate ? new Date(b.startDate) : null;
+      if (sDate) sDate.setHours(0, 0, 0, 0);
+      const eDate = b.endDate ? new Date(b.endDate) : null;
+      if (eDate) eDate.setHours(23, 59, 59, 999);
 
-    if (sDate && sDate <= now && (!eDate || eDate >= now)) {
-      resolvedStatus = 'Active';
-    } else if (eDate && eDate < now) {
-      resolvedStatus = 'Completed';
+      if (sDate && sDate <= now && (!eDate || eDate >= now)) {
+        resolvedStatus = 'Active';
+      } else if (eDate && eDate < now) {
+        resolvedStatus = 'Completed';
+      }
     }
   }
 
@@ -116,29 +128,17 @@ export const BookingProvider = ({ children }) => {
     setBookings((prev) => prev.map((b) => (b.id === normalized.id ? normalized : b)));
   };
 
-  const cancelBooking = async (bookingId, reason) => {
-    // 1. Optimistic local update
-    setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId || b._id === bookingId || b.bookingId === bookingId
-          ? {
-              ...b,
-              status: 'Cancelled',
-              cancellationReason: reason,
-              cancellation: { cancelledAt: new Date(), reason },
-            }
-          : b
-      )
-    );
-
-    // 2. Call backend
+  const cancelBooking = async (bookingId, reason = 'Cancelled by member') => {
     try {
       const updated = await apiService.cancelBooking(bookingId, reason);
       if (updated) {
-        updateBooking(updated);
+        const mapped = mapBackendBookingToClient(updated);
+        updateBooking(mapped);
+        return mapped;
       }
     } catch (err) {
       console.warn('[BOOKING CONTEXT] Server cancel booking failed:', err?.message);
+      throw err;
     }
   };
 

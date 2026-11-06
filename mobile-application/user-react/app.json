@@ -17,7 +17,6 @@
     },
     "android": {
       "package": "com.gymezy.user",
-      "googleServicesFile": "./android/app/google-services.json",
       "usesCleartextTraffic": true,
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",

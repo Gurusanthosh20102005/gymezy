@@ -6,6 +6,8 @@ import MembershipSwitchRequest from '../models/membershipSwitchRequest.model.js'
 import Employee from '../models/employee.model.js';
 import User from '../models/user.model.js';
 import { sendPushNotification } from './firebase.service.js';
+import Booking from '../models/booking.model.js';
+import { isBookingCompleted, evaluateBookingStatus } from './bookingProration.service.js';
 
 /**
  * Auto-transition memberships based on date window:
@@ -102,6 +104,43 @@ export const syncMembershipStatuses = async () => {
 };
 
 /**
+ * Auto-transition bookings:
+ * - 'Upcoming' -> 'Active' once startDate has arrived
+ * - 'Active' / 'Upcoming' -> 'Completed' once the booking date has elapsed (e.g. 1-day pass on Nov 5 becomes Nov 6)
+ */
+export const syncBookingStatuses = async () => {
+  try {
+    const now = new Date();
+    const bookings = await Booking.find({
+      status: { $in: ['Upcoming', 'Active'] },
+    });
+
+    let completedCount = 0;
+    let activatedCount = 0;
+
+    for (const booking of bookings) {
+      if (isBookingCompleted(booking, now)) {
+        booking.status = 'Completed';
+        completedCount++;
+        await booking.save();
+      } else if (booking.status === 'Upcoming' && booking.startDate && new Date(booking.startDate) <= now) {
+        booking.status = 'Active';
+        activatedCount++;
+        await booking.save();
+      }
+    }
+
+    if (completedCount > 0 || activatedCount > 0) {
+      console.log(`[BOOKING CRON SYNC] Completed: ${completedCount}, Activated: ${activatedCount} at ${now.toISOString()}`);
+    }
+    return { completed: completedCount, activated: activatedCount };
+  } catch (error) {
+    console.error('[ATTENDANCE CRON] Booking sync error:', error.message);
+    return { completed: 0, activated: 0 };
+  }
+};
+
+/**
  * Auto-checkout stale attendance sessions.
  * Finds all 'Checked-In' sessions older than 4 hours or from prior days,
  * and sets checkOutTime to checkInTime + 2 hours with status 'Completed'.
@@ -129,6 +168,7 @@ export const autoCheckoutStaleRecords = async () => {
 
     // Sync membership statuses
     await syncMembershipStatuses();
+  await syncBookingStatuses();
 
     // Auto-deactivate expired temporary staff contracts
     await autoDeactivateExpiredTemporaryStaff();
@@ -296,6 +336,7 @@ export const initAttendanceCron = () => {
   // Also run every hour to activate memberships as soon as their start date arrives
   cron.schedule('0 * * * *', async () => {
     await syncMembershipStatuses();
+    await syncBookingStatuses();
   });
 
   console.log('[ATTENDANCE CRON] Attendance cron jobs initialized (membership sync, pass expiry alerts, workout reminders).');
@@ -326,6 +367,7 @@ export default {
   initAttendanceCron,
   autoCheckoutStaleRecords,
   syncMembershipStatuses,
+  syncBookingStatuses,
   sendPassExpiryAlerts,
   sendWorkoutReminders,
 };
