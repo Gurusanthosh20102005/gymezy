@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../services/apiService';
+import { biometricService } from '../services/biometricService';
 import { isJwtExpired, getJwtRemainingMs } from '../utils/jwtUtils';
 
 const TOKEN_KEY = '@gymezy_user_jwt_token';
@@ -168,6 +169,17 @@ export const AuthProvider = ({ children }) => {
         await AsyncStorage.setItem(USER_KEY, JSON.stringify(authUser));
       }
 
+      if (authToken && authUser) {
+        const isBio = await biometricService.isBiometricEnabled();
+        if (isBio || authUser.biometricEnabled || authUser.preferences?.biometricLogin) {
+          await biometricService.saveAuthSession({
+            token: authToken,
+            user: authUser,
+            identifier: identifier || authUser.email || '',
+          });
+        }
+      }
+
       if (rememberMe && identifier) {
         await AsyncStorage.setItem(REMEMBER_KEY, identifier);
         setSavedIdentifier(identifier);
@@ -179,6 +191,80 @@ export const AuthProvider = ({ children }) => {
       return { success: true, data: result };
     } catch (error) {
       return { success: false, message: error.message || 'Login failed.' };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [scheduleAutoLogout]);
+
+  /**
+   * Biometric / Face ID / Touch ID Fast Authentication Login
+   */
+  const loginWithBiometrics = useCallback(async () => {
+    setIsLoading(true);
+    setSessionExpiredMessage(null);
+
+    try {
+      const isEnabled = await biometricService.isBiometricEnabled();
+      if (!isEnabled) {
+        return { success: false, message: 'Biometric login is not enabled. Please enable it in Profile Settings.' };
+      }
+
+      const session = await biometricService.getAuthSession();
+      if (!session?.token || !session?.user) {
+        return {
+          success: false,
+          message: 'No biometric credentials saved on this device. Please log in with password once first.',
+        };
+      }
+
+      // Check if JWT token is expired
+      if (isJwtExpired(session.token)) {
+        await biometricService.clearAuthSession();
+        return {
+          success: false,
+          message: 'Your previous session has expired. Please log in with your password to re-enable biometrics.',
+        };
+      }
+
+      // Prompt native biometric verification
+      const authResult = await biometricService.authenticate('Unlock GYMEZY with Face ID / Biometrics');
+      if (!authResult.success) {
+        return {
+          success: false,
+          message: authResult.error || 'Biometric authentication was cancelled.',
+        };
+      }
+
+      // Successfully authenticated
+      apiService.setAuthToken(session.token);
+      setToken(session.token);
+      setUser(session.user);
+      setIsGuest(false);
+
+      await AsyncStorage.setItem(TOKEN_KEY, session.token);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(session.user));
+      scheduleAutoLogout(session.token);
+
+      // Validate and refresh with backend in background
+      apiService
+        .getCurrentUser()
+        .then((freshUser) => {
+          if (freshUser) {
+            setUser(freshUser);
+            AsyncStorage.setItem(USER_KEY, JSON.stringify(freshUser)).catch(() => {});
+            biometricService.saveAuthSession({
+              token: session.token,
+              user: freshUser,
+              identifier: session.identifier,
+            });
+          }
+        })
+        .catch(() => {});
+
+      return { success: true, user: session.user };
+    } catch (err) {
+      console.warn('[AUTH] Biometric login error:', err.message);
+      return { success: false, message: err.message || 'Biometric login failed.' };
     } finally {
       setIsLoading(false);
     }
@@ -284,6 +370,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUser,
     refreshUser,
+    loginWithBiometrics,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

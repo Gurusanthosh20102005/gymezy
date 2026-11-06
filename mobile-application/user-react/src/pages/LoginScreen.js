@@ -20,6 +20,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
+import { biometricService } from '../services/biometricService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -36,11 +37,15 @@ export const LoginScreen = ({ navigation }) => {
   const {
     login,
     register,
+    loginWithBiometrics,
     savedIdentifier,
     isLoading,
     sessionExpiredMessage,
     clearSessionExpiredMessage,
   } = useAuth();
+
+  const [isBiometricReady, setIsBiometricReady] = useState(false);
+  const [biometricType, setBiometricType] = useState('FINGERPRINT');
 
   const scrollViewRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -98,6 +103,60 @@ export const LoginScreen = ({ navigation }) => {
       setIdentifier(savedIdentifier);
     }
   }, [savedIdentifier]);
+
+  // Check biometric capability and saved session on mount
+  useEffect(() => {
+    let isMounted = true;
+    const checkBiometricAvailability = async () => {
+      try {
+        const isEnabled = await biometricService.isBiometricEnabled();
+        if (!isEnabled) {
+          if (isMounted) setIsBiometricReady(false);
+          return;
+        }
+        const session = await biometricService.getAuthSession();
+        if (!session?.token) {
+          if (isMounted) setIsBiometricReady(false);
+          return;
+        }
+        const support = await biometricService.checkHardwareSupport();
+        if (support.available) {
+          const type = await biometricService.getBiometricType();
+          if (isMounted) {
+            setBiometricType(type);
+            setIsBiometricReady(true);
+          }
+        } else {
+          if (isMounted) setIsBiometricReady(false);
+        }
+      } catch {
+        if (isMounted) setIsBiometricReady(false);
+      }
+    };
+
+    checkBiometricAvailability();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleBiometricSignIn = async () => {
+    const result = await loginWithBiometrics();
+    if (result.success) {
+      showToast({
+        message: `Welcome back, ${result.user?.fullName || result.user?.name || 'Member'}!`,
+        isSuccess: true,
+      });
+      navigation.replace('HomeTabs');
+    } else {
+      if (result.message && !result.message.toLowerCase().includes('cancel')) {
+        showToast({
+          message: result.message,
+          isError: true,
+        });
+      }
+    }
+  };
 
   const fillDemoCredentials = () => {
     setAuthMode('SIGN_IN');
@@ -489,6 +548,34 @@ export const LoginScreen = ({ navigation }) => {
                   </View>
                 )}
               </TouchableOpacity>
+
+              {/* Biometric / Face ID Quick Login Button */}
+              {isBiometricReady && (
+                <TouchableOpacity
+                  onPress={handleBiometricSignIn}
+                  disabled={isLoading}
+                  style={[
+                    styles.biometricBtn,
+                    {
+                      borderColor: isDark ? AppColors.darkBorder : '#BFDBFE',
+                      backgroundColor: isDark ? 'rgba(0, 56, 130, 0.15)' : '#EFF6FF',
+                    },
+                  ]}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons
+                    name={biometricType === 'FACIAL_RECOGNITION' ? 'face' : 'fingerprint'}
+                    size={22}
+                    color={AppColors.primaryColor}
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={[styles.biometricBtnText, { color: isDark ? '#93C5FD' : AppColors.primaryColor }]}>
+                    {biometricType === 'FACIAL_RECOGNITION'
+                      ? 'Log In with Face ID'
+                      : 'Log In with Fingerprint'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -714,8 +801,6 @@ export const LoginScreen = ({ navigation }) => {
             </View>
           )}
 
-
-
           {/* Footer Toggle */}
           <View style={styles.footerRow}>
             <Text style={[styles.footerText, { color: colors.subtitle }]}>
@@ -918,6 +1003,20 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  biometricBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginTop: 14,
+  },
+  biometricBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   goalChipsRow: {
     flexDirection: 'row',

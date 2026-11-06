@@ -14,7 +14,9 @@ import {
   ActivityIndicator,
   NativeModules,
   RefreshControl,
+  Linking,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
@@ -27,29 +29,13 @@ import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
 import { attendanceService } from '../services/attendanceService';
 import { notificationService } from '../services/notificationService';
+import { biometricService } from '../services/biometricService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Storage keys for user preferences & security
 const PREF_WORKOUT_REMINDERS_KEY = '@gymezy_pref_workout_reminders';
 const PREF_PASS_EXPIRY_ALERTS_KEY = '@gymezy_pref_pass_expiry_alerts';
 const PREF_BIOMETRIC_LOGIN_KEY = '@gymezy_pref_biometric_login';
-
-// Safely load ExpoLocalAuthentication only if registered in native runtime
-const getSafeLocalAuthentication = () => {
-  try {
-    const isLinked = Boolean(
-      NativeModules?.ExpoLocalAuthentication ||
-      globalThis?.expo?.modules?.ExpoLocalAuthentication ||
-      globalThis?.ExpoModules?.ExpoLocalAuthentication
-    );
-    if (!isLinked) {
-      return null;
-    }
-    return require('expo-local-authentication');
-  } catch {
-    return null;
-  }
-};
 
 // Safely check if native ImagePicker module is registered before requiring
 const getSafeImagePicker = () => {
@@ -110,12 +96,68 @@ const FAQS = [
   },
 ];
 
+const PRIVACY_SECTIONS = [
+  {
+    title: '1. Information We Collect',
+    content:
+      'We collect personal details such as your name, email, phone number, fitness goals, and transaction records to enable seamless gym bookings and pass management. When you check in at partner gyms, attendance timestamp and location data are logged to authenticate entry.',
+  },
+  {
+    title: '2. How Your Data Is Used',
+    content:
+      'Your information is used solely to generate digital entry passes, secure your bookings, process wallet transactions, and connect you with customer support. We never sell your personal information or contact details to third-party advertisers.',
+  },
+  {
+    title: '3. Data Security & Encryption',
+    content:
+      'All data transmissions are encrypted using industry-standard TLS/SSL protocols. Authentication credentials and session tokens are stored securely on your device using encrypted storage.',
+  },
+  {
+    title: '4. Sharing with Partner Gyms',
+    content:
+      'When you book a session or membership, only necessary identification details (such as your name, booking reference, and QR pass) are shared with the partner gym to verify your access at the front desk.',
+  },
+  {
+    title: '5. Account Control & Data Deletion',
+    content:
+      'You have the right to request access to, modification of, or complete deletion of your account and personal data at any time by contacting our support team at gymezy@gmail.com.',
+  },
+];
+
+const TERMS_SECTIONS = [
+  {
+    title: '1. User Eligibility & Pass Usage',
+    content:
+      'By using GYMEZY, you confirm you are at least 18 years old or have parental consent. All passes and memberships purchased through GYMEZY are personal to the registered user and cannot be transferred without authorization.',
+  },
+  {
+    title: '2. Booking & Cancellation Policy',
+    content:
+      'Memberships that have not yet reached their start date can be cancelled with a 100% full refund. Once active, cancellations and refunds are subject to the partner gym’s agreed negotiation terms. Session bookings may be rescheduled up to 2 hours prior to slot time.',
+  },
+  {
+    title: '3. Partner Gym Facility Rules',
+    content:
+      'Users must comply with all rules, health & safety policies, and dress codes established by the respective partner gym facility. GYMEZY reserves the right to suspend accounts engaging in disruptive conduct.',
+  },
+  {
+    title: '4. Payments & Escrow Settlements',
+    content:
+      'All transactions are processed through secure payment gateways. Funds for bookings and memberships are held in escrow until session delivery or pass activation according to our platform settlement agreements.',
+  },
+  {
+    title: '5. Limitation of Liability',
+    content:
+      'GYMEZY is an intermediary platform connecting members with fitness centers. While we verify partner gym listings, members exercise and use fitness equipment at their own discretion and responsibility.',
+  },
+];
+
 export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMemberships }) => {
   const { isDark, colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { bookings, memberships } = useBookingRepository();
   const { showToast } = useToast();
-  const { user, logout, updateUser } = useAuth();
+  const { user, token, logout, updateUser } = useAuth();
 
   // User Profile State
   const [userName, setUserName] = useState(user?.fullName || 'Alex Morgan');
@@ -343,20 +385,8 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   const handleToggleBiometricLogin = async (nextVal) => {
     if (nextVal) {
       try {
-        const localAuth = getSafeLocalAuthentication();
-        if (!localAuth) {
-          // Native module not linked in this build; save preference directly
-          setBiometricLogin(true);
-          await AsyncStorage.setItem(PREF_BIOMETRIC_LOGIN_KEY, 'true');
-          showToast({
-            message: 'Biometric login preference enabled for this device.',
-            isSuccess: true,
-          });
-          return;
-        }
-
-        const hasHardware = await localAuth.hasHardwareAsync();
-        if (!hasHardware) {
+        const support = await biometricService.checkHardwareSupport();
+        if (!support.hasHardware) {
           showToast({
             message: 'Biometric hardware sensor is not available on this device.',
             isError: true,
@@ -364,25 +394,22 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
           return;
         }
 
-        const isEnrolled = await localAuth.isEnrolledAsync();
-        if (!isEnrolled) {
+        if (!support.isEnrolled) {
           showToast({
-            message: 'No biometric credentials found. Please set up fingerprint or Face ID in device settings first.',
+            message: 'No biometric credentials enrolled. Please set up fingerprint or Face ID in device settings first.',
             isError: true,
           });
           return;
         }
 
-        const authResult = await localAuth.authenticateAsync({
-          promptMessage: 'Verify identity to enable Biometric & Face ID Login',
-          cancelLabel: 'Cancel',
-          disableDeviceFallback: false,
-        });
+        const authResult = await biometricService.authenticate(
+          'Verify identity to enable Biometric & Face ID Login'
+        );
 
         if (!authResult.success) {
-          if (authResult.error !== 'user_cancel' && authResult.error !== 'system_cancel') {
+          if (authResult.error && !authResult.error.toLowerCase().includes('cancel')) {
             showToast({
-              message: 'Biometric verification could not be completed.',
+              message: authResult.error || 'Biometric verification could not be completed.',
               isError: true,
             });
           }
@@ -391,7 +418,14 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
 
         // Successfully authenticated
         setBiometricLogin(true);
-        await AsyncStorage.setItem(PREF_BIOMETRIC_LOGIN_KEY, 'true');
+        await biometricService.setBiometricEnabled(true);
+        if (token && user) {
+          await biometricService.saveAuthSession({
+            token,
+            user,
+            identifier: user.email || user.phone || '',
+          });
+        }
         if (updateUser) {
           await updateUser({
             biometricEnabled: true,
@@ -425,7 +459,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
       // User turning off biometric login
       setBiometricLogin(false);
       try {
-        await AsyncStorage.setItem(PREF_BIOMETRIC_LOGIN_KEY, 'false');
+        await biometricService.setBiometricEnabled(false);
         if (updateUser) {
           await updateUser({
             biometricEnabled: false,
@@ -482,6 +516,10 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   const [showMeasurementsModal, setShowMeasurementsModal] = useState(false);
   const [showInvoicesModal, setShowInvoicesModal] = useState(false);
   const [showFaqModal, setShowFaqModal] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalTab, setLegalTab] = useState('PRIVACY'); // 'PRIVACY' | 'TERMS'
+  const [expandedLegalIndex, setExpandedLegalIndex] = useState(null);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [expandedFaqIndex, setExpandedFaqIndex] = useState(null);
 
@@ -974,7 +1012,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
           </TouchableOpacity>
         </View>
 
-        {/* 2. 4-Column Activity Stats Summary */}
+        {/* 2. 3-Column Activity Stats Summary */}
         <View style={styles.statCardsRow}>
           {/* Card 1: Workouts */}
           <View
@@ -1021,22 +1059,6 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
             </Text>
             <Text style={[styles.statCardLabel, { color: subtitleColor }]} numberOfLines={1}>
               Passes
-            </Text>
-          </View>
-
-          {/* Card 4: Calories */}
-          <View
-            style={[
-              styles.statCard,
-              { backgroundColor: cardColor, borderColor: borderColor },
-            ]}
-          >
-            <MaterialIcons name="bolt" size={22} color="#F59E0B" />
-            <Text style={[styles.statCardValue, { color: textColor }]} numberOfLines={1}>
-              {bookings.length > 0 ? `${bookings.length * 350}` : '0 kcal'}
-            </Text>
-            <Text style={[styles.statCardLabel, { color: subtitleColor }]} numberOfLines={1}>
-              Calories
             </Text>
           </View>
         </View>
@@ -1314,7 +1336,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
 
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => showToast({ message: 'Connecting to GYMEZY 24/7 Support Desk...', isSuccess: true })}
+          onPress={() => setShowSupportModal(true)}
           style={[styles.menuTile, { backgroundColor: cardColor, borderColor: borderColor }]}
         >
           <View style={[styles.menuIconBox, { backgroundColor: isDark ? '#262626' : 'rgba(0, 56, 130, 0.08)' }]}>
@@ -1322,14 +1344,14 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
           </View>
           <View style={styles.menuTileContent}>
             <Text style={[styles.menuTileTitle, { color: textColor }]}>Contact Customer Support</Text>
-            <Text style={[styles.menuTileSubtitle, { color: subtitleColor }]}>24/7 WhatsApp & In-app assistance</Text>
+            <Text style={[styles.menuTileSubtitle, { color: subtitleColor }]}>gymezy@gmail.com • 9999888889</Text>
           </View>
           <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
         </TouchableOpacity>
 
         <TouchableOpacity
           activeOpacity={0.7}
-          onPress={() => showToast({ message: 'GYMEZY Privacy Policy: Secure & Encrypted' })}
+          onPress={() => setShowLegalModal(true)}
           style={[styles.menuTile, { backgroundColor: cardColor, borderColor: borderColor }]}
         >
           <View style={[styles.menuIconBox, { backgroundColor: isDark ? '#262626' : 'rgba(0, 56, 130, 0.08)' }]}>
@@ -1337,7 +1359,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
           </View>
           <View style={styles.menuTileContent}>
             <Text style={[styles.menuTileTitle, { color: textColor }]}>Privacy Policy & Terms</Text>
-            <Text style={[styles.menuTileSubtitle, { color: subtitleColor }]}>GYMEZY User Agreements v2.4.0</Text>
+            <Text style={[styles.menuTileSubtitle, { color: subtitleColor }]}>Data privacy, security & user agreements</Text>
           </View>
           <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
         </TouchableOpacity>
@@ -2011,6 +2033,463 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                   </View>
                 );
               })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ============================================================ */}
+      {/* MODAL: CUSTOMER SUPPORT (Bottom Sheet) */}
+      {/* ============================================================ */}
+      <Modal
+        visible={showSupportModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSupportModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdropTouch}
+            activeOpacity={1}
+            onPress={() => setShowSupportModal(false)}
+          />
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor: cardColor,
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 28,
+              },
+            ]}
+          >
+            {/* Grab handle */}
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <View style={[styles.sheetGrabHandle, { backgroundColor: isDark ? '#404040' : '#E2E8F0' }]} />
+            </View>
+
+            <View style={styles.sheetHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    backgroundColor: isDark ? 'rgba(0, 56, 130, 0.25)' : 'rgba(0, 56, 130, 0.08)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <MaterialIcons name="support-agent" size={22} color={AppColors.primaryColor} />
+                </View>
+                <View>
+                  <Text style={[styles.sheetTitleText, { color: textColor }]}>Customer Support</Text>
+                  <Text style={{ fontSize: 12, color: subtitleColor, marginTop: 1 }}>
+                    Dedicated 24/7 assistance for GYMEZY users
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowSupportModal(false)}
+                style={styles.sheetCloseBtn}
+              >
+                <MaterialIcons name="close" size={22} color={subtitleColor} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 440 }}>
+              {/* Direct Channels Card */}
+              <View
+                style={{
+                  marginTop: 14,
+                  padding: 16,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: borderColor,
+                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#F8FAFC',
+                }}
+              >
+                {/* Email Support Row */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                    <View
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 10,
+                        backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 12,
+                      }}
+                    >
+                      <MaterialIcons name="mail-outline" size={20} color="#2563EB" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: subtitleColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Official Email
+                      </Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: textColor, marginTop: 2 }}>
+                        gymezy@gmail.com
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          await Clipboard.setStringAsync('gymezy@gmail.com');
+                          showToast({ message: 'Email copied: gymezy@gmail.com', isSuccess: true });
+                        } catch {
+                          showToast({ message: 'gymezy@gmail.com', isSuccess: true });
+                        }
+                      }}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: borderColor,
+                        backgroundColor: isDark ? '#262626' : '#FFFFFF',
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="content-copy" size={16} color={isDark ? '#93C5FD' : AppColors.primaryColor} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        Linking.openURL('mailto:gymezy@gmail.com').catch(() => {
+                          showToast({ message: 'Please email us at gymezy@gmail.com', isSuccess: true });
+                        });
+                      }}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        backgroundColor: AppColors.primaryColor,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <MaterialIcons name="send" size={14} color="#FFFFFF" />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Email</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={{ height: 1, backgroundColor: borderColor, marginVertical: 14 }} />
+
+                {/* Phone Support Row */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                    <View
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 10,
+                        backgroundColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#ECFDF5',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 12,
+                      }}
+                    >
+                      <MaterialIcons name="phone" size={20} color="#10B981" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: subtitleColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Phone Helpline
+                      </Text>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: textColor, marginTop: 2 }}>
+                        9999888889
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          await Clipboard.setStringAsync('9999888889');
+                          showToast({ message: 'Phone copied: 9999888889', isSuccess: true });
+                        } catch {
+                          showToast({ message: '9999888889', isSuccess: true });
+                        }
+                      }}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: borderColor,
+                        backgroundColor: isDark ? '#262626' : '#FFFFFF',
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons name="content-copy" size={16} color={isDark ? '#93C5FD' : AppColors.primaryColor} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        Linking.openURL('tel:9999888889').catch(() => {
+                          showToast({ message: 'Helpline: 9999888889', isSuccess: true });
+                        });
+                      }}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        backgroundColor: '#10B981',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <MaterialIcons name="call" size={14} color="#FFFFFF" />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Call</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              {/* Service Commitments Banner */}
+              <View
+                style={{
+                  marginTop: 12,
+                  padding: 14,
+                  borderRadius: 14,
+                  backgroundColor: isDark ? 'rgba(0, 56, 130, 0.12)' : 'rgba(0, 56, 130, 0.05)',
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(0, 56, 130, 0.25)' : 'rgba(0, 56, 130, 0.12)',
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <MaterialIcons name="schedule" size={16} color={AppColors.primaryColor} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#93C5FD' : AppColors.primaryColor }}>
+                    24/7 Priority Resolution
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, lineHeight: 18, color: subtitleColor }}>
+                  Our central support desk assists with check-in verification, session rescheduling, pass activation issues, and instant refund status. Average response time is under 15 minutes.
+                </Text>
+              </View>
+
+              {/* Quick FAQ Link */}
+              <TouchableOpacity
+                onPress={() => {
+                  setShowSupportModal(false);
+                  setShowFaqModal(true);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingVertical: 14,
+                  paddingHorizontal: 14,
+                  borderRadius: 12,
+                  marginTop: 10,
+                  borderWidth: 1,
+                  borderColor: borderColor,
+                  backgroundColor: cardColor,
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <MaterialIcons name="help-outline" size={18} color={isDark ? '#93C5FD' : AppColors.primaryColor} />
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: textColor }}>
+                    Have common booking questions? View FAQs
+                  </Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color={subtitleColor} />
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ============================================================ */}
+      {/* MODAL: PRIVACY POLICY & TERMS (Bottom Sheet) */}
+      {/* ============================================================ */}
+      <Modal
+        visible={showLegalModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLegalModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdropTouch}
+            activeOpacity={1}
+            onPress={() => setShowLegalModal(false)}
+          />
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor: cardColor,
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 28,
+              },
+            ]}
+          >
+            {/* Grab handle */}
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <View style={[styles.sheetGrabHandle, { backgroundColor: isDark ? '#404040' : '#E2E8F0' }]} />
+            </View>
+
+            <View style={styles.sheetHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    backgroundColor: isDark ? 'rgba(0, 56, 130, 0.25)' : 'rgba(0, 56, 130, 0.08)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <MaterialIcons name="policy" size={22} color={AppColors.primaryColor} />
+                </View>
+                <View>
+                  <Text style={[styles.sheetTitleText, { color: textColor }]}>Privacy Policy & Terms</Text>
+                  <Text style={{ fontSize: 12, color: subtitleColor, marginTop: 1 }}>
+                    GYMEZY User Agreements & Security Standards v2.4.0
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowLegalModal(false)}
+                style={styles.sheetCloseBtn}
+              >
+                <MaterialIcons name="close" size={22} color={subtitleColor} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Segmented Switcher */}
+            <View
+              style={{
+                flexDirection: 'row',
+                backgroundColor: isDark ? '#1F1F1F' : '#F1F5F9',
+                borderRadius: 12,
+                padding: 4,
+                marginTop: 12,
+                marginBottom: 10,
+              }}
+            >
+              <TouchableOpacity
+                onPress={() => {
+                  setLegalTab('PRIVACY');
+                  setExpandedLegalIndex(null);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 8,
+                  borderRadius: 9,
+                  backgroundColor: legalTab === 'PRIVACY' ? (isDark ? '#2E2E2E' : '#FFFFFF') : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: legalTab === 'PRIVACY' ? (isDark ? '#FFFFFF' : '#0F172A') : subtitleColor,
+                  }}
+                >
+                  Privacy Policy
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setLegalTab('TERMS');
+                  setExpandedLegalIndex(null);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 8,
+                  borderRadius: 9,
+                  backgroundColor: legalTab === 'TERMS' ? (isDark ? '#2E2E2E' : '#FFFFFF') : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: legalTab === 'TERMS' ? (isDark ? '#FFFFFF' : '#0F172A') : subtitleColor,
+                  }}
+                >
+                  Terms of Service
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              {(legalTab === 'PRIVACY' ? PRIVACY_SECTIONS : TERMS_SECTIONS).map((item, index) => {
+                const isOpen = expandedLegalIndex === index;
+                return (
+                  <View
+                    key={index}
+                    style={[
+                      styles.faqItemContainer,
+                      { borderBottomColor: borderColor },
+                    ]}
+                  >
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => setExpandedLegalIndex(isOpen ? null : index)}
+                      style={styles.faqHeaderRow}
+                    >
+                      <Text style={[styles.faqQuestionText, { color: textColor, flex: 1, paddingRight: 8 }]}>
+                        {item.title}
+                      </Text>
+                      <MaterialIcons
+                        name={isOpen ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                        size={22}
+                        color={subtitleColor}
+                      />
+                    </TouchableOpacity>
+                    {isOpen && (
+                      <Text style={[styles.faqAnswerText, { color: subtitleColor, lineHeight: 20 }]}>
+                        {item.content}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+
+              {/* Grievance / Inquiries Footer */}
+              <View
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: isDark ? '#1F1F1F' : '#F8FAFC',
+                  borderWidth: 1,
+                  borderColor: borderColor,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <MaterialIcons name="verified-user" size={20} color="#10B981" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: textColor }}>
+                    Grievance Officer: gymezy@gmail.com
+                  </Text>
+                  <Text style={{ fontSize: 10.5, color: subtitleColor, marginTop: 1 }}>
+                    Helpline: 9999888889 • All queries resolved in accordance with platform standards.
+                  </Text>
+                </View>
+              </View>
             </ScrollView>
           </View>
         </View>
