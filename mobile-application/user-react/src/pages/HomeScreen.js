@@ -19,7 +19,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -92,6 +92,7 @@ const getGymCoverImage = (gym) => {
 
 export const HomeScreen = ({ navigation }) => {
   const { isDark, colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { user, isAuthenticated, isRestoringSession } = useAuth();
   const [currentTab, setCurrentTab] = useState(0);
@@ -624,10 +625,17 @@ export const HomeScreen = ({ navigation }) => {
     return (
       <ScrollView
         showsVerticalScrollIndicator={false}
+         main
+        contentContainerStyle={[
+          styles.exploreScroll,
+          { paddingBottom: 110 + (insets.bottom > 0 ? insets.bottom + 10 : 20) },
+        ]}
+
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.exploreScroll}
         onScroll={handleHomeScroll}
         scrollEventThrottle={16}
+         main
       >
         {/* 1. Header Bar: Dynamic Greeting + Location */}
         <View style={styles.headerBar}>
@@ -1549,7 +1557,10 @@ export const HomeScreen = ({ navigation }) => {
           <View
             style={[
               styles.filterModalContent,
-              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF' },
+              {
+                backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20,
+              },
             ]}
           >
             <View style={styles.filterModalHeader}>

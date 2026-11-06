@@ -12,7 +12,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors, AppTheme } from '../theme/appTheme';
@@ -187,6 +187,7 @@ export const generateTrainerSlots = (startTime, endTime) => {
 };
 
 export const BuyMembershipScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { gym, initialWithTrainer = true } = route.params;
   const { isDark, colors } = useTheme();
   const { addMembership } = useBookingRepository();
@@ -681,7 +682,10 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
       {/* Main Scroll Content */}
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 80 + (insets.bottom > 0 ? insets.bottom + 8 : 16) },
+        ]}
       >
         {/* ============================================================ */}
         {/* STEP 1: CHOOSE YOUR PLAN */}
@@ -1363,6 +1367,7 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
             borderTopColor: isDark
               ? 'rgba(255, 255, 255, 0.08)'
               : 'rgba(226, 232, 240, 0.8)',
+            paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 16,
           },
         ]}
       >

@@ -1,11 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 
 export const CustomFloatingNavBar = ({ currentIndex, onTap }) => {
   const { isDark, colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const bottomMargin = insets.bottom > 0
+    ? insets.bottom + 6
+    : (Platform.OS === 'ios' ? 24 : 16);
 
   const navItems = [
     {
@@ -46,6 +51,7 @@ export const CustomFloatingNavBar = ({ currentIndex, onTap }) => {
             borderColor: isDark
               ? 'rgba(255, 255, 255, 0.12)'
               : 'rgba(226, 232, 240, 0.85)',
+            marginBottom: bottomMargin,
           },
         ]}
       >

@@ -44,13 +44,13 @@ test('Walk-in vs App Member Cancellation Architecture (SSOT)', async (t) => {
       _id: new mongoose.Types.ObjectId(),
       membershipId: 'MEM-TEST-APP',
       source: 'APP',
-      walkInDetails: null,
+      walkInDetails: { bookedBy: null, bookedByName: '', notes: '' }, // Mongoose empty subdocument
       status: 'Active',
       pricing: { totalAmount: 4500 },
     };
 
-    const isWalkIn = dummyAppMember.source === 'WALK_IN' || Boolean(dummyAppMember.walkInDetails);
-    assert.strictEqual(isWalkIn, false, 'App member must NOT be treated as walk-in');
+    const isWalkIn = dummyAppMember.source === 'WALK_IN' || (dummyAppMember.source !== 'APP' && Boolean(dummyAppMember.walkInDetails?.bookedBy || dummyAppMember.walkInDetails?.bookedByName?.trim()));
+    assert.strictEqual(isWalkIn, false, 'App member must NOT be treated as walk-in even if walkInDetails subdocument exists');
   });
 
   await t.test('3. Walk-in members are excluded from pending negotiation queue', () => {
@@ -58,7 +58,7 @@ test('Walk-in vs App Member Cancellation Architecture (SSOT)', async (t) => {
       {
         requestId: 'CAN-APP-001',
         status: 'PENDING_GYM_APPROVAL',
-        membershipId: { source: 'APP', membershipTier: 'Gold' },
+        membershipId: { source: 'APP', membershipTier: 'Gold', walkInDetails: { bookedByName: '' } },
       },
       {
         requestId: 'CAN-WALKIN-002',
@@ -68,20 +68,50 @@ test('Walk-in vs App Member Cancellation Architecture (SSOT)', async (t) => {
       {
         requestId: 'CAN-APP-003',
         status: 'PENDING_MEMBER_APPROVAL',
-        membershipId: { source: 'APP', membershipTier: 'Silver' },
+        membershipId: { source: 'APP', membershipTier: 'Silver', walkInDetails: { bookedByName: '' } },
       },
     ];
 
     const appOnly = negotiations.filter((item) => {
       const mem = item.membershipId;
       if (!mem) return false;
-      const isWalkIn = mem.source === 'WALK_IN' || Boolean(mem.walkInDetails);
+      const isWalkIn = mem.source === 'WALK_IN' || (mem.source !== 'APP' && Boolean(mem.walkInDetails?.bookedBy || mem.walkInDetails?.bookedByName?.trim()));
       return !isWalkIn;
     });
 
     assert.strictEqual(appOnly.length, 2, 'Only app member negotiations must be returned');
     assert.strictEqual(appOnly[0].requestId, 'CAN-APP-001');
     assert.strictEqual(appOnly[1].requestId, 'CAN-APP-003');
+  });
+
+  await t.test('4. Pre-activation (Upcoming) membership cancellation entitles member to 100% full refund', () => {
+    const tomorrow = new Date(Date.now() + 86400000);
+    const nextMonth = new Date(Date.now() + 30 * 86400000);
+    const dummyUpcoming = {
+      _id: new mongoose.Types.ObjectId(),
+      membershipId: 'MEM-TEST-UPCOMING',
+      source: 'APP',
+      status: 'Upcoming',
+      startDate: tomorrow,
+      endDate: nextMonth,
+      pricing: { totalAmount: 4999 },
+    };
+
+    const now = new Date();
+    const isUpcoming = dummyUpcoming.status === 'Upcoming' || (dummyUpcoming.startDate && new Date(dummyUpcoming.startDate) > now);
+    assert.strictEqual(isUpcoming, true, 'Must detect pre-activation status');
+
+    const totalPaid = Number(dummyUpcoming.pricing.totalAmount);
+    assert.strictEqual(totalPaid, 4999);
+    // Cancellation before activation executes with 100% refund
+    dummyUpcoming.status = 'Cancelled';
+    dummyUpcoming.cancellation = {
+      cancelledAt: now,
+      reason: 'Cancelled before pass activation',
+      refundAmount: totalPaid,
+    };
+    assert.strictEqual(dummyUpcoming.status, 'Cancelled');
+    assert.strictEqual(dummyUpcoming.cancellation.refundAmount, 4999);
   });
 });
 

@@ -10,7 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors, AppTheme } from '../theme/appTheme';
@@ -19,6 +19,7 @@ import { apiService } from '../services/apiService';
 import { walletService } from '../services/walletService';
 
 export const PaymentSummaryScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const {
     gym,
     bookingTitle,
@@ -156,7 +157,10 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 80 + (insets.bottom > 0 ? insets.bottom + 8 : 16) },
+        ]}
       >
         {/* 1. Booking Details Card */}
         <View style={[styles.card, { backgroundColor: cardColor, borderColor: borderColor }]}>
@@ -364,7 +368,7 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
       </ScrollView>
 
       {/* Persistent Bottom Bar */}
-      <View style={[styles.bottomBar, { backgroundColor: cardColor, borderTopColor: borderColor }]}>
+      <View style={[styles.bottomBar, { backgroundColor: cardColor, borderTopColor: borderColor, paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 16 }]}>
         <TouchableOpacity
           activeOpacity={0.85}
           disabled={isProcessing}

@@ -10,7 +10,7 @@ import {
   Share,
   Linking,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
@@ -34,6 +34,7 @@ import {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const GymDetailsScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const rawGym = route?.params?.gym || {};
   const canonicalId =
     rawGym._id ||
@@ -394,7 +395,10 @@ export const GymDetailsScreen = ({ route, navigation }) => {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 80 + (insets.bottom > 0 ? insets.bottom + 8 : 14) },
+        ]}
       >
         {/* 1. TOP HERO IMAGE CAROUSEL & ACTIONS */}
         <View style={styles.heroContainer}>
@@ -1062,6 +1066,7 @@ export const GymDetailsScreen = ({ route, navigation }) => {
               ? 'rgba(18, 18, 18, 0.88)'
               : 'rgba(255, 255, 255, 0.88)',
             borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(226, 232, 240, 0.8)',
+            paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 12,
           },
         ]}
       >

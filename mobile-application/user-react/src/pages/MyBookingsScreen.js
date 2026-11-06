@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useBookingRepository } from '../data/BookingContext';
@@ -20,6 +21,7 @@ const TABS = ['Upcoming', 'Completed', 'Cancelled'];
 
 export const MyBookingsScreen = ({ navigation }) => {
   const { isDark, colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { bookings, refreshBookings } = useBookingRepository();
 
   const [selectedTab, setSelectedTab] = useState('Upcoming');
@@ -161,7 +163,10 @@ export const MyBookingsScreen = ({ navigation }) => {
           {/* List of Digital Booking Tickets */}
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.passesScrollContent}
+            contentContainerStyle={[
+              styles.passesScrollContent,
+              { paddingBottom: 110 + (insets.bottom > 0 ? insets.bottom + 10 : 20) },
+            ]}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

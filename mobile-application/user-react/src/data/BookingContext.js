@@ -164,7 +164,12 @@ export const BookingProvider = ({ children }) => {
         m.id === membershipId ||
         (m._id && String(m._id) === String(membershipId)) ||
         m.membershipId === membershipId
-          ? { ...m, cancellationNegotiation: negotiation, cancellationStatus: negotiation.status }
+          ? {
+              ...m,
+              status: negotiation?.status === 'COMPLETED' ? 'Cancelled' : m.status,
+              cancellationNegotiation: negotiation,
+              cancellationStatus: negotiation?.status || 'PENDING_GYM_APPROVAL',
+            }
           : m
       )
     );

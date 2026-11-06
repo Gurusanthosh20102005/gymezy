@@ -259,7 +259,10 @@ export const WalletScreen = ({ navigation }) => {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 40 + (insets.bottom > 0 ? insets.bottom + 10 : 20) },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}

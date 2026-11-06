@@ -12,7 +12,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
@@ -47,6 +47,7 @@ const CANCEL_REASONS = [
 ];
 
 export const BookingDetailsScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { booking: initialBooking } = route.params;
   const { isDark, colors } = useTheme();
   const { bookings, updateBooking, cancelBooking } = useBookingRepository();
@@ -296,7 +297,10 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 40 + (insets.bottom > 0 ? insets.bottom + 12 : 16) },
+        ]}
       >
         {/* Session Completed Notice */}
         {isCompleted && (
@@ -866,7 +870,10 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
           <View
             style={[
               styles.sheetContainer,
-              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF' },
+              {
+                backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20,
+              },
             ]}
           >
             {/* Sheet Header */}
@@ -984,7 +991,11 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
           <View
             style={[
               styles.sheetContainer,
-              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF', maxHeight: '85%' },
+              {
+                backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                maxHeight: '85%',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20,
+              },
             ]}
           >
             {/* Header */}
@@ -1136,7 +1147,11 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
           <View
             style={[
               styles.sheetContainer,
-              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF', maxHeight: '85%' },
+              {
+                backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                maxHeight: '85%',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20,
+              },
             ]}
           >
             {/* Sheet Header */}

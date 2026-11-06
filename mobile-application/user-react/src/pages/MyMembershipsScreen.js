@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useBookingRepository } from '../data/BookingContext';
@@ -24,6 +25,7 @@ const TABS = ['Active', 'Completed', 'Cancelled'];
 
 export const MyMembershipsScreen = ({ navigation }) => {
   const { isDark, colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { memberships, setAllMemberships } = useBookingRepository();
   const { showToast } = useToast();
   const authContext = useAuth();
@@ -166,7 +168,10 @@ export const MyMembershipsScreen = ({ navigation }) => {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 110 + (insets.bottom > 0 ? insets.bottom + 10 : 20) },
+        ]}
       >
         {/* 1. Upgrade Promo Banner */}
         <LinearGradient

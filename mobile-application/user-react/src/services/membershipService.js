@@ -108,7 +108,16 @@ class MembershipService {
   }
 
   async requestCancellationNegotiation(id, reason = 'Member requested cancellation') {
-    return this.cancelMembership(id, reason);
+    const response = await apiService.executeFetch(`/memberships/${encodeURIComponent(id)}/cancellation-negotiation`, {
+      method: 'POST',
+      headers: apiService.getHeaders(),
+      body: JSON.stringify({ reason }),
+    }, 8000);
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Failed to request cancellation negotiation.');
+    }
+    return json.data;
   }
 
   async fetchMyCancellationNegotiations(userId, membershipId) {

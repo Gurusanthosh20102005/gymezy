@@ -16,6 +16,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
@@ -111,6 +112,7 @@ const FAQS = [
 
 export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMemberships }) => {
   const { isDark, colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { bookings, memberships } = useBookingRepository();
   const { showToast } = useToast();
   const { user, logout, updateUser } = useAuth();
@@ -838,7 +840,10 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 110 + (insets.bottom > 0 ? insets.bottom + 10 : 20) },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
