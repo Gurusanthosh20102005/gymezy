@@ -2,8 +2,8 @@ import { NativeModules } from 'react-native';
 import { getCloudApiUrl, ACTIVE_ENV, ENV_TARGETS } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
-const CURRENT_MAC_IP = '192.168.0.107';
-const LOCAL_WIFI_IP = '192.168.0.107';
+const CURRENT_MAC_IP = '192.168.0.104';
+const LOCAL_WIFI_IP = '192.168.0.104';
 
 const getMetroHost = () => {
   try {
