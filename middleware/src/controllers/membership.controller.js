@@ -900,6 +900,16 @@ export const getAdminAllGymMemberships = async (req, res, next) => {
  * Cancel Membership
  * PATCH /api/v1/memberships/:id/cancel
  */
+const isWalkInMembership = (membership) => {
+  if (!membership) return false;
+  if (membership.source === 'APP') return false;
+  if (membership.source === 'WALK_IN') return true;
+  return Boolean(
+    membership.walkInDetails?.bookedBy ||
+    (membership.walkInDetails?.bookedByName && String(membership.walkInDetails.bookedByName).trim() !== '')
+  );
+};
+
 export const cancelMembership = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -923,7 +933,7 @@ export const cancelMembership = async (req, res, next) => {
     }
 
     // SSOT: Direct cancellation for WALK_IN members - no negotiation request or member approval needed
-    const isWalkIn = membership.source === 'WALK_IN' || Boolean(membership.walkInDetails);
+    const isWalkIn = isWalkInMembership(membership);
 
     if (isWalkIn) {
       const totalPaid = Number(membership.pricing?.totalAmount || 0);
@@ -984,7 +994,7 @@ export const requestCancellationNegotiation = async (req, res, next) => {
     }
 
     // SSOT: If this is a walk-in member, cancel directly without creating a negotiation waiting for user approval
-    const isWalkIn = membership.source === 'WALK_IN' || Boolean(membership.walkInDetails);
+    const isWalkIn = isWalkInMembership(membership);
     if (isWalkIn) {
       const totalPaid = Number(membership.pricing?.totalAmount || 0);
       const refundAmount = req.body?.refundAmount !== undefined
@@ -1111,7 +1121,7 @@ export const getGymCancellationNegotiations = async (req, res, next) => {
     const appOnlyNegotiations = negotiations.filter((item) => {
       const mem = item.membershipId;
       if (!mem) return false;
-      const isWalkIn = mem.source === 'WALK_IN' || Boolean(mem.walkInDetails);
+      const isWalkIn = isWalkInMembership(mem);
       return !isWalkIn;
     });
 

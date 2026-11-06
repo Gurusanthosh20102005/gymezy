@@ -44,13 +44,13 @@ test('Walk-in vs App Member Cancellation Architecture (SSOT)', async (t) => {
       _id: new mongoose.Types.ObjectId(),
       membershipId: 'MEM-TEST-APP',
       source: 'APP',
-      walkInDetails: null,
+      walkInDetails: { bookedBy: null, bookedByName: '', notes: '' }, // Mongoose empty subdocument
       status: 'Active',
       pricing: { totalAmount: 4500 },
     };
 
-    const isWalkIn = dummyAppMember.source === 'WALK_IN' || Boolean(dummyAppMember.walkInDetails);
-    assert.strictEqual(isWalkIn, false, 'App member must NOT be treated as walk-in');
+    const isWalkIn = dummyAppMember.source === 'WALK_IN' || (dummyAppMember.source !== 'APP' && Boolean(dummyAppMember.walkInDetails?.bookedBy || dummyAppMember.walkInDetails?.bookedByName?.trim()));
+    assert.strictEqual(isWalkIn, false, 'App member must NOT be treated as walk-in even if walkInDetails subdocument exists');
   });
 
   await t.test('3. Walk-in members are excluded from pending negotiation queue', () => {
@@ -58,7 +58,7 @@ test('Walk-in vs App Member Cancellation Architecture (SSOT)', async (t) => {
       {
         requestId: 'CAN-APP-001',
         status: 'PENDING_GYM_APPROVAL',
-        membershipId: { source: 'APP', membershipTier: 'Gold' },
+        membershipId: { source: 'APP', membershipTier: 'Gold', walkInDetails: { bookedByName: '' } },
       },
       {
         requestId: 'CAN-WALKIN-002',
@@ -68,14 +68,14 @@ test('Walk-in vs App Member Cancellation Architecture (SSOT)', async (t) => {
       {
         requestId: 'CAN-APP-003',
         status: 'PENDING_MEMBER_APPROVAL',
-        membershipId: { source: 'APP', membershipTier: 'Silver' },
+        membershipId: { source: 'APP', membershipTier: 'Silver', walkInDetails: { bookedByName: '' } },
       },
     ];
 
     const appOnly = negotiations.filter((item) => {
       const mem = item.membershipId;
       if (!mem) return false;
-      const isWalkIn = mem.source === 'WALK_IN' || Boolean(mem.walkInDetails);
+      const isWalkIn = mem.source === 'WALK_IN' || (mem.source !== 'APP' && Boolean(mem.walkInDetails?.bookedBy || mem.walkInDetails?.bookedByName?.trim()));
       return !isWalkIn;
     });
 
