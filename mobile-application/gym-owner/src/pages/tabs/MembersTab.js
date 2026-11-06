@@ -3447,7 +3447,11 @@ export const MembersTab = ({ topInset, navigation }) => {
           <View
             style={[
               styles.modalContent,
-              { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: '80%' },
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                maxHeight: '88%',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 24,
+              },
             ]}
           >
             {selectedCancelRequest && (

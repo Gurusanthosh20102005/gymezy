@@ -151,6 +151,7 @@ const getNormalizedPricingPlans = (data) => {
 export const SettingsTab = ({ topInset, navigation, onBack }) => {
   const { isDark, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const modalSheetBottomPadding = insets.bottom > 0 ? insets.bottom + 16 : 24;
   const { showToast } = useToast();
   const { user, gym, logout, updateGym, refreshGymProfile } = useAuth();
 
@@ -2445,7 +2446,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setSelectedEmpDetail(null)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 620 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 620, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
@@ -2621,7 +2622,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowEditTimingsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 540 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 540, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 Edit Gym Operating Hours
@@ -2780,7 +2781,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowEditBankModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 520 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 520, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 Bank & Instant Settlements
@@ -2857,7 +2858,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowAddPlanModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 480 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 480, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 Add Membership Plan
@@ -2931,7 +2932,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowFacilitiesModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 560 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 560, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 Manage Gym Facilities
@@ -2991,7 +2992,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowWorkoutsModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 560 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 560, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 Manage Workouts Offered
@@ -3051,7 +3052,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowAmenitiesModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 520 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 520, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>Manage Gym Amenities</Text>
               <TouchableOpacity onPress={() => setShowAmenitiesModal(false)}>
@@ -3100,7 +3101,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowRulesModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 580 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 580, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>Gym Rules & Guidelines</Text>
               <TouchableOpacity onPress={() => setShowRulesModal(false)}>
@@ -3158,7 +3159,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowSafetyModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 580 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 580, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>Safety Measures & Protocols</Text>
               <TouchableOpacity onPress={() => setShowSafetyModal(false)}>
@@ -3216,7 +3217,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         onRequestClose={() => setShowAuditHistoryModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 560 }]}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 560, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 Audit Log History ({auditHistory.length})

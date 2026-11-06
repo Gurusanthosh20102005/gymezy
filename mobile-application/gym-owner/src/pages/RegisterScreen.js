@@ -807,7 +807,7 @@ export const RegisterScreen = ({ navigation }) => {
     return (
       <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top + 20 }]}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <ScrollView contentContainerStyle={styles.successScrollContent}>
+        <ScrollView contentContainerStyle={[styles.successScrollContent, { paddingBottom: insets.bottom > 0 ? insets.bottom + 24 : 32 }]}>
           <View style={[styles.successCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
             <View style={styles.successIconBadge}>
               <Icon name="check" size={36} color="#FFFFFF" />
@@ -909,7 +909,10 @@ export const RegisterScreen = ({ navigation }) => {
 
       <ScrollView
         ref={scrollViewRef}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 24, 48) },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >

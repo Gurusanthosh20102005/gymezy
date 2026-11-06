@@ -174,7 +174,7 @@ export const LoginScreen = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: Math.max(keyboardHeight + 60, 120) },
+            { paddingBottom: Math.max(keyboardHeight + 60, 100 + (insets.bottom > 0 ? insets.bottom : 20)) },
           ]}
           keyboardShouldPersistTaps="handled"
           bounces={true}

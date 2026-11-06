@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { apiService } from '../services/apiService';
@@ -124,6 +125,7 @@ export const CreateSectionModal = ({
   initialSection = null,
 }) => {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
 
   // Form States
   const [title, setTitle] = useState(initialSection?.title || '');
@@ -315,7 +317,15 @@ export const CreateSectionModal = ({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalCard, { backgroundColor: cardBg }]}>
+        <View
+          style={[
+            styles.modalCard,
+            {
+              backgroundColor: cardBg,
+              paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : (Platform.OS === 'ios' ? 34 : 24),
+            },
+          ]}
+        >
           {/* Header */}
           <View style={[styles.headerRow, { borderBottomColor: borderCol }]}>
             <View style={styles.headerTitleWrap}>
