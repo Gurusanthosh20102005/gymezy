@@ -1282,66 +1282,84 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
               styles.infoBanner,
               {
                 marginTop: 12,
+                flexDirection: 'row',
                 alignItems: 'flex-start',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderRadius: 14,
                 backgroundColor: cancellationNegotiation.status === 'REJECTED_BY_GYM'
-                  ? (isDark ? '#2B1718' : '#FEF2F2')
-                  : (isDark ? '#2A2115' : '#FFF7ED'),
+                  ? (isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2')
+                  : (isDark ? 'rgba(234, 88, 12, 0.12)' : '#FFF7ED'),
                 borderColor: cancellationNegotiation.status === 'REJECTED_BY_GYM'
-                  ? (isDark ? '#7F1D1D' : '#FCA5A5')
-                  : (isDark ? '#9A5D23' : '#FDBA74'),
+                  ? (isDark ? 'rgba(239, 68, 68, 0.4)' : '#FECACA')
+                  : (isDark ? 'rgba(234, 88, 12, 0.4)' : '#FED7AA'),
               },
             ]}
           >
-            <View style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: cancellationNegotiation.status === 'REJECTED_BY_GYM'
-                ? (isDark ? '#EF444426' : '#FEE2E2')
-                : (isDark ? '#EA580C26' : '#FFEDD5'),
-              marginRight: 10,
-            }}>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: cancellationNegotiation.status === 'REJECTED_BY_GYM'
+                  ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2')
+                  : (isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFEDD5'),
+                marginRight: 12,
+                marginTop: 1,
+              }}
+            >
               {cancellationNegotiation.status === 'REJECTED_BY_GYM' ? (
-                <MaterialIcons name="cancel" size={18} color="#EF4444" />
+                <MaterialIcons name="cancel" size={20} color="#DC2626" />
               ) : (
                 <Text style={{ fontSize: 18, lineHeight: 22, fontWeight: '800', color: '#EA580C' }}>₹</Text>
               )}
             </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{
-                  fontSize: 11,
-                  fontWeight: '800',
-                  color: cancellationNegotiation.status === 'REJECTED_BY_GYM' ? '#EF4444' : '#EA580C',
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.5,
-                }}>
+            <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: '800',
+                    color: cancellationNegotiation.status === 'REJECTED_BY_GYM' ? '#DC2626' : '#EA580C',
+                    letterSpacing: 0.2,
+                  }}
+                >
                   {cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL'
                     ? 'Refund Offer Received'
                     : cancellationNegotiation.status === 'REJECTED_BY_GYM'
                     ? 'Rejected By Gym'
                     : 'Cancellation In Progress'}
                 </Text>
-                <Text style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  color: cancellationNegotiation.status === 'REJECTED_BY_GYM' ? '#EF4444' : '#EA580C',
-                }}>
-                  View Details ›
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: cancellationNegotiation.status === 'REJECTED_BY_GYM' ? '#DC2626' : '#EA580C',
+                      marginRight: 2,
+                    }}
+                  >
+                    View Details
+                  </Text>
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={16}
+                    color={cancellationNegotiation.status === 'REJECTED_BY_GYM' ? '#DC2626' : '#EA580C'}
+                  />
+                </View>
               </View>
-              <Text style={[
-                styles.infoBannerText,
-                {
+              <Text
+                style={{
+                  fontSize: 13,
+                  lineHeight: 18,
+                  fontWeight: '500',
                   color: cancellationNegotiation.status === 'REJECTED_BY_GYM'
-                    ? (isDark ? '#FCA5A5' : '#DC2626')
+                    ? (isDark ? '#FCA5A5' : '#7F1D1D')
                     : (isDark ? '#FED7AA' : '#9A3412'),
-                  fontWeight: cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? '700' : '500',
-                  marginTop: 2,
-                },
-              ]}>
+                }}
+              >
                 {cancellationNegotiation.status === 'PENDING_GYM_APPROVAL'
                   ? 'Cancellation requested. The gym owner is preparing your refund quote.'
                   : cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL'
@@ -2127,16 +2145,16 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
               {/* Status Banner */}
               <View
                 style={{
-                  padding: 12,
-                  borderRadius: 12,
+                  padding: 14,
+                  borderRadius: 14,
                   backgroundColor:
                     cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
                       ? (isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7')
                       : cancellationNegotiation?.status === 'COMPLETED'
                       ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#D1FAE5')
                       : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
-                      ? (isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2')
-                      : (isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF'),
+                      ? (isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2')
+                      : (isDark ? 'rgba(59, 130, 246, 0.12)' : '#EFF6FF'),
                   borderWidth: 1,
                   borderColor:
                     cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
@@ -2144,48 +2162,69 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                       : cancellationNegotiation?.status === 'COMPLETED'
                       ? '#10B981'
                       : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
-                      ? '#EF4444'
+                      ? (isDark ? 'rgba(239, 68, 68, 0.4)' : '#FECACA')
                       : '#3B82F6',
                   flexDirection: 'row',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   marginBottom: 16,
                 }}
               >
-                <MaterialIcons
-                  name={
-                    cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
-                      ? 'notification-important'
-                      : cancellationNegotiation?.status === 'COMPLETED'
-                      ? 'check-circle'
-                      : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
-                      ? 'cancel'
-                      : 'hourglass-empty'
-                  }
-                  size={22}
-                  color={
-                    cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
-                      ? '#D97706'
-                      : cancellationNegotiation?.status === 'COMPLETED'
-                      ? '#10B981'
-                      : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
-                      ? '#EF4444'
-                      : '#2563EB'
-                  }
-                  style={{ marginRight: 10 }}
-                />
-                <View style={{ flex: 1 }}>
+                <View
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor:
+                      cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                        ? 'rgba(245, 158, 11, 0.2)'
+                        : cancellationNegotiation?.status === 'COMPLETED'
+                        ? 'rgba(16, 185, 129, 0.2)'
+                        : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                        ? 'rgba(239, 68, 68, 0.18)'
+                        : 'rgba(59, 130, 246, 0.2)',
+                    marginRight: 12,
+                    marginTop: 1,
+                  }}
+                >
+                  <MaterialIcons
+                    name={
+                      cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                        ? 'notification-important'
+                        : cancellationNegotiation?.status === 'COMPLETED'
+                        ? 'check-circle'
+                        : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                        ? 'cancel'
+                        : 'hourglass-empty'
+                    }
+                    size={20}
+                    color={
+                      cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                        ? '#D97706'
+                        : cancellationNegotiation?.status === 'COMPLETED'
+                        ? '#10B981'
+                        : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                        ? '#DC2626'
+                        : '#2563EB'
+                    }
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: 13.5,
                       fontWeight: '700',
+                      letterSpacing: -0.2,
                       color:
                         cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
                           ? '#D97706'
                           : cancellationNegotiation?.status === 'COMPLETED'
                           ? '#10B981'
                           : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
-                          ? '#EF4444'
+                          ? '#DC2626'
                           : '#2563EB',
+                      marginBottom: 2,
                     }}
                   >
                     {cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
@@ -2199,8 +2238,8 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                   <Text
                     style={{
                       fontSize: 12,
+                      lineHeight: 17,
                       color: isDark ? '#D1D5DB' : '#4B5563',
-                      marginTop: 2,
                     }}
                   >
                     {cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
