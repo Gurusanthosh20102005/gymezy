@@ -41,7 +41,20 @@ const SmoothGradientStar = ({
   const inactiveFill = isDark ? 'rgba(71, 85, 105, 0.15)' : 'rgba(203, 213, 225, 0.25)';
 
   return (
-    <View style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }, style]}>
+    <View
+      style={[
+        {
+          width: size,
+          height: size,
+          minWidth: size,
+          minHeight: size,
+          flexShrink: 0,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        style,
+      ]}
+    >
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Defs>
           <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
@@ -90,6 +103,19 @@ const QuillWriteIcon = ({ size = 18, color = '#64748B', style }) => (
     </Svg>
   </View>
 );
+
+const formatCancellationStatus = (status) => {
+  if (!status) return '';
+  if (status === 'REJECTED_BY_GYM') return 'Rejected By Gym';
+  if (status === 'PENDING_GYM_APPROVAL') return 'Pending Gym Approval';
+  if (status === 'PENDING_MEMBER_APPROVAL') return 'Refund Offer Received';
+  if (status === 'COMPLETED') return 'Completed';
+  if (status === 'CANCELLED_BY_USER') return 'Cancelled By User';
+  return String(status)
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
 
 const SadIcon = ({ size = 18, color = '#64748B', style }) => (
   <View style={style}>
@@ -849,11 +875,17 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                     styles.statusBadgeText,
                     {
                       color:
-                        membership.status === 'Active' ? '#16A34A' : colors.subtitle,
+                        membership.status === 'Active'
+                          ? '#16A34A'
+                          : membership.status === 'REJECTED_BY_GYM'
+                          ? '#EF4444'
+                          : colors.subtitle,
                     },
                   ]}
                 >
-                  {membership.status}
+                  {membership.status === 'REJECTED_BY_GYM'
+                    ? 'Rejected By Gym'
+                    : String(membership.status || '').replace(/_/g, ' ')}
                 </Text>
               </View>
             </View>
@@ -991,7 +1023,10 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                 Rate Us
               </Text>
               {hasPersonalTrainer && (
-                <Text style={[styles.softRateSubLabel, { color: colors.subtitle }]}>
+                <Text
+                  style={[styles.softRateSubLabel, { color: colors.subtitle }]}
+                  numberOfLines={1}
+                >
                   • Gym & Trainer
                 </Text>
               )}
@@ -1009,7 +1044,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                   activeOpacity={0.7}
                 >
                   <SmoothGradientStar
-                    size={24}
+                    size={22}
                     filled={star <= gymRating}
                     id={`soft-bar-${star}`}
                     isDark={isDark}
@@ -1036,6 +1071,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
             isInReview={Boolean(pendingSwitchRequest)}
             iconName="workspace-premium"
             accentColor={primaryNavy}
+            hideHeaderTitleRow={true}
           />
         </View>
 
@@ -1246,45 +1282,93 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
               styles.infoBanner,
               {
                 marginTop: 12,
+                flexDirection: 'row',
                 alignItems: 'flex-start',
-                backgroundColor: isDark ? '#2A2115' : '#FFF7ED',
-                borderColor: isDark ? '#9A5D23' : '#FDBA74',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderRadius: 14,
+                backgroundColor: cancellationNegotiation.status === 'REJECTED_BY_GYM'
+                  ? (isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2')
+                  : (isDark ? 'rgba(234, 88, 12, 0.12)' : '#FFF7ED'),
+                borderColor: cancellationNegotiation.status === 'REJECTED_BY_GYM'
+                  ? (isDark ? 'rgba(239, 68, 68, 0.4)' : '#FECACA')
+                  : (isDark ? 'rgba(234, 88, 12, 0.4)' : '#FED7AA'),
               },
             ]}
           >
-            <View style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: isDark ? '#EA580C26' : '#FFEDD5',
-              marginRight: 10,
-            }}>
-              <Text style={{ fontSize: 18, lineHeight: 22, fontWeight: '800', color: '#EA580C' }}>₹</Text>
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: cancellationNegotiation.status === 'REJECTED_BY_GYM'
+                  ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2')
+                  : (isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFEDD5'),
+                marginRight: 12,
+                marginTop: 1,
+              }}
+            >
+              {cancellationNegotiation.status === 'REJECTED_BY_GYM' ? (
+                <MaterialIcons name="cancel" size={20} color="#DC2626" />
+              ) : (
+                <Text style={{ fontSize: 18, lineHeight: 22, fontWeight: '800', color: '#EA580C' }}>₹</Text>
+              )}
             </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#EA580C', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? 'Refund Offer Received' : 'Cancellation In Progress'}
+            <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: '800',
+                    color: cancellationNegotiation.status === 'REJECTED_BY_GYM' ? '#DC2626' : '#EA580C',
+                    letterSpacing: 0.2,
+                  }}
+                >
+                  {cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL'
+                    ? 'Refund Offer Received'
+                    : cancellationNegotiation.status === 'REJECTED_BY_GYM'
+                    ? 'Rejected By Gym'
+                    : 'Cancellation In Progress'}
                 </Text>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: '#EA580C' }}>View Details ›</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: cancellationNegotiation.status === 'REJECTED_BY_GYM' ? '#DC2626' : '#EA580C',
+                      marginRight: 2,
+                    }}
+                  >
+                    View Details
+                  </Text>
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={16}
+                    color={cancellationNegotiation.status === 'REJECTED_BY_GYM' ? '#DC2626' : '#EA580C'}
+                  />
+                </View>
               </View>
-              <Text style={[
-                styles.infoBannerText,
-                {
-                  color: isDark ? '#FED7AA' : '#9A3412',
-                  fontWeight: cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' ? '700' : '500',
-                  marginTop: 2,
-                },
-              ]}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  lineHeight: 18,
+                  fontWeight: '500',
+                  color: cancellationNegotiation.status === 'REJECTED_BY_GYM'
+                    ? (isDark ? '#FCA5A5' : '#7F1D1D')
+                    : (isDark ? '#FED7AA' : '#9A3412'),
+                }}
+              >
                 {cancellationNegotiation.status === 'PENDING_GYM_APPROVAL'
                   ? 'Cancellation requested. The gym owner is preparing your refund quote.'
                   : cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL'
                   ? `Gym offered refund: ₹${Number(cancellationNegotiation.currentOffer?.refundAmount || 0).toLocaleString('en-IN')}. Tap to review.`
                   : cancellationNegotiation.status === 'COMPLETED'
                   ? `Cancellation complete. Approved refund: ₹${Number(cancellationNegotiation.approvedRefundAmount || 0).toLocaleString('en-IN')}`
-                  : `Cancellation status: ${cancellationNegotiation.status}`}
+                  : cancellationNegotiation.status === 'REJECTED_BY_GYM'
+                  ? 'Cancellation request was rejected by gym. Your membership remains active.'
+                  : `Cancellation status: ${formatCancellationStatus(cancellationNegotiation.status)}`}
               </Text>
               {cancellationNegotiation.status === 'PENDING_MEMBER_APPROVAL' && (
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
@@ -2061,74 +2145,109 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
               {/* Status Banner */}
               <View
                 style={{
-                  padding: 12,
-                  borderRadius: 12,
+                  padding: 14,
+                  borderRadius: 14,
                   backgroundColor:
                     cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
                       ? (isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7')
                       : cancellationNegotiation?.status === 'COMPLETED'
                       ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#D1FAE5')
-                      : (isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF'),
+                      : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                      ? (isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2')
+                      : (isDark ? 'rgba(59, 130, 246, 0.12)' : '#EFF6FF'),
                   borderWidth: 1,
                   borderColor:
                     cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
                       ? '#F59E0B'
                       : cancellationNegotiation?.status === 'COMPLETED'
                       ? '#10B981'
+                      : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                      ? (isDark ? 'rgba(239, 68, 68, 0.4)' : '#FECACA')
                       : '#3B82F6',
                   flexDirection: 'row',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   marginBottom: 16,
                 }}
               >
-                <MaterialIcons
-                  name={
-                    cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
-                      ? 'notification-important'
-                      : cancellationNegotiation?.status === 'COMPLETED'
-                      ? 'check-circle'
-                      : 'hourglass-empty'
-                  }
-                  size={22}
-                  color={
-                    cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
-                      ? '#D97706'
-                      : cancellationNegotiation?.status === 'COMPLETED'
-                      ? '#10B981'
-                      : '#2563EB'
-                  }
-                  style={{ marginRight: 10 }}
-                />
-                <View style={{ flex: 1 }}>
+                <View
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor:
+                      cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                        ? 'rgba(245, 158, 11, 0.2)'
+                        : cancellationNegotiation?.status === 'COMPLETED'
+                        ? 'rgba(16, 185, 129, 0.2)'
+                        : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                        ? 'rgba(239, 68, 68, 0.18)'
+                        : 'rgba(59, 130, 246, 0.2)',
+                    marginRight: 12,
+                    marginTop: 1,
+                  }}
+                >
+                  <MaterialIcons
+                    name={
+                      cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                        ? 'notification-important'
+                        : cancellationNegotiation?.status === 'COMPLETED'
+                        ? 'check-circle'
+                        : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                        ? 'cancel'
+                        : 'hourglass-empty'
+                    }
+                    size={20}
+                    color={
+                      cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
+                        ? '#D97706'
+                        : cancellationNegotiation?.status === 'COMPLETED'
+                        ? '#10B981'
+                        : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                        ? '#DC2626'
+                        : '#2563EB'
+                    }
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
                     style={{
-                      fontSize: 13,
+                      fontSize: 13.5,
                       fontWeight: '700',
+                      letterSpacing: -0.2,
                       color:
                         cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
                           ? '#D97706'
                           : cancellationNegotiation?.status === 'COMPLETED'
                           ? '#10B981'
+                          : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                          ? '#DC2626'
                           : '#2563EB',
+                      marginBottom: 2,
                     }}
                   >
                     {cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
                       ? 'Refund Offer Ready for Your Review'
                       : cancellationNegotiation?.status === 'COMPLETED'
                       ? 'Cancellation Completed & Refund Initiated'
+                      : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                      ? 'Rejected By Gym'
                       : 'Awaiting Gym Owner Refund Quote'}
                   </Text>
                   <Text
                     style={{
                       fontSize: 12,
+                      lineHeight: 17,
                       color: isDark ? '#D1D5DB' : '#4B5563',
-                      marginTop: 2,
                     }}
                   >
                     {cancellationNegotiation?.status === 'PENDING_MEMBER_APPROVAL'
                       ? 'The gym owner has reviewed your cancellation request and proposed the refund quote below.'
                       : cancellationNegotiation?.status === 'COMPLETED'
                       ? `Approved refund: ₹${Number(cancellationNegotiation?.approvedRefundAmount || 0).toLocaleString('en-IN')}`
+                      : cancellationNegotiation?.status === 'REJECTED_BY_GYM'
+                      ? 'The gym owner rejected this cancellation request. Your membership remains active.'
                       : 'Your cancellation request is with gym management. You will be notified once they calculate the refund quote.'}
                   </Text>
                 </View>
@@ -2416,7 +2535,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                                 activeOpacity={0.7}
                               >
                                 <SmoothGradientStar
-                                  size={38}
+                                  size={34}
                                   filled={star <= gymRating}
                                   id={`modal-gym-${star}`}
                                   isDark={isDark}
@@ -2475,7 +2594,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                                 activeOpacity={0.7}
                               >
                                 <SmoothGradientStar
-                                  size={38}
+                                  size={34}
                                   filled={star <= trainerRating}
                                   id={`modal-tr-${star}`}
                                   isDark={isDark}
@@ -3164,6 +3283,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    flexShrink: 1,
+    marginRight: 8,
   },
   softRateLabel: {
     fontSize: 14,
@@ -3174,13 +3295,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginLeft: 6,
+    flexShrink: 1,
   },
   softStarsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
+    gap: 4,
   },
   softStarBtn: {
-    padding: 3,
+    padding: 2,
+    flexShrink: 0,
   },
 
   /* Rating Modal & Tabs */
@@ -3235,11 +3360,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
+    flexWrap: 'nowrap',
+    gap: 6,
   },
   modalStarBtn: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 4,
+    flexShrink: 0,
   },
   starBadgeLabel: {
     fontSize: 16,

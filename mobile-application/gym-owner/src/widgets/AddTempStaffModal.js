@@ -178,9 +178,16 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
       return;
     }
 
-    if (employmentType === 'Part-Time' && workingDays.length === 0) {
-      showToast({ message: 'Please select at least one working day', isError: true });
-      return;
+    if (employmentType === 'Temporary') {
+      if (!startDate.trim() || !endDate.trim()) {
+        showToast({ message: 'Start date and end date are required for temporary staff', isError: true });
+        return;
+      }
+    } else if (employmentType === 'Part-Time') {
+      if (workingDays.length === 0) {
+        showToast({ message: 'Please select at least one working day', isError: true });
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -222,11 +229,11 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
         pendingAction: 'NONE',
         type: employmentType || 'Temporary', // 'Temporary' or 'Part-Time'
         schedule: {
-          workingDays,
+          workingDays: employmentType === 'Part-Time' ? workingDays : [],
           workingTimeStart,
           workingTimeEnd,
-          isDifferentDays,
-          dayWiseHours: dayWiseArray,
+          isDifferentDays: employmentType === 'Part-Time' ? isDifferentDays : false,
+          dayWiseHours: employmentType === 'Part-Time' ? dayWiseArray : [],
           startDate: employmentType === 'Temporary' ? startDate : '',
           endDate: employmentType === 'Temporary' ? endDate : '',
         },
@@ -567,7 +574,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                   <View style={styles.subSectionHeader}>
                     <MaterialIcons name="date-range" size={17} color="#7C3AED" />
                     <Text style={[styles.subSectionTitle, { color: isDark ? '#DDD6FE' : '#6B21A8' }]}>
-                      Engagement Period
+                      Engagement Period (For Temporary Staff)
                     </Text>
                   </View>
 
@@ -643,178 +650,180 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                 </View>
               )}
 
-              {/* Working Schedule (Days & Timings) */}
-              <View
-                style={[
-                  styles.subSectionBox,
-                  {
-                    backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
-                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                  },
-                ]}
-              >
-                <View style={styles.subSectionHeader}>
-                  <MaterialIcons name="event-available" size={17} color={AppColors.primaryColor} />
-                  <Text style={[styles.subSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                    Working Schedule & Shift Timings
-                  </Text>
-                </View>
+              {/* Working Schedule (For Part-Time Staff) */}
+              {employmentType === 'Part-Time' && (
+                <View
+                  style={[
+                    styles.subSectionBox,
+                    {
+                      backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                    },
+                  ]}
+                >
+                  <View style={styles.subSectionHeader}>
+                    <MaterialIcons name="event-available" size={17} color={AppColors.primaryColor} />
+                    <Text style={[styles.subSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                      Schedule (For Part-Time Staff)
+                    </Text>
+                  </View>
 
-                {/* Days of week selector */}
-                <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155', marginBottom: 8 }]}>
-                  Working Days <Text style={styles.requiredStar}>*</Text>
-                </Text>
-                <View style={styles.daysRow}>
-                  {DAYS_OF_WEEK.map((day) => {
-                    const isSelected = workingDays.includes(day);
-                    return (
-                      <TouchableOpacity
-                        key={day}
-                        style={[
-                          styles.dayBtn,
-                          isSelected
-                            ? {
-                                backgroundColor: AppColors.primaryColor,
-                                borderColor: AppColors.primaryColor,
-                              }
-                            : {
-                                backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
-                                borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
-                              },
-                        ]}
-                        onPress={() => handleToggleDay(day)}
-                      >
-                        <Text
+                  {/* Days of week selector */}
+                  <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155', marginBottom: 8 }]}>
+                    Working Days <Text style={styles.requiredStar}>*</Text>
+                  </Text>
+                  <View style={styles.daysRow}>
+                    {DAYS_OF_WEEK.map((day) => {
+                      const isSelected = workingDays.includes(day);
+                      return (
+                        <TouchableOpacity
+                          key={day}
                           style={[
-                            styles.dayBtnText,
+                            styles.dayBtn,
+                            isSelected
+                              ? {
+                                  backgroundColor: AppColors.primaryColor,
+                                  borderColor: AppColors.primaryColor,
+                                }
+                              : {
+                                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
+                                  borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                                },
+                          ]}
+                          onPress={() => handleToggleDay(day)}
+                        >
+                          <Text
+                            style={[
+                              styles.dayBtnText,
+                              {
+                                color: isSelected ? '#FFFFFF' : isDark ? '#94A3B8' : '#475569',
+                                fontWeight: isSelected ? '700' : '600',
+                              },
+                            ]}
+                          >
+                            {day}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Standard Hours */}
+                  {!isDifferentDays && (
+                    <View style={styles.rowTwoCols}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
+                          Shift Start
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.timeBtn,
                             {
-                              color: isSelected ? '#FFFFFF' : isDark ? '#94A3B8' : '#475569',
-                              fontWeight: isSelected ? '700' : '600',
+                              backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                              borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                             },
                           ]}
+                          onPress={() => setTimePickerTarget({ type: 'global-start' })}
                         >
-                          {day}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                          <MaterialIcons name="schedule" size={16} color={AppColors.primaryColor} />
+                          <Text style={[styles.timeBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                            {workingTimeStart}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
 
-                {/* Standard Hours */}
-                {!isDifferentDays && (
-                  <View style={styles.rowTwoCols}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
-                        Shift Start
-                      </Text>
-                      <TouchableOpacity
-                        style={[
-                          styles.timeBtn,
-                          {
-                            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                          },
-                        ]}
-                        onPress={() => setTimePickerTarget({ type: 'global-start' })}
-                      >
-                        <MaterialIcons name="schedule" size={16} color={AppColors.primaryColor} />
-                        <Text style={[styles.timeBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {workingTimeStart}
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
+                          Shift End
                         </Text>
-                      </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.timeBtn,
+                            {
+                              backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                              borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                            },
+                          ]}
+                          onPress={() => setTimePickerTarget({ type: 'global-end' })}
+                        >
+                          <MaterialIcons name="schedule" size={16} color={AppColors.primaryColor} />
+                          <Text style={[styles.timeBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                            {workingTimeEnd}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
+                  )}
 
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
-                        Shift End
-                      </Text>
-                      <TouchableOpacity
-                        style={[
-                          styles.timeBtn,
-                          {
-                            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                          },
-                        ]}
-                        onPress={() => setTimePickerTarget({ type: 'global-end' })}
-                      >
-                        <MaterialIcons name="schedule" size={16} color={AppColors.primaryColor} />
-                        <Text style={[styles.timeBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {workingTimeEnd}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
+                  {/* Different time for different days toggle */}
+                  <View style={styles.diffDaysToggleRow}>
+                    <Text style={[styles.diffDaysText, { color: isDark ? '#CBD5E1' : '#475569' }]}>
+                      Different time for different days
+                    </Text>
+                    <Switch
+                      value={isDifferentDays}
+                      onValueChange={setIsDifferentDays}
+                      trackColor={{ false: '#94A3B8', true: AppColors.primaryColor }}
+                      thumbColor="#FFFFFF"
+                    />
                   </View>
-                )}
 
-                {/* Different time for different days toggle */}
-                <View style={styles.diffDaysToggleRow}>
-                  <Text style={[styles.diffDaysText, { color: isDark ? '#CBD5E1' : '#475569' }]}>
-                    Different time for different days
-                  </Text>
-                  <Switch
-                    value={isDifferentDays}
-                    onValueChange={setIsDifferentDays}
-                    trackColor={{ false: '#94A3B8', true: AppColors.primaryColor }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
+                  {/* Day-Wise Hours List */}
+                  {isDifferentDays && (
+                    <View style={styles.dayWiseContainer}>
+                      {workingDays.length === 0 ? (
+                        <Text style={{ fontSize: 12, color: AppColors.warningAmber, marginVertical: 6 }}>
+                          Please select working days first.
+                        </Text>
+                      ) : (
+                        workingDays.map((day) => {
+                          const start = dayWiseHours[day]?.startTime || workingTimeStart;
+                          const end = dayWiseHours[day]?.endTime || workingTimeEnd;
+                          return (
+                            <View key={day} style={styles.dayWiseRow}>
+                              <View style={styles.dayWiseBadge}>
+                                <Text style={styles.dayWiseBadgeText}>{day}</Text>
+                              </View>
 
-                {/* Day-Wise Hours List */}
-                {isDifferentDays && (
-                  <View style={styles.dayWiseContainer}>
-                    {workingDays.length === 0 ? (
-                      <Text style={{ fontSize: 12, color: AppColors.warningAmber, marginVertical: 6 }}>
-                        Please select working days first.
-                      </Text>
-                    ) : (
-                      workingDays.map((day) => {
-                        const start = dayWiseHours[day]?.startTime || workingTimeStart;
-                        const end = dayWiseHours[day]?.endTime || workingTimeEnd;
-                        return (
-                          <View key={day} style={styles.dayWiseRow}>
-                            <View style={styles.dayWiseBadge}>
-                              <Text style={styles.dayWiseBadgeText}>{day}</Text>
+                              <TouchableOpacity
+                                style={[
+                                  styles.dayWiseTimeBtn,
+                                  {
+                                    backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                                  },
+                                ]}
+                                onPress={() => setTimePickerTarget({ type: 'day-start', day })}
+                              >
+                                <Text style={[styles.dayWiseTimeText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                                  {start}
+                                </Text>
+                              </TouchableOpacity>
+
+                              <Text style={{ color: isDark ? '#64748B' : '#94A3B8' }}>-</Text>
+
+                              <TouchableOpacity
+                                style={[
+                                  styles.dayWiseTimeBtn,
+                                  {
+                                    backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                                  },
+                                ]}
+                                onPress={() => setTimePickerTarget({ type: 'day-end', day })}
+                              >
+                                <Text style={[styles.dayWiseTimeText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                                  {end}
+                                </Text>
+                              </TouchableOpacity>
                             </View>
-
-                            <TouchableOpacity
-                              style={[
-                                styles.dayWiseTimeBtn,
-                                {
-                                  backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                                  borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                                },
-                              ]}
-                              onPress={() => setTimePickerTarget({ type: 'day-start', day })}
-                            >
-                              <Text style={[styles.dayWiseTimeText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                                {start}
-                              </Text>
-                            </TouchableOpacity>
-
-                            <Text style={{ color: isDark ? '#64748B' : '#94A3B8' }}>-</Text>
-
-                            <TouchableOpacity
-                              style={[
-                                styles.dayWiseTimeBtn,
-                                {
-                                  backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                                  borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                                },
-                              ]}
-                              onPress={() => setTimePickerTarget({ type: 'day-end', day })}
-                            >
-                              <Text style={[styles.dayWiseTimeText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                                {end}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        );
-                      })
-                    )}
-                  </View>
-                )}
-              </View>
+                          );
+                        })
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
 
               {/* Pay / Compensation */}
               <View

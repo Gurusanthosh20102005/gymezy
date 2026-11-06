@@ -2225,7 +2225,10 @@ export const MembersTab = ({ topInset, navigation }) => {
                 } else if (isRejected) {
                   statusBadgeText = '#EF4444';
                   statusBadgeBg = isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2';
-                  statusLabel = 'Rejected';
+                  statusLabel =
+                    req.status === 'REJECTED_BY_GYM' || req.adminStatus === 'REJECTED_BY_GYM'
+                      ? 'Rejected By Gym'
+                      : 'Rejected';
                 }
 
                 return (

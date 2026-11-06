@@ -889,6 +889,18 @@ export const EmployeeManagement = ({
   };
 
   const handleAddTempStaffSubmit = async (values) => {
+    if (tempEmploymentType === 'Temporary') {
+      if (!values.startDate || !values.endDate) {
+        message.warning('Please select start date and end date for temporary staff.');
+        return;
+      }
+    } else if (tempEmploymentType === 'Part-Time') {
+      if (!workingDays || workingDays.length === 0) {
+        message.warning('Please select at least one working day for part-time staff.');
+        return;
+      }
+    }
+
     setIsSubmittingTemp(true);
     const activeGymId = gymId || user?.gym?._id || user?.gym?.id || user?.gymId || user?.id || user?.userId;
     const activeGymPartnerId = gymPartnerId || user?.gym?.partnerId || user?.partnerId || 'GYM1';
@@ -921,13 +933,13 @@ export const EmployeeManagement = ({
       pendingAction: 'NONE',
       type: tempEmploymentType || 'Temporary',
       schedule: {
-        workingDays,
+        workingDays: tempEmploymentType === 'Part-Time' ? workingDays : [],
         workingTimeStart: values.workingTimeStart ? values.workingTimeStart.format('hh:mm A') : '09:00 AM',
         workingTimeEnd: values.workingTimeEnd ? values.workingTimeEnd.format('hh:mm A') : '06:00 PM',
-        isDifferentDays,
-        dayWiseHours: dayWiseArray,
-        startDate: values.startDate ? values.startDate.format('YYYY-MM-DD') : '',
-        endDate: values.endDate ? values.endDate.format('YYYY-MM-DD') : '',
+        isDifferentDays: tempEmploymentType === 'Part-Time' ? isDifferentDays : false,
+        dayWiseHours: tempEmploymentType === 'Part-Time' ? dayWiseArray : [],
+        startDate: tempEmploymentType === 'Temporary' && values.startDate ? values.startDate.format('YYYY-MM-DD') : '',
+        endDate: tempEmploymentType === 'Temporary' && values.endDate ? values.endDate.format('YYYY-MM-DD') : '',
       },
       compensation: {
         payType: values.payType || 'Hourly',
@@ -4194,130 +4206,137 @@ export const EmployeeManagement = ({
                 </Row>
               </div>
 
-              {/* Engagement Period */}
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
-                  Engagement Period (For Temporary Staff)
+              {/* Engagement Period (For Temporary Staff) */}
+              {tempEmploymentType === 'Temporary' && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
+                    Engagement Period (For Temporary Staff)
+                  </div>
+                  <Row gutter={10}>
+                    <Col span={12}>
+                      <Form.Item label={<span style={{ fontSize: 11 }}>Start Date <span style={{ color: '#ef4444' }}>*</span></span>} name="startDate" style={{ marginBottom: 4 }}>
+                        <DatePicker placeholder="Select start date" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item label={<span style={{ fontSize: 11 }}>End Date <span style={{ color: '#ef4444' }}>*</span></span>} name="endDate" style={{ marginBottom: 4 }}>
+                        <DatePicker placeholder="Select end date" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <div style={{ fontSize: 10.5, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
+                    Staff will be active only between the selected dates.
+                  </div>
                 </div>
-                <Row gutter={10}>
-                  <Col span={12}>
-                    <Form.Item label={<span style={{ fontSize: 11 }}>Start Date <span style={{ color: '#ef4444' }}>*</span></span>} name="startDate" style={{ marginBottom: 4 }}>
-                      <DatePicker placeholder="Select start date" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item label={<span style={{ fontSize: 11 }}>End Date <span style={{ color: '#ef4444' }}>*</span></span>} name="endDate" style={{ marginBottom: 4 }}>
-                      <DatePicker placeholder="Select end date" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-                <div style={{ fontSize: 10.5, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
-                  Staff will be active only between the selected dates.
-                </div>
-              </div>
+              )}
             </Col>
 
             {/* Right Column: Schedule & Pay */}
             <Col xs={24} sm={12}>
-              {/* Working Days */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
-                  Schedule (For Part-Time Staff)
-                </div>
-                <div style={{ fontSize: 11.5, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 6 }}>
-                  Working Days <span style={{ color: '#ef4444' }}>*</span>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
-                    const isSelected = workingDays.includes(day);
-                    return (
-                      <div
-                        key={day}
-                        onClick={() => {
-                          if (isSelected) setWorkingDays(workingDays.filter((d) => d !== day));
-                          else setWorkingDays([...workingDays, day]);
-                        }}
-                        style={{
-                          width: 44,
-                          height: 38,
-                          borderRadius: 'var(--radius-base)',
-                          backgroundColor: isSelected ? 'var(--color-primary)' : isDarkMode ? '#1a1a1a' : '#f1f5f9',
-                          color: isSelected ? '#ffffff' : isDarkMode ? '#cccccc' : '#334155',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: 11,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                        }}
-                      >
-                        <span>{day}</span>
-                        {isSelected && <CheckOutlined style={{ fontSize: 9, marginTop: 1 }} />}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Working Time */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
-                  Working Time <span style={{ color: '#ef4444' }}>*</span>
-                </div>
-                {!isDifferentDays ? (
-                  <Row gutter={8} align="middle">
-                    <Col span={11}>
-                      <Form.Item name="workingTimeStart" noStyle>
-                        <TimePicker use12Hours format="h:mm a" placeholder="09:00 AM" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={2} style={{ textAlign: 'center', color: '#888888' }}>to</Col>
-                    <Col span={11}>
-                      <Form.Item name="workingTimeEnd" noStyle>
-                        <TimePicker use12Hours format="h:mm a" placeholder="06:00 PM" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                ) : (
-                  <div style={{ maxHeight: 160, overflowY: 'auto', paddingRight: 4 }}>
-                    {workingDays.length === 0 ? (
-                      <div style={{ fontSize: 11, color: '#fa8c16' }}>Please select working days first.</div>
-                    ) : (
-                      workingDays.map((day) => (
-                        <div key={day} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                          <span style={{ width: 36, fontSize: 11, fontWeight: 700 }}>{day}</span>
-                          <TimePicker
-                            use12Hours
-                            format="h:mm a"
-                            placeholder="Start"
-                            value={dayWiseHours[day]?.startTime}
-                            onChange={(t) => setDayWiseHours((prev) => ({ ...prev, [day]: { ...prev[day], startTime: t } }))}
-                            style={{ flex: 1, height: 32 }}
-                          />
-                          <span style={{ fontSize: 10, color: '#888888' }}>-</span>
-                          <TimePicker
-                            use12Hours
-                            format="h:mm a"
-                            placeholder="End"
-                            value={dayWiseHours[day]?.endTime}
-                            onChange={(t) => setDayWiseHours((prev) => ({ ...prev, [day]: { ...prev[day], endTime: t } }))}
-                            style={{ flex: 1, height: 32 }}
-                          />
-                        </div>
-                      ))
-                    )}
+              {/* Schedule (For Part-Time Staff) */}
+              {tempEmploymentType === 'Part-Time' && (
+                <>
+                  {/* Working Days */}
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
+                      Schedule (For Part-Time Staff)
+                    </div>
+                    <div style={{ fontSize: 11.5, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 6 }}>
+                      Working Days <span style={{ color: '#ef4444' }}>*</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
+                        const isSelected = workingDays.includes(day);
+                        return (
+                          <div
+                            key={day}
+                            onClick={() => {
+                              if (isSelected) setWorkingDays(workingDays.filter((d) => d !== day));
+                              else setWorkingDays([...workingDays, day]);
+                            }}
+                            style={{
+                              width: 44,
+                              height: 38,
+                              borderRadius: 'var(--radius-base)',
+                              backgroundColor: isSelected ? 'var(--color-primary)' : isDarkMode ? '#1a1a1a' : '#f1f5f9',
+                              color: isSelected ? '#ffffff' : isDarkMode ? '#cccccc' : '#334155',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                            }}
+                          >
+                            <span>{day}</span>
+                            {isSelected && <CheckOutlined style={{ fontSize: 9, marginTop: 1 }} />}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
-                <Checkbox
-                  checked={isDifferentDays}
-                  onChange={(e) => setIsDifferentDays(e.target.checked)}
-                  style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 6 }}
-                >
-                  Different time for different days
-                </Checkbox>
-              </div>
+
+                  {/* Working Time */}
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
+                      Working Time <span style={{ color: '#ef4444' }}>*</span>
+                    </div>
+                    {!isDifferentDays ? (
+                      <Row gutter={8} align="middle">
+                        <Col span={11}>
+                          <Form.Item name="workingTimeStart" noStyle>
+                            <TimePicker use12Hours format="h:mm a" placeholder="09:00 AM" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
+                          </Form.Item>
+                        </Col>
+                        <Col span={2} style={{ textAlign: 'center', color: '#888888' }}>to</Col>
+                        <Col span={11}>
+                          <Form.Item name="workingTimeEnd" noStyle>
+                            <TimePicker use12Hours format="h:mm a" placeholder="06:00 PM" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    ) : (
+                      <div style={{ maxHeight: 160, overflowY: 'auto', paddingRight: 4 }}>
+                        {workingDays.length === 0 ? (
+                          <div style={{ fontSize: 11, color: '#fa8c16' }}>Please select working days first.</div>
+                        ) : (
+                          workingDays.map((day) => (
+                            <div key={day} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                              <span style={{ width: 36, fontSize: 11, fontWeight: 700 }}>{day}</span>
+                              <TimePicker
+                                use12Hours
+                                format="h:mm a"
+                                placeholder="Start"
+                                value={dayWiseHours[day]?.startTime}
+                                onChange={(t) => setDayWiseHours((prev) => ({ ...prev, [day]: { ...prev[day], startTime: t } }))}
+                                style={{ flex: 1, height: 32 }}
+                              />
+                              <span style={{ fontSize: 10, color: '#888888' }}>-</span>
+                              <TimePicker
+                                use12Hours
+                                format="h:mm a"
+                                placeholder="End"
+                                value={dayWiseHours[day]?.endTime}
+                                onChange={(t) => setDayWiseHours((prev) => ({ ...prev, [day]: { ...prev[day], endTime: t } }))}
+                                style={{ flex: 1, height: 32 }}
+                              />
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                    <Checkbox
+                      checked={isDifferentDays}
+                      onChange={(e) => setIsDifferentDays(e.target.checked)}
+                      style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 6 }}
+                    >
+                      Different time for different days
+                    </Checkbox>
+                  </div>
+                </>
+              )}
 
               {/* Pay / Compensation */}
               <div style={{ marginBottom: 14 }}>
