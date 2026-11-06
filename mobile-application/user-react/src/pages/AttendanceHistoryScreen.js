@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
@@ -29,6 +29,7 @@ const getScreenTitle = (membershipId, bookingId, fallbackTitle) => {
 };
 
 export const AttendanceHistoryScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
 
   const initialMembershipId = route.params?.membershipId || null;
@@ -391,7 +392,10 @@ export const AttendanceHistoryScreen = ({ route, navigation }) => {
           data={displayedLogs}
           keyExtractor={(item) => item.key || item._id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: 32 + (insets.bottom > 0 ? insets.bottom + 10 : 16) },
+          ]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#003882']} />}
           renderItem={renderLogItem}
         />

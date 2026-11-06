@@ -15,7 +15,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
@@ -244,6 +244,7 @@ const getAvailableSwitchPlans = (gym, currentTier) => {
 };
 
 export const MembershipDetailsScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { membership: initialMbr } = route.params;
   const { isDark, colors } = useTheme();
   const { memberships, cancelMembership, updateMembership } = useBookingRepository();
@@ -770,7 +771,10 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 40 + (insets.bottom > 0 ? insets.bottom + 12 : 16) },
+        ]}
       >
         {/* 1. Gym Profile Card with Logo & Name */}
         <View
@@ -1420,7 +1424,11 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
           <View
             style={[
               styles.sheetContainer,
-              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF', maxHeight: '90%' },
+              {
+                backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                maxHeight: '90%',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20,
+              },
             ]}
           >
             {/* Header */}
@@ -1924,7 +1932,10 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
           <View
             style={[
               styles.sheetContainer,
-              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF' },
+              {
+                backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20,
+              },
             ]}
           >
             {/* Header */}
@@ -2024,7 +2035,11 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
           <View
             style={[
               styles.sheetContainer,
-              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF', maxHeight: '90%' },
+              {
+                backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                maxHeight: '90%',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20,
+              },
             ]}
           >
             {/* Header */}
@@ -2285,7 +2300,11 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                 <View
                   style={[
                     styles.sheetContainer,
-                    { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF', maxHeight: '90%' },
+                    {
+                      backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
+                      maxHeight: '90%',
+                      paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 20,
+                    },
                   ]}
                 >
                   {/* Header with Gym Name in Onboarding Typography */}

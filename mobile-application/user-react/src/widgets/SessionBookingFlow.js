@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { MonthlyGridCalendar } from './CustomCalendar';
@@ -142,6 +143,7 @@ export const SessionBookingFlow = ({
   onContinueToCheckout,
   extraTopBanner,
 }) => {
+  const insets = useSafeAreaInsets();
   // Theme colors
   const primaryNavy = isDark ? '#93C5FD' : '#003882';
   const cardColor = isDark ? '#1E1E1E' : '#FFFFFF';
@@ -435,7 +437,10 @@ export const SessionBookingFlow = ({
       {/* SUBVIEW 1: PLAN SELECTOR (Per Session / Weekly Plan / Custom Dates) */}
       {subView === 'plan_select' && (
         <View style={{ flex: 1 }}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 90 + (insets.bottom > 0 ? insets.bottom + 8 : 20) },
+          ]}>
             {/* Optional extra banner (e.g. Group Class batches switch) */}
             {extraTopBanner}
 
@@ -591,6 +596,7 @@ export const SessionBookingFlow = ({
               {
                 backgroundColor: isDark ? 'rgba(18, 18, 18, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                 borderTopColor: borderColor,
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 14,
               },
             ]}
           >
@@ -632,7 +638,10 @@ export const SessionBookingFlow = ({
       {/* SUBVIEW 1B: DEDICATED TRAINER SELECTION PAGE (BEFORE DATE SELECTION) */}
       {subView === 'trainer_select' && (
         <View style={{ flex: 1 }}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 90 + (insets.bottom > 0 ? insets.bottom + 8 : 20) },
+          ]}>
             {/* Plan Info Banner */}
             <View style={[styles.planBanner, { backgroundColor: cardColor, borderColor }]}>
               <View style={[styles.planIconBox, { backgroundColor: isDark ? 'rgba(59,130,246,0.2)' : 'rgba(0,56,130,0.1)' }]}>
@@ -662,6 +671,7 @@ export const SessionBookingFlow = ({
               {
                 backgroundColor: isDark ? 'rgba(18, 18, 18, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                 borderTopColor: borderColor,
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 14,
               },
             ]}
           >
@@ -697,7 +707,10 @@ export const SessionBookingFlow = ({
       {/* SUBVIEW 1B: SINGLE SESSION (DATE, TIME SLOTS & COACH SELECTION) */}
       {subView === 'single_session' && (
         <View style={{ flex: 1 }}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 90 + (insets.bottom > 0 ? insets.bottom + 8 : 20) },
+          ]}>
             {/* Plan Banner */}
             <View style={[styles.planBanner, { backgroundColor: cardColor, borderColor }]}>
               <View style={[styles.planIconBox, { backgroundColor: isDark ? 'rgba(59,130,246,0.2)' : 'rgba(0,56,130,0.1)' }]}>
@@ -836,6 +849,7 @@ export const SessionBookingFlow = ({
               {
                 backgroundColor: isDark ? 'rgba(18, 18, 18, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                 borderTopColor: borderColor,
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 14,
               },
             ]}
           >
@@ -865,7 +879,10 @@ export const SessionBookingFlow = ({
       {/* SUBVIEW 2: WEEKLY PLAN CALENDAR */}
       {subView === 'weekly_plan' && (
         <View style={{ flex: 1 }}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 90 + (insets.bottom > 0 ? insets.bottom + 8 : 20) },
+          ]}>
             {/* Plan Banner */}
             <View style={[styles.planBanner, { backgroundColor: cardColor, borderColor }]}>
               <View style={[styles.planIconBox, { backgroundColor: 'rgba(0,191,98,0.12)' }]}>
@@ -919,6 +936,7 @@ export const SessionBookingFlow = ({
               {
                 backgroundColor: isDark ? 'rgba(18, 18, 18, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                 borderTopColor: borderColor,
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 14,
               },
             ]}
           >
@@ -942,7 +960,10 @@ export const SessionBookingFlow = ({
       {/* SUBVIEW 3: CUSTOM DATES CALENDAR */}
       {subView === 'custom_dates' && (
         <View style={{ flex: 1 }}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 90 + (insets.bottom > 0 ? insets.bottom + 8 : 20) },
+          ]}>
             {/* Top Header Card */}
             <View style={[styles.planBanner, { backgroundColor: cardColor, borderColor }]}>
               <View style={[styles.planIconBox, { backgroundColor: 'rgba(0,56,130,0.1)' }]}>
@@ -1009,6 +1030,7 @@ export const SessionBookingFlow = ({
               {
                 backgroundColor: isDark ? 'rgba(18, 18, 18, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                 borderTopColor: borderColor,
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 14,
               },
             ]}
           >

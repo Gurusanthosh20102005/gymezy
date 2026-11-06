@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   BackHandler,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
@@ -119,6 +119,7 @@ const OTHER_CLASSES = [
 ];
 
 export const BookingSessionScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { gym: initialGym, initialCategory } = route.params;
   const { isDark, colors } = useTheme();
   const { bookings, refreshBookings } = useBookingRepository();
@@ -957,7 +958,10 @@ export const BookingSessionScreen = ({ route, navigation }) => {
       {currentView === 'categories' && (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 60 + (insets.bottom > 0 ? insets.bottom + 8 : 20) },
+          ]}
         >
           <Text style={[styles.chooseTitle, { color: textColor }]}>
             Choose What You Want to Book
@@ -1128,7 +1132,10 @@ export const BookingSessionScreen = ({ route, navigation }) => {
         <View style={{ flex: 1 }}>
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: 60 + (insets.bottom > 0 ? insets.bottom + 8 : 20) },
+            ]}
           >
             {/* Hero Banner */}
             <ImageBackground
@@ -1420,7 +1427,10 @@ export const BookingSessionScreen = ({ route, navigation }) => {
         <View style={{ flex: 1 }}>
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: 60 + (insets.bottom > 0 ? insets.bottom + 8 : 20) },
+            ]}
           >
             {/* Class Hero Banner */}
             <ImageBackground
@@ -1674,6 +1684,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                     borderTopColor: isDark
                       ? 'rgba(255, 255, 255, 0.08)'
                       : 'rgba(226, 232, 240, 0.8)',
+                    paddingBottom: insets.bottom > 0 ? insets.bottom + 8 : 14,
                   },
                 ]}
               >
