@@ -564,7 +564,7 @@ class ApiService {
    * Get cancellation and refund quote preview
    */
   async getBookingCancellationQuote(bookingId) {
-    const response = await this.executeFetch(\/bookings/\/cancellation-quote\, {
+    const response = await this.executeFetch(`/bookings/${bookingId}/cancellation-quote`, {
       method: 'GET',
       headers: this.getHeaders(),
     });
