@@ -465,6 +465,12 @@ export const GymProfileManagement = () => {
   const { user } = useSelector((state) => state.auth);
   const gymProfileFromRedux = useSelector((state) => state.gym?.gymProfile || state.auth?.user?.gym);
 
+  const isManager = Boolean(
+    user?.isManager ||
+    user?.role === 'MANAGER' ||
+    String(user?.role || '').toUpperCase() === 'MANAGER'
+  );
+
   const targetGymId = useMemo(() => {
     return (
       gymProfileFromRedux?._id ||
@@ -2288,19 +2294,21 @@ export const GymProfileManagement = () => {
                         <div style={{ fontSize: 10.5, color: '#1677ff', fontWeight: 600, marginTop: 2 }}>Published</div>
                       </div>
 
-                      {/* Stat 6: Revenue */}
-                      <div style={{ padding: '12px', borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#141414' : '#f8fafc', border: `1px solid ${isDarkMode ? '#222222' : '#e2e8f0'}` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.2)' : '#eaf8ef', color: '#00bf62', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
-                            <DollarCircleOutlined />
+                      {/* Stat 6: Revenue (Hidden for Managers) */}
+                      {!isManager && (
+                        <div style={{ padding: '12px', borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#141414' : '#f8fafc', border: `1px solid ${isDarkMode ? '#222222' : '#e2e8f0'}` }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.2)' : '#eaf8ef', color: '#00bf62', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
+                              <DollarCircleOutlined />
+                            </div>
+                            <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b' }}>Monthly Revenue</div>
                           </div>
-                          <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b' }}>Monthly Revenue</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                            ₹{Number(activeGym?.monthlyRevenue || 0).toLocaleString('en-IN')}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: '#00bf62', fontWeight: 600, marginTop: 2 }}>Live Status</div>
                         </div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                          ₹{Number(activeGym?.monthlyRevenue || 0).toLocaleString('en-IN')}
-                        </div>
-                        <div style={{ fontSize: 10.5, color: '#00bf62', fontWeight: 600, marginTop: 2 }}>Live Status</div>
-                      </div>
+                      )}
                     </div>
                   </Card>
                 </Col>

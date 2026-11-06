@@ -125,6 +125,7 @@ class GymService {
           const result = {
             gyms: json.data.gyms,
             pagination: json.data.pagination || { total: json.data.gyms.length, page: 1, pages: 1 },
+            didYouMean: json.data.didYouMean || json.data.pagination?.didYouMean || null,
             isBackend: true,
           };
           gymsCache.set(cacheKey, { timestamp: Date.now(), data: result });

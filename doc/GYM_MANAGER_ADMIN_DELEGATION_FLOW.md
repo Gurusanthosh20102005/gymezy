@@ -57,6 +57,13 @@ Each `Employee` document with `role: 'Manager'` embeds a `managerPermissions` su
 | `requireCancellationApproval` | `true` | Approving membership cancellations and refund settlements. | Cancels membership directly and updates wallet/gateway ledger. | Transitions to `PENDING_GYM_ADMIN_APPROVAL`. |
 | `requireProfileEditApproval` | `true` | Modifying gym facilities, timings, descriptions, day-pass rates, or policies. | Updates live gym document immediately. | Staged in `gym.pendingManagerEdits` with visual diff tracking. |
 
+### 2.1 Financial & Revenue Privacy Isolation (Manager Console)
+To maintain commercial privacy, **all financial and revenue metrics are strictly partitioned** away from employees assigned the `MANAGER` role:
+1. **Live Dashboard Overview:** The 3 primary revenue cards (**Total Revenue / Monthly GMV**, **Membership Plans Revenue**, and **Session Bookings Revenue**) are hidden when `isManager` is active. The Manager view renders exclusively the 3 operational volume cards (**App Count**, **Total Active Users**, and **Walk-in Count**) in a balanced 3-column row.
+2. **Sidebar Navigation (`AppSidebar`):** The **Transactions & Payments** (`/owner/transactions`) navigation link is excluded from the Manager menu hierarchy.
+3. **Route Guard & Security:** Direct URL navigation to `/owner/transactions` renders an explicit `Result status="403"` restricted access screen and stops transaction API querying.
+4. **Gym Profile Summary:** The Monthly Revenue metric under Gym Profile is omitted for Managers.
+
 ---
 
 ## 3. Database Schema Specifications
@@ -206,15 +213,37 @@ When a Manager performs an action requiring Gym Admin approval, GYMEZY alerts th
   - When called by Gym Admin: Applied directly to live gym document.
   - When called by Manager without permission: Staged in `gym.pendingManagerEdits`.
 
+### 6.4 Scoped Dashboard Statistics & Temporal Filtering
+- `GET /api/v1/gyms/:id/dashboard-stats`:
+  - Query parameters:
+    - `range`: `'Today'` | `'Yesterday'` | `'This Week'` | `'This Month'` | `'All Time'` | `'custom'`
+    - `startDate` & `endDate`: ISO timestamp strings for custom range boundaries.
+  - Dynamically partitions all revenue (Member Plans & Session Bookings), volume counts (App Count, Walk-in Count, Total Active Customers), and recent activity within the requested temporal boundaries.
+
+### 6.5 Super Admin Command Center Statistics & Fleet Temporal Filtering
+- `GET /api/v1/admin/dashboard-stats`:
+  - Query parameters:
+    - `filterType` / `range`: `'today'` | `'yesterday'` | `'week'` | `'month'` | `'all'` | `'custom'`
+    - `startDate` & `endDate`: ISO timestamp strings for custom range boundaries.
+  - Dynamically computes platform-wide metrics across all gyms:
+    - `totalGmv`: Platform Gross Merchandise Volume (Session Bookings + Membership Plans, excluding failed/refunded payments and cancellations) across the selected temporal window.
+    - `completedWorkouts`: Total completed workouts fulfilled across the fleet within the window.
+    - `completionRate`: Fulfillment percentage (`(completed / total) * 100`).
+    - `bookings`: Status partition (`total`, `confirmed`, `completed`, `cancelled`, `noShow`).
+    - `dateFilter`: Active temporal metadata (`label`, `range`, `startDate`, `endDate`).
+    - `revenueMonthly`: 6-month historical monthly breakdown of subscription vs commission revenue.
+
 ---
 
 ## 7. Verification & Test Coverage
 
-All delegation rules are verified under automated unit tests in `middleware/test/manager_delegation.test.js`:
+All delegation and scoped analytics rules are verified under automated unit tests in `middleware/test/`:
 - ✅ Schema validation for default 4 boolean toggles (`true`).
 - ✅ Schema support for customizable permissions on Manager creation.
 - ✅ Schema support for `pendingManagerEdits` in Gym model.
 - ✅ State validation for `PENDING_GYM_ADMIN_APPROVAL` in Membership Switch requests.
 - ✅ State validation for `PENDING_GYM_ADMIN_APPROVAL` in Membership Cancellation requests.
-- **Run command:** `node --test middleware/test/*.test.js` (34/34 passing).
+- ✅ Date range filtering SSOT (`searchHelper.parseDateRangeFilter`) covering Today, Yesterday, This Week, This Month, and Custom Ranges across both Gym Owner (`range`) and Super Admin (`filterType`).
+- ✅ Super Admin Command Center temporal aggregation tests (`admin_dashboard.test.js`).
+- **Run command:** `node --test middleware/test/*.test.js` (121/121 passing).
 

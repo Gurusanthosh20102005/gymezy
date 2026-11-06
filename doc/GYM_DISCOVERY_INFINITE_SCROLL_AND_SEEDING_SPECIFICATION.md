@@ -291,13 +291,76 @@ Located at: [`mobile-application/user-react/src/pages/BookingSessionScreen.js`](
 
 ---
 
-## 6. Verification and Audit
+## 6. Industry-Standard Fuzzy Search Engine with Typo Tolerance
 
-All 80/80 backend unit tests continuously validate query isolation, distance sorting, and search regex safety:
+Located at:
+- Core Engine: [`middleware/src/utils/fuzzySearchEngine.js`](../middleware/src/utils/fuzzySearchEngine.js)
+- Search Helper SSOT: [`middleware/src/utils/searchHelper.js`](../middleware/src/utils/searchHelper.js)
+- API Controller: [`middleware/src/controllers/gym.controller.js`](../middleware/src/controllers/gym.controller.js)
+- Client Integration: [`mobile-application/user-react/src/pages/HomeScreen.js`](../mobile-application/user-react/src/pages/HomeScreen.js)
+
+### 6.1 Algorithmic Design (Damerau-Levenshtein Matrix)
+
+Traditional search engines using substring regex fail when users mistype queries. GYMEZY implements a high-performance **Damerau-Levenshtein distance matrix** supporting insertions, deletions, substitutions, and character transpositions.
+
+Typo tolerance is bounded dynamically by token length to eliminate false positives:
+- **1 – 2 Characters:** Exact match only (`distance === 0`).
+- **3 – 6 Characters:** Maximum allowed edit distance of `1` (e.g. `"ana"` $\to$ `"anna"`, `"fitnes"` $\to$ `"fitness"`, `"ygoa"` $\to$ `"yoga"`).
+- **7+ Characters:** Maximum allowed edit distance of `2` (e.g. `"crosfit"` $\to$ `"crossfit"`, `"velachry"` $\to$ `"velachery"`, `"nungambakam"` $\to$ `"nungambakkam"`).
+
+### 6.2 Multi-Field Weighted Scoring Hierarchy
+
+Matching query tokens against candidate gyms computes a weighted relevance score:
+
+$$\text{Relevance} = \sum_{\text{token} \in \text{query}} \max\left( W_{\text{field}} \cdot \left(1 - \frac{\text{edit\_dist}}{\max(\text{len}_1, \text{len}_2)}\right) \right)$$
+
+| Field | Weight | Description |
+|---|---|---|
+| `partnerId` | **12x** | Direct partner ID matches (e.g. `"GYM18"`). |
+| `name` | **10x** | Facility brand or gym name. |
+| `phone` / `email` | **10x** | Contact phone digits ($\ge 4$ chars) or email address. |
+| `area` | **8x** | Chennai neighborhood/locality. |
+| `city` | **7x** | City name (e.g. `"Chennai"`). |
+| `workouts` | **6x** | Activity tags (`CrossFit`, `HIIT`, `Yoga`, `Zumba`, `Boxing`). |
+| `facilities` / `amenities` | **4x** | Amenities (`AC Gym`, `Steam Room`, `Locker`, `Parking`). |
+| `tags` | **4x** | Operational tags (`Unisex`, `Luxury`, `Top Rated`). |
+| `ownerName` / `address` | **2x** | Owner full name or street address. |
+
+For multi-token queries (e.g. `"Anna Nagar luxury"`), a coverage multiplier boosts documents matching multiple query tokens.
+
+### 6.3 Hybrid Relevance & Proximity Ranking
+
+When search is active without an explicit sort order override, GYMEZY applies hybrid sorting:
+1. **Primary Sort:** Relevance Score (highest first).
+2. **Secondary Tie-Breaker:** Nearest GPS Distance (closest first).
+
+### 6.4 "Did You Mean" Spelling Corrections & Interactive Chip
+
+The engine maintains a canonical vocabulary of all 100 Chennai localities and standard fitness terminology. When misspellings are detected, the API returns a formatted `didYouMean` correction (e.g. `"ana nagar"` $\to$ `"Anna Nagar"`, `"crosfit"` $\to$ `"CrossFit"`, `"fitnes"` $\to$ `"Fitness"`).
+
+In `HomeScreen.js`, an interactive pill appears below the search input:
+`💡 Did you mean [Suggested Term]? Tap to search`
+Tapping the chip instantly replaces the search query with the suggested correction.
+
+### 6.5 Super Admin Fleet Management Integration (Numbered Pagination)
+
+The exact same multi-field fuzzy search and Damerau-Levenshtein engine powers the Super Admin Gyms Directory ([`GymsManagement.jsx`](../web-application/super-admin/src/admin/GymsManagement.jsx)), backed by `GET /api/v1/gyms/admin/fleet`:
+- **Server-Side Filtering**: `tab` (`approved`, `pending`, `on_hold`, `rejected`), `status`, `subscriptionType`, `location`, `phone`, and `search`.
+- **Typo-Tolerant Ranking**: Multi-field weighted scoring matches gym names, partner IDs, phone numbers, owners, and localities even with typos.
+- **"Did You Mean" Suggestion Banner**: If a typo is detected, a clickable banner appears above the table to search the corrected term with a single click.
+- **Traditional Numbered Pagination**: Paginated with `page` and `limit` (default: 10), complete with `pageSize` changer (10, 20, 50, 100) and page bounds indicators without infinite scrolling.
+- **Global Lifecycle Counters**: Returns exact real-time badge counts (`approved`, `pending`, `on_hold`, `rejected`, `total`) alongside the current page slice.
+
+---
+
+## 7. Verification and Audit
+
+All backend unit tests continuously validate query isolation, distance sorting, fuzzy typo tolerance, and search regex safety:
 
 ```bash
 node --test middleware/test/*.test.js
 ```
-- Total Passing Suites: **10**
-- Total Passing Tests: **80**
+- Total Passing Suites: **20**
+- Total Passing Tests: **126**
 - Regression Errors: **0**
+

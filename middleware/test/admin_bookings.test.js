@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import mongoose from 'mongoose';
 import Booking, { BOOKING_TYPES, BOOKING_STATUS } from '../src/models/booking.model.js';
+import { scoreBookingRelevance } from '../src/utils/fuzzySearchEngine.js';
 
 test('Admin Bookings & Group Classes Architecture Tests', async (t) => {
   await t.test('1. BOOKING_TYPES contains SECTION, GROUP_CLASS, GYM_SESSION (SSOT)', () => {
@@ -65,6 +66,33 @@ test('Admin Bookings & Group Classes Architecture Tests', async (t) => {
 
     assert.strictEqual(typeGroupClassFilter('GROUP_CLASS'), true);
     assert.strictEqual(typeGroupClassFilter('SECTION'), false);
+  });
+
+  await t.test('5. scoreBookingRelevance correctly scores exact and typo-tolerant queries', () => {
+    const booking = {
+      bookingId: 'BK100245',
+      title: 'Zumba Morning Cohort',
+      category: 'Zumba',
+      user: { fullName: 'Arun Kumar', phone: '9876543210', email: 'arun@example.com', customerId: 'CUST1001' },
+      gym: { name: 'FitZone Luxury Club', partnerId: 'GYM18', area: 'Anna Nagar', city: 'Chennai' },
+      status: 'Active',
+    };
+
+    // Exact bookingId match
+    const scoreId = scoreBookingRelevance(booking, ['bk100245']);
+    assert.ok(scoreId > 10, 'Expected high score for booking ID match');
+
+    // Typo in gym area: 'ana nagar' -> 'Anna Nagar'
+    const scoreAreaTypo = scoreBookingRelevance(booking, ['ana', 'nagar']);
+    assert.ok(scoreAreaTypo > 0, 'Expected typo match for Anna Nagar');
+
+    // Typo in customer name: 'kumaar' -> 'Kumar'
+    const scoreNameTypo = scoreBookingRelevance(booking, ['kumaar']);
+    assert.ok(scoreNameTypo > 0, 'Expected typo match for Kumar');
+
+    // Non-matching term
+    const scoreNone = scoreBookingRelevance(booking, ['unrelatedxyz']);
+    assert.strictEqual(scoreNone, 0);
   });
 });
 

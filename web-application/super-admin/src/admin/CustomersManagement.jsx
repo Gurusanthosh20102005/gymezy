@@ -19,7 +19,6 @@ import {
 import {
   SearchOutlined,
   DownloadOutlined,
-  PlusOutlined,
   EyeOutlined,
   EditOutlined,
   ArrowLeftOutlined,
@@ -73,10 +72,8 @@ export const CustomersManagement = () => {
   const [roleFilter, setRoleFilter] = useState('CUSTOMER');
 
   // Modal State
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form] = Form.useForm();
   const [editForm] = Form.useForm();
 
   // Modal State for Booking & Gym Details
@@ -143,28 +140,6 @@ export const CustomersManagement = () => {
       }
     } catch (err) {
       message.error(err.message || 'Failed to update customer status');
-    }
-  };
-
-  // Handle Add Customer Submit
-  const handleAddCustomerSubmit = async (values) => {
-    setIsSubmitting(true);
-    try {
-      await customerService.createCustomer({
-        fullName: values.name,
-        name: values.name,
-        email: values.email,
-        phone: values.phone,
-        status: values.status,
-      });
-      message.success(`Customer "${values.name}" created successfully!`);
-      setIsAddModalOpen(false);
-      form.resetFields();
-      await fetchCustomers(1, searchQuery, statusFilter, roleFilter);
-    } catch (err) {
-      message.error(err.message || 'Failed to create customer');
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -1299,7 +1274,7 @@ export const CustomersManagement = () => {
             </Select>
           </div>
 
-          {/* Right: Export & Add New Customer Buttons */}
+          {/* Right: Export CSV Button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Button
               icon={<DownloadOutlined />}
@@ -1311,20 +1286,6 @@ export const CustomersManagement = () => {
               }}
             >
               Export CSV
-            </Button>
-
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setIsAddModalOpen(true)}
-              style={{
-                borderRadius: 'var(--radius-base)',
-                fontWeight: 700,
-                backgroundColor: '#4f46e5',
-                borderColor: '#4f46e5',
-              }}
-            >
-              Add New Customer
             </Button>
           </div>
         </div>
@@ -1370,39 +1331,6 @@ export const CustomersManagement = () => {
           }}
         />
       </div>
-
-      {/* ADD NEW CUSTOMER MODAL */}
-      <Modal
-        title={<span style={{ fontWeight: 800 }}>Add New Customer</span>}
-        open={isAddModalOpen}
-        onCancel={() => setIsAddModalOpen(false)}
-        footer={null}
-        centered
-      >
-        <Form form={form} layout="vertical" onFinish={handleAddCustomerSubmit} style={{ marginTop: 16 }}>
-          <Form.Item label="Customer Full Name" name="name" rules={[{ required: true, message: 'Please enter customer name' }]}>
-            <Input placeholder="e.g. Rahul Sharma" />
-          </Form.Item>
-          <Form.Item label="Phone Number" name="phone" rules={[{ required: true, message: 'Please enter phone number' }]}>
-            <Input placeholder="+91 98765 43210" />
-          </Form.Item>
-          <Form.Item label="Email ID" name="email" rules={[{ required: true, type: 'email', message: 'Please enter valid email' }]}>
-            <Input placeholder="rahul@email.com" />
-          </Form.Item>
-          <Form.Item label="Status" name="status" initialValue="Active">
-            <Select>
-              <Option value="Active">Active</Option>
-              <Option value="Inactive">Inactive</Option>
-            </Select>
-          </Form.Item>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-            <Button onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-            <Button type="primary" htmlType="submit" loading={isSubmitting} style={{ backgroundColor: '#4f46e5' }}>
-              Create Customer
-            </Button>
-          </div>
-        </Form>
-      </Modal>
 
       {/* QUICK BOOKING DETAILS MODAL */}
       <Modal

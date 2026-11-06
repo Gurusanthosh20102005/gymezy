@@ -15,6 +15,9 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   Animated,
+  Easing,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -38,6 +41,10 @@ import { gymService } from '../services/gymService';
 import { apiService } from '../services/apiService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const POPULAR_CHENNAI_AREAS = [
   'Anna Nagar',
@@ -180,7 +187,53 @@ export const HomeScreen = ({ navigation }) => {
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isSearchingGyms, setIsSearchingGyms] = useState(false);
+  const [didYouMean, setDidYouMean] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const isSearching = Boolean(isSearchFocused || searchQuery.trim().length > 0);
+
+  // 60FPS fluid animated values for search mode transitions
+  const searchCollapseAnim = React.useRef(new Animated.Value(isSearching ? 0 : 1)).current;
+  const searchOpacityAnim = React.useRef(new Animated.Value(isSearching ? 0 : 1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(searchCollapseAnim, {
+        toValue: isSearching ? 0 : 1,
+        duration: 280,
+        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        useNativeDriver: false,
+      }),
+      Animated.timing(searchOpacityAnim, {
+        toValue: isSearching ? 0 : 1,
+        duration: isSearching ? 180 : 280,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [isSearching]);
+
+  const handleSearchFocus = () => {
+    setIsSearchFocused(true);
+  };
+
+  const handleSearchBlur = () => {
+    if (searchQuery.trim().length === 0) {
+      setIsSearchFocused(false);
+    }
+  };
+
+  const handleSearchClear = () => {
+    setSearchQuery('');
+    setIsSearchFocused(false);
+    setIsSearchingGyms(false);
+    Keyboard.dismiss();
+  };
+
+  const handleApplyDidYouMean = (suggestion) => {
+    setSearchQuery(suggestion);
+  };
   const [selectedType, setSelectedType] = useState(null);
   const [selectedFacility, setSelectedFacility] = useState(null);
   const [selectedWorkout, setSelectedWorkout] = useState(null);
@@ -309,18 +362,39 @@ export const HomeScreen = ({ navigation }) => {
       limit: PAGE_SIZE,
     });
 
+    const isSearchQueryActive = searchQuery.trim().length > 0;
+
     if (cached?.gyms?.length > 0) {
       setGyms(cached.gyms);
       setTotalGymsCount(cached.pagination?.total || cached.gyms.length);
       const more = cached.pagination?.hasMore ?? (cached.pagination?.page < cached.pagination?.pages);
       setHasMoreGyms(Boolean(more));
+      setDidYouMean(cached.didYouMean || cached.pagination?.didYouMean || null);
       setIsLoadingGyms(false);
+      setIsSearchingGyms(false);
     } else {
-      setIsLoadingGyms(true);
+      if (isSearchQueryActive) {
+        setIsSearchingGyms(true);
+        // Avoid blank screen flash: keep existing results until search completes
+        if (gyms.length === 0) {
+          setIsLoadingGyms(true);
+        }
+      } else {
+        if (gyms.length === 0) {
+          setIsLoadingGyms(true);
+        }
+      }
     }
 
-    const delay = searchQuery.trim().length > 0 ? 350 : 0;
+    if (!isSearchQueryActive) {
+      setDidYouMean(null);
+    }
+
+    const delay = isSearchQueryActive ? 300 : 0;
     const timer = setTimeout(() => {
+      if (isSearchQueryActive) {
+        setIsSearchingGyms(true);
+      }
       gymService
         .fetchGyms({
           lat: userLocation.latitude,
@@ -335,18 +409,22 @@ export const HomeScreen = ({ navigation }) => {
         })
         .then((res) => {
           if (isMounted) {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             const fetchedGyms = res.gyms || [];
             setGyms(fetchedGyms);
             const total = res.pagination?.total || fetchedGyms.length;
             setTotalGymsCount(total);
             const more = res.pagination?.hasMore ?? (res.pagination?.page < res.pagination?.pages);
             setHasMoreGyms(Boolean(more && fetchedGyms.length >= PAGE_SIZE));
+            setDidYouMean(res.didYouMean || res.pagination?.didYouMean || null);
             setIsLoadingGyms(false);
+            setIsSearchingGyms(false);
           }
         })
         .catch((_err) => {
           if (isMounted) {
             setIsLoadingGyms(false);
+            setIsSearchingGyms(false);
           }
         });
     }, delay);
@@ -546,6 +624,7 @@ export const HomeScreen = ({ navigation }) => {
     return (
       <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.exploreScroll}
         onScroll={handleHomeScroll}
         scrollEventThrottle={16}
@@ -624,12 +703,29 @@ export const HomeScreen = ({ navigation }) => {
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
+              onFocus={handleSearchFocus}
+              onBlur={handleSearchBlur}
               placeholder="Search gyms, workouts, locations..."
               placeholderTextColor={isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8'}
               style={[styles.searchInput, { color: colors.text }]}
+              numberOfLines={1}
+              multiline={false}
+              returnKeyType="search"
+              autoCorrect={false}
             />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 8 }}>
+            {isSearchingGyms && (
+              <ActivityIndicator
+                size="small"
+                color={AppColors.primaryColor}
+                style={{ marginRight: 6 }}
+              />
+            )}
+            {(searchQuery.length > 0 || isSearchFocused) && (
+              <TouchableOpacity
+                onPress={handleSearchClear}
+                style={{ padding: 8 }}
+                activeOpacity={0.7}
+              >
                 <MaterialIcons name="close" size={18} color={colors.subtitle} />
               </TouchableOpacity>
             )}
@@ -655,8 +751,51 @@ export const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* 3. High-Impact Promotional Flash Banner Carousel (Location-aware & Priority-sorted) */}
-        <View style={styles.promoBannerWrapper}>
+        {/* Minimal Professional "Did You Mean" Suggestion */}
+        {didYouMean && searchQuery.trim().length > 0 && didYouMean.toLowerCase() !== searchQuery.trim().toLowerCase() && (
+          <View style={styles.didYouMeanWrapper}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => handleApplyDidYouMean(didYouMean)}
+              style={[
+                styles.didYouMeanPill,
+                {
+                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+                },
+              ]}
+            >
+              <MaterialIcons
+                name="search"
+                size={13}
+                color={isDark ? '#93C5FD' : AppColors.primaryColor}
+                style={{ marginRight: 5 }}
+              />
+              <Text style={[styles.didYouMeanPrefix, { color: colors.subtitle }]}>
+                Did you mean{' '}
+                <Text style={[styles.didYouMeanTarget, { color: isDark ? '#93C5FD' : AppColors.primaryColor }]}>
+                  {didYouMean}
+                </Text>
+                ?
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* 60FPS Fluid Animated Collapsible Exploration Container */}
+        <Animated.View
+          style={{
+            maxHeight: searchCollapseAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 950],
+            }),
+            opacity: searchOpacityAnim,
+            overflow: 'hidden',
+          }}
+          pointerEvents={isSearching ? 'none' : 'auto'}
+        >
+          {/* 3. High-Impact Promotional Flash Banner Carousel (Location-aware & Priority-sorted) */}
+          <View style={styles.promoBannerWrapper}>
           <Animated.ScrollView
             ref={bannerScrollRef}
             horizontal
@@ -861,7 +1000,6 @@ export const HomeScreen = ({ navigation }) => {
           )}
         </View>
 
-
         {/* 4. Curated Category Chips */}
         <ScrollView
           horizontal
@@ -923,7 +1061,7 @@ export const HomeScreen = ({ navigation }) => {
         </ScrollView>
 
         {/* 5. Spotlight Section: "⭐ Top Rated Near You" Horizontal Carousel */}
-        {searchQuery.length === 0 && selectedCategory === 'All' && topRatedGyms.length > 0 && (
+        {selectedCategory === 'All' && topRatedGyms.length > 0 && (
           <View style={styles.spotlightSection}>
             <View style={styles.sectionHeaderRow}>
               <View style={styles.sectionTitleWithIcon}>
@@ -1059,6 +1197,12 @@ export const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
         </View>
+      </Animated.View>
+
+      {/* Minimal spacing when searching without suggestion pill */}
+      {isSearching && !didYouMean && (
+        <View style={{ height: 10 }} />
+      )}
 
         {/* 7. Gym List Cards */}
         {isLoadingGyms ? (
@@ -1066,6 +1210,13 @@ export const HomeScreen = ({ navigation }) => {
             <ActivityIndicator size="large" color={AppColors.primaryColor} />
             <Text style={[styles.gymsLoadingText, { color: colors.subtitle }]}>
               Finding nearest gyms in {userLocation.name}...
+            </Text>
+          </View>
+        ) : filteredGyms.length === 0 && isSearchingGyms ? (
+          <View style={styles.gymsLoadingContainer}>
+            <ActivityIndicator size="small" color={AppColors.primaryColor} />
+            <Text style={[styles.gymsLoadingText, { color: colors.subtitle, marginTop: 8 }]}>
+              Searching gyms...
             </Text>
           </View>
         ) : filteredGyms.length === 0 ? (
@@ -1077,7 +1228,8 @@ export const HomeScreen = ({ navigation }) => {
             </Text>
           </View>
         ) : (
-          filteredGyms.map((gym, index) => {
+          <View>
+            {filteredGyms.map((gym, index) => {
             const isBookmarked = bookmarkedGymNames.has(gym.name);
 
 
@@ -1090,7 +1242,8 @@ export const HomeScreen = ({ navigation }) => {
                     styles.gymCard,
                     {
                       backgroundColor: colors.card,
-                      borderColor: colors.border,
+                      borderColor: isDark ? colors.border : 'transparent',
+                      borderWidth: isDark ? 1 : 0,
                     },
                   ]}
                 >
@@ -1227,7 +1380,8 @@ export const HomeScreen = ({ navigation }) => {
                 </TouchableOpacity>
               </View>
             );
-          })
+          })}
+          </View>
         )}
 
         {/* Infinite Scroll Footer: Loading indicator & End of list message */}
@@ -1931,6 +2085,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 16,
   },
+  didYouMeanWrapper: {
+    paddingHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    flexDirection: 'row',
+  },
+  didYouMeanPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 11,
+    paddingVertical: 5.5,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  didYouMeanPrefix: {
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  didYouMeanTarget: {
+    fontWeight: '600',
+  },
   searchInputContainer: {
     flex: 1,
     height: 52,
@@ -1943,6 +2118,9 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13.5,
     height: '100%',
+    paddingVertical: 0,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   filterBtnWrapper: {
     marginLeft: 10,
@@ -2251,7 +2429,6 @@ const styles = StyleSheet.create({
   /* Gym Card */
   gymCard: {
     borderRadius: 22,
-    borderWidth: 1,
     overflow: 'hidden',
     ...Platform.select({
       ios: {

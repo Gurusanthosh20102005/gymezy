@@ -8,6 +8,9 @@ import {
   toggleCustomerStatus,
   getAdminBookings,
   getAdminTransactions,
+  getAdminCustomerReports,
+  getAdminPartnerSubscriptions,
+  updateAdminPartnerSubscription,
 } from '../controllers/admin.controller.js';
 import { getAdminGymsFleet, getGymOptions } from '../controllers/gym.controller.js';
 import {
@@ -50,8 +53,15 @@ router.get('/payments', getAdminTransactions);
 // All Gym Memberships Fleet (Super Admin)
 router.get('/memberships', getAdminAllGymMemberships);
 
+// Partner Gym SaaS Subscriptions & Plan Governance Fleet
+router.get('/subscriptions', getAdminPartnerSubscriptions);
+router.patch('/subscriptions/:id', updateAdminPartnerSubscription);
+
 // Membership Plan Switch Governance Inbox
 router.get('/membership-switch-requests', getAdminSwitchRequests);
+
+// Reports & Analytics Fleet (Super Admin)
+router.get('/reports/customers', getAdminCustomerReports);
 
 // Super Admin Final Approval / Rejection & Execution
 router.patch('/membership-switch-requests/:requestId/admin-action', superAdminActionReviewSwitchRequest);

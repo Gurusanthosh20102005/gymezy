@@ -26,7 +26,6 @@ import {
   MobileOutlined,
   AuditOutlined,
   FireOutlined,
-  SyncOutlined,
   StarFilled,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -174,50 +173,63 @@ const getSmoothAreaPath = (pts, bottomY) => {
 
 // Revenue Growth Spline Chart Component (Dual-Curve Area Chart with Interactive Hover)
 const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
-  // 12-month sample series exactly mirroring Image 2 design
-  const defaultSeries = [
-    { label: "Jan '21", current: 20, previous: 52 },
-    { label: "Feb '21", current: 28, previous: 45 },
-    { label: "Mar '21", current: 48, previous: 28 },
-    { label: "Apr '21", current: 56, previous: 17 },
-    { label: "May '21", current: 67, previous: 66 },
-    { label: "Jun '21", current: 40, previous: 15 },
-    { label: "Jul '21", current: 58, previous: 49 },
-    { label: "Aug '21", current: 22, previous: 46 },
-    { label: "Sep '21", current: 28, previous: 58 },
-    { label: "Oct '21", current: 59, previous: 86 },
-    { label: "Nov '21", current: 20, previous: 72 },
-    { label: "2022",    current: 18, previous: 16 },
-  ];
+  const hasData = Array.isArray(data) && data.length > 0;
 
-  // If live data has non-zero total points, integrate with live stats
-  const hasLiveData = Array.isArray(data) && data.length > 0 && data.some((d) => (d.total || 0) > 0);
-  const series = hasLiveData
-    ? data.map((d, i) => ({
-        label: d.name ? `${d.name} '${String(d.year || 26).slice(-2)}` : defaultSeries[i]?.label || `M${i + 1}`,
-        current: d.subscription || d.total || 0,
-        previous: d.commission || Math.round((d.total || 0) * 0.7),
-      }))
-    : defaultSeries;
+  const series = useMemo(() => {
+    if (hasData) {
+      return data.map((d, i) => ({
+        label: d.name ? `${d.name} '${String(d.year || new Date().getFullYear()).slice(-2)}` : `Month ${i + 1}`,
+        current: Number(d.subscription || 0),
+        previous: Number(d.commission || 0),
+        total: Number(d.total || (Number(d.subscription || 0) + Number(d.commission || 0))),
+      }));
+    }
+    const now = new Date();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fallback = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      fallback.push({
+        label: `${months[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`,
+        current: 0,
+        previous: 0,
+        total: 0,
+      });
+    }
+    return fallback;
+  }, [data, hasData]);
 
-  const [activeIndex, setActiveIndex] = React.useState(3); // Default hovered on Apr '21 like screenshot
+  const [activeIndex, setActiveIndex] = React.useState(null);
+  const effectiveIndex = activeIndex !== null ? activeIndex : Math.max(0, series.length - 1);
   const svgRef = React.useRef(null);
 
   // Layout boundaries
   const width = 680;
   const height = 250;
-  const plotLeft = 45;
+  const plotLeft = 58;
   const plotRight = 655;
   const plotTop = 25;
   const plotBottom = 205;
   const plotWidth = plotRight - plotLeft;
   const plotHeight = plotBottom - plotTop;
 
-  // Y-axis ticks [0, 20, 40, 60, 80, 100]
-  const yTicks = [0, 20, 40, 60, 80, 100];
-  const maxVal = 100;
+  // Calculate highest value dynamically for proportional scaling
+  const maxDataVal = Math.max(
+    ...series.map((s) => Math.max(s.current || 0, s.previous || 0)),
+    0
+  );
 
-  const stepX = plotWidth / (series.length - 1);
+  const maxVal = maxDataVal > 0 ? Math.ceil((maxDataVal * 1.2) / 100) * 100 : 1000;
+  const yTicks = [0, 1, 2, 3, 4, 5].map((i) => Math.round((maxVal / 5) * i));
+
+  const formatYTick = (val) => {
+    if (val >= 10000000) return `₹${(val / 10000000).toFixed(1)}Cr`;
+    if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`;
+    if (val >= 1000) return `₹${(val / 1000).toFixed(0)}k`;
+    return `₹${val}`;
+  };
+
+  const stepX = series.length > 1 ? plotWidth / (series.length - 1) : plotWidth;
 
   // Compute points
   const currentPoints = series.map((item, idx) => {
@@ -232,16 +244,16 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
     return { x, y, ...item };
   });
 
-  const activeCurrent = currentPoints[activeIndex] || currentPoints[3];
-  const activePrev = prevPoints[activeIndex] || prevPoints[3];
-  const activeItem = series[activeIndex] || series[3];
+  const activeCurrent = currentPoints[effectiveIndex] || currentPoints[0];
+  const activePrev = prevPoints[effectiveIndex] || prevPoints[0];
+  const activeItem = series[effectiveIndex] || series[0];
   const activeX = activeCurrent.x;
 
   // Tooltip position
-  const tooltipWidth = 115;
-  const tooltipHeight = 72;
-  const tooltipX = Math.min(Math.max(activeX - tooltipWidth / 2, plotLeft + 10), plotRight - tooltipWidth - 10);
-  const tooltipY = Math.max(plotTop + 5, Math.min(activeCurrent.y, activePrev.y) - 45);
+  const tooltipWidth = 145;
+  const tooltipHeight = 74;
+  const tooltipX = Math.min(Math.max(activeX - tooltipWidth / 2, plotLeft + 5), plotRight - tooltipWidth - 5);
+  const tooltipY = Math.max(plotTop + 5, Math.min(activeCurrent.y, activePrev.y) - 50);
 
   const handlePointerMove = (e) => {
     if (!svgRef.current) return;
@@ -256,7 +268,7 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
 
   return (
     <div style={{ width: '100%', position: 'relative', userSelect: 'none' }}>
-      {/* Top Right Legend matching Screenshot */}
+      {/* Top Right Legend */}
       <div
         style={{
           display: 'flex',
@@ -278,7 +290,7 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
             }}
           />
           <span style={{ fontSize: 13, fontWeight: 600, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
-            Current
+            Subscription Plans
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -292,7 +304,7 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
             }}
           />
           <span style={{ fontSize: 13, fontWeight: 600, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
-            Previous
+            Session Bookings
           </span>
         </div>
       </div>
@@ -340,14 +352,14 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
                 strokeWidth="1"
               />
               <text
-                x={plotLeft - 14}
+                x={plotLeft - 10}
                 y={y + 4}
                 textAnchor="end"
-                fontSize="11.5"
+                fontSize="11"
                 fontWeight="500"
                 fill={isDarkMode ? '#64748b' : '#94a3b8'}
               >
-                {tick}
+                {formatYTick(tick)}
               </text>
             </g>
           );
@@ -385,7 +397,7 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
           strokeLinejoin="round"
         />
 
-        {/* Data Point Dots for Previous (Amber) */}
+        {/* Data Point Dots for Bookings (Amber) */}
         {prevPoints.map((pt, i) => (
           <circle
             key={`prev-dot-${i}`}
@@ -398,7 +410,7 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
           />
         ))}
 
-        {/* Data Point Dots for Current (Blue) */}
+        {/* Data Point Dots for Plans (Blue) */}
         {currentPoints.map((pt, i) => (
           <circle
             key={`curr-dot-${i}`}
@@ -412,7 +424,7 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
         ))}
 
         {/* 5. Active Hover Interaction Guides */}
-        {activeIndex !== null && (
+        {effectiveIndex !== null && (
           <g>
             {/* Vertical Dashed Guide Line */}
             <line
@@ -467,16 +479,16 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
                 {activeItem.label}
               </text>
 
-              {/* Current Value Row */}
+              {/* Plans */}
               <circle cx="16" cy="36" r="4" fill="#4361ee" />
               <text x="26" y="40" fontSize="11" fontWeight="500" fill={isDarkMode ? '#94a3b8' : '#64748b'}>
-                Current: <tspan fontWeight="800" fill={isDarkMode ? '#ffffff' : '#0f172a'}>{activeItem.current}</tspan>
+                Plans: <tspan fontWeight="800" fill={isDarkMode ? '#ffffff' : '#0f172a'}>{formatCurrency(activeItem.current)}</tspan>
               </text>
 
-              {/* Previous Value Row */}
-              <circle cx="16" cy="54" r="4" fill="#e5a03b" />
-              <text x="26" y="58" fontSize="11" fontWeight="500" fill={isDarkMode ? '#94a3b8' : '#64748b'}>
-                Previous: <tspan fontWeight="800" fill={isDarkMode ? '#ffffff' : '#0f172a'}>{activeItem.previous}</tspan>
+              {/* Bookings */}
+              <circle cx="16" cy="56" r="4" fill="#e5a03b" />
+              <text x="26" y="60" fontSize="11" fontWeight="500" fill={isDarkMode ? '#94a3b8' : '#64748b'}>
+                Bookings: <tspan fontWeight="800" fill={isDarkMode ? '#ffffff' : '#0f172a'}>{formatCurrency(activeItem.previous)}</tspan>
               </text>
             </g>
           </g>
@@ -485,10 +497,10 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
         {/* 6. X-Axis Monthly Labels */}
         {series.map((item, idx) => {
           const x = plotLeft + idx * stepX;
-          const isActive = idx === activeIndex;
+          const isActive = idx === effectiveIndex;
 
           if (isActive) {
-            const pillW = 54;
+            const pillW = 60;
             const pillH = 22;
             const pillX = x - pillW / 2;
             const pillY = plotBottom + 8;
@@ -568,14 +580,38 @@ export const Dashboard = () => {
   const [customRange, setCustomRange] = useState(null);
 
   const filterParams = useMemo(() => {
-    return {
-      filterType,
-      startDate: customRange?.[0] ? customRange[0].toISOString() : undefined,
-      endDate: customRange?.[1] ? customRange[1].toISOString() : undefined,
-    };
+    if (filterType === 'custom') {
+      return {
+        filterType,
+        startDate: customRange?.[0]
+          ? (typeof customRange[0].toISOString === 'function'
+              ? customRange[0].toISOString()
+              : typeof customRange[0].toDate === 'function'
+                ? customRange[0].toDate().toISOString()
+                : String(customRange[0]))
+          : undefined,
+        endDate: customRange?.[1]
+          ? (typeof customRange[1].toISOString === 'function'
+              ? customRange[1].toISOString()
+              : typeof customRange[1].toDate === 'function'
+                ? customRange[1].toDate().toISOString()
+                : String(customRange[1]))
+          : undefined,
+      };
+    }
+    return { filterType };
   }, [filterType, customRange]);
 
   const { stats, loading, refreshDashboard } = useDashboard(filterParams);
+
+  const activeDateLabel = useMemo(() => {
+    if (stats.dateFilter?.label) return stats.dateFilter.label;
+    if (filterType === 'today') return 'Today';
+    if (filterType === 'yesterday') return 'Yesterday';
+    if (filterType === 'week') return 'This Week';
+    if (filterType === 'month') return 'This Month';
+    return 'Selected Period';
+  }, [stats.dateFilter?.label, filterType]);
 
   const totalGyms = stats.totalGyms || 0;
   const activeGyms = stats.activeGyms || 0;
@@ -642,24 +678,20 @@ export const Dashboard = () => {
 
           <Select
             value={filterType}
-            onChange={(val) => setFilterType(val)}
+            onChange={(val) => {
+              setFilterType(val);
+              if (val !== 'custom') setCustomRange(null);
+            }}
             style={{ width: 150 }}
             size="middle"
             suffixIcon={<CalendarOutlined style={{ color: '#6366f1' }} />}
           >
             <Option value="today">Today</Option>
+            <Option value="yesterday">Yesterday</Option>
             <Option value="week">This Week</Option>
             <Option value="month">This Month</Option>
             <Option value="custom">Custom Range</Option>
           </Select>
-
-          <Button
-            icon={<SyncOutlined spin={loading} />}
-            onClick={refreshDashboard}
-            style={{ borderRadius: 'var(--radius-base)' }}
-          >
-            Refresh
-          </Button>
 
           <Button
             type="primary"
@@ -704,35 +736,39 @@ export const Dashboard = () => {
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  color: '#94a3b8',
-                  backgroundColor: isDarkMode ? 'rgba(148, 163, 184, 0.15)' : '#f1f5f9',
+                  color: Number(stats.gmvGrowthPct || 0) >= 0 ? '#16a34a' : '#dc2626',
+                  backgroundColor: isDarkMode
+                    ? (Number(stats.gmvGrowthPct || 0) >= 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)')
+                    : (Number(stats.gmvGrowthPct || 0) >= 0 ? '#f0fdf4' : '#fef2f2'),
                   padding: '2px 8px',
                   borderRadius: 6,
                 }}
               >
-                0.0%
+                {Number(stats.gmvGrowthPct || 0) >= 0 ? `+${stats.gmvGrowthPct || '0.0'}%` : `${stats.gmvGrowthPct || '0.0'}%`}
               </span>
             </div>
             <div style={{ fontSize: 24, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2 }}>
               {formatCurrency(stats.totalGmv || 0)}
             </div>
             <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8', marginTop: 4 }}>
-              Subscriptions + Booking gross volume
+              Subscriptions + Booking gross volume ({activeDateLabel})
             </div>
           </Card>
 
-          {/* Metric 2: Active Gym Partners */}
+          {/* Metric 2: Total Platform Users */}
           <Card
             style={{
               backgroundColor: 'var(--bg-surface-elevated)',
               borderColor: 'var(--border-color)',
               borderRadius: 'var(--radius-base)',
+              cursor: 'pointer',
             }}
             styles={{ body: { padding: '18px 20px' } }}
+            onClick={() => navigate('/admin/customers')}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                Partner Gyms
+                Total Users
               </span>
               <span
                 style={{
@@ -744,14 +780,17 @@ export const Dashboard = () => {
                   borderRadius: 6,
                 }}
               >
-                {activeGymsPct}% Active
+                {stats.usersStats?.activePct ?? 100}% Active
               </span>
             </div>
             <div style={{ fontSize: 24, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2 }}>
-              {activeGyms} <span style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8' }}>/ {totalGyms} total</span>
+              {(stats.usersStats?.total ?? stats.registeredUsers ?? 0).toLocaleString('en-IN')}{' '}
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8' }}>
+                / {(stats.usersStats?.active ?? stats.registeredUsers ?? 0).toLocaleString('en-IN')} active
+              </span>
             </div>
             <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8', marginTop: 4 }}>
-              {stats.registeredGyms?.new30d || 0} added this month
+              +{stats.usersStats?.new30d ?? 0} added this month
             </div>
           </Card>
 
@@ -761,8 +800,10 @@ export const Dashboard = () => {
               backgroundColor: 'var(--bg-surface-elevated)',
               borderColor: 'var(--border-color)',
               borderRadius: 'var(--radius-base)',
+              cursor: 'pointer',
             }}
             styles={{ body: { padding: '18px 20px' } }}
+            onClick={() => navigate('/admin/bookings')}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
@@ -772,20 +813,20 @@ export const Dashboard = () => {
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
-                  color: '#94a3b8',
-                  backgroundColor: isDarkMode ? 'rgba(148, 163, 184, 0.15)' : '#f1f5f9',
+                  color: '#3b82f6',
+                  backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff',
                   padding: '2px 8px',
                   borderRadius: 6,
                 }}
               >
-                0.0%
+                {completionRate}% Fulfilled
               </span>
             </div>
             <div style={{ fontSize: 24, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2 }}>
               {completedWorkouts.toLocaleString('en-IN')}
             </div>
             <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8', marginTop: 4 }}>
-              {completionRate}% completion rate
+              {completionRate}% completion rate ({activeDateLabel})
             </div>
           </Card>
 
@@ -798,7 +839,7 @@ export const Dashboard = () => {
               cursor: 'pointer',
             }}
             styles={{ body: { padding: '18px 20px' } }}
-            onClick={() => navigate('/admin/gyms')}
+            onClick={() => navigate('/admin/gyms?tab=pending')}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: '#d97706' }}>
@@ -838,10 +879,10 @@ export const Dashboard = () => {
                   </span>
                   <Button
                     type="link"
-                    onClick={() => navigate('/admin/gyms')}
+                    onClick={() => navigate('/admin/gyms?tab=approved')}
                     style={{ color: '#4f46e5', fontWeight: 700, fontSize: 12, padding: 0 }}
                   >
-                    Manage All Gyms <RightOutlined style={{ fontSize: 10 }} />
+                    Manage Partner Gyms <RightOutlined style={{ fontSize: 10 }} />
                   </Button>
                 </div>
 
@@ -991,7 +1032,7 @@ export const Dashboard = () => {
                       {totalBookings.toLocaleString('en-IN')}
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                      Total App Bookings Generated
+                      Total App Bookings Generated ({activeDateLabel})
                     </div>
                   </div>
                   <img
@@ -1102,8 +1143,13 @@ export const Dashboard = () => {
                     Monthly recurring subscriptions vs app booking fees
                   </div>
                 </div>
-                <Tag color="default" style={{ fontWeight: 700, borderRadius: 6 }}>
-                  0.0% Growth
+                <Tag
+                  color={Number(stats.gmvGrowthPct || 0) >= 0 ? 'green' : 'red'}
+                  style={{ fontWeight: 700, borderRadius: 6 }}
+                >
+                  {Number(stats.gmvGrowthPct || 0) >= 0
+                    ? `+${stats.gmvGrowthPct || '0.0'}% MoM`
+                    : `${stats.gmvGrowthPct || '0.0'}% MoM`}
                 </Tag>
               </div>
 
@@ -1232,7 +1278,7 @@ export const Dashboard = () => {
                 </div>
                 <Button
                   size="small"
-                  onClick={() => navigate('/admin/gyms')}
+                  onClick={() => navigate('/admin/gyms?tab=pending')}
                   style={{ borderRadius: 6, fontWeight: 700, color: '#4f46e5', borderColor: '#c7d2fe' }}
                 >
                   View All ({stats.pendingApprovals?.length || 0})
@@ -1244,6 +1290,7 @@ export const Dashboard = () => {
                   {stats.pendingApprovals.map((gym, idx) => (
                     <div
                       key={idx}
+                      onClick={() => navigate('/admin/gyms?tab=pending')}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1252,6 +1299,8 @@ export const Dashboard = () => {
                         borderRadius: 8,
                         backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
                         border: `1px solid ${isDarkMode ? '#222' : '#e2e8f0'}`,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
                       }}
                     >
                       <div>
@@ -1262,7 +1311,12 @@ export const Dashboard = () => {
                           {gym.city} • {gym.phone}
                         </div>
                       </div>
-                      <Tag color="orange">{gym.subscriptionType || 'Pending'}</Tag>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Tag color="orange">{gym.subscriptionType || 'Pending'}</Tag>
+                        <Button size="small" type="primary" style={{ fontSize: 11, height: 26, borderRadius: 6 }}>
+                          Review
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1307,6 +1361,7 @@ export const Dashboard = () => {
                   {stats.topGyms.map((gym, idx) => (
                     <div
                       key={idx}
+                      onClick={() => navigate('/admin/gyms?tab=approved')}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1315,6 +1370,8 @@ export const Dashboard = () => {
                         borderRadius: 8,
                         backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
                         border: `1px solid ${isDarkMode ? '#222' : '#e2e8f0'}`,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1359,7 +1416,10 @@ export const Dashboard = () => {
           <Row gutter={[24, 24]} align="middle">
             {/* Total Registered Users */}
             <Col xs={24} md={8}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+              <div
+                onClick={() => navigate('/admin/customers')}
+                style={{ display: 'flex', alignItems: 'center', gap: 18, cursor: 'pointer' }}
+              >
                 <div
                   style={{
                     width: 52,
@@ -1382,15 +1442,18 @@ export const Dashboard = () => {
                     {stats.registeredUsers || 0}
                   </div>
                   <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
-                    Active platform-wide accounts
+                    Active platform-wide accounts →
                   </div>
                 </div>
               </div>
             </Col>
 
-            {/* Total App Opens */}
+            {/* Total App Opens / Check-ins */}
             <Col xs={24} md={8} style={{ borderLeft: isDarkMode ? '1px solid #1e293b' : '1px solid #f1f5f9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18, paddingLeft: 12 }}>
+              <div
+                onClick={() => navigate('/admin/bookings')}
+                style={{ display: 'flex', alignItems: 'center', gap: 18, paddingLeft: 12, cursor: 'pointer' }}
+              >
                 <div
                   style={{
                     width: 52,
@@ -1407,13 +1470,13 @@ export const Dashboard = () => {
                 </div>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
-                    Total App Opens
+                    Total App Check-ins & Activity
                   </div>
                   <div style={{ fontSize: 26, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
                     {stats.totalAppOpens || 0}
                   </div>
                   <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
-                    Customer engagement metrics
+                    Customer engagement records →
                   </div>
                 </div>
               </div>
@@ -1421,7 +1484,10 @@ export const Dashboard = () => {
 
             {/* Total Completed Sessions */}
             <Col xs={24} md={8} style={{ borderLeft: isDarkMode ? '1px solid #1e293b' : '1px solid #f1f5f9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18, paddingLeft: 12 }}>
+              <div
+                onClick={() => navigate('/admin/bookings')}
+                style={{ display: 'flex', alignItems: 'center', gap: 18, paddingLeft: 12, cursor: 'pointer' }}
+              >
                 <div
                   style={{
                     width: 52,
@@ -1444,7 +1510,7 @@ export const Dashboard = () => {
                     {stats.completedSessions || 0}
                   </div>
                   <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
-                    Across all partner venues
+                    Across all partner venues →
                   </div>
                 </div>
               </div>

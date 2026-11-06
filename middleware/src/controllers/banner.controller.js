@@ -2,6 +2,11 @@ import mongoose from 'mongoose';
 import { Banner } from '../models/banner.model.js';
 import { Gym } from '../models/gym.model.js';
 import { formatAndCompressFile } from '../utils/mediaCompressor.js';
+import {
+  tokenizeAndNormalize,
+  scoreBannerRelevance,
+  getDidYouMeanSuggestion,
+} from '../utils/fuzzySearchEngine.js';
 
 /**
  * Calculates Haversine distance between two coordinates in Kilometers
@@ -155,20 +160,113 @@ export const getPublicBanners = async (req, res) => {
 };
 
 /**
- * Super Admin Endpoint: Get all banners (active & inactive)
+ * Super Admin Endpoint: Get all banners with fuzzy search & server-side pagination
  * Route: GET /api/v1/banners/admin/all
  */
 export const getAllBannersAdmin = async (req, res) => {
   try {
-    const banners = await Banner.find({})
-      .populate('gymId', 'name slug area address location coverPhoto logo')
-      .sort({ isPriority: -1, createdAt: -1 })
-      .lean();
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      q,
+      priority,
+      status,
+    } = req.query;
+
+    const searchQuery = (search || q || '').trim();
+    const searchTokens = tokenizeAndNormalize(searchQuery);
+    const didYouMean = searchTokens.length > 0 ? getDidYouMeanSuggestion(searchQuery) : null;
+
+    const query = {};
+
+    if (priority && priority !== 'ALL') {
+      if (priority === 'PRIORITY') query.isPriority = true;
+      if (priority === 'NORMAL') query.isPriority = false;
+    }
+
+    if (status && status !== 'ALL') {
+      if (status === 'ACTIVE' || status === 'true') query.isActive = true;
+      if (status === 'INACTIVE' || status === 'false') query.isActive = false;
+    }
+
+    const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 10));
+    const skip = (pageNum - 1) * limitNum;
+
+    let totalCount = 0;
+    let paginatedBanners = [];
+
+    if (searchTokens.length > 0) {
+      // Professional Multi-Field Typo-Tolerant Search & Relevance Scoring
+      const candidates = await Banner.find(query)
+        .populate('gymId', 'name slug area city address location coverPhoto logo')
+        .lean();
+
+      const scored = candidates
+        .map((b) => {
+          const relevanceScore = scoreBannerRelevance(b, searchTokens);
+          return {
+            ...b,
+            relevanceScore,
+          };
+        })
+        .filter((b) => b.relevanceScore > 0);
+
+      // Sort by highest relevance first, then priority, then newest
+      scored.sort((a, b) => {
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        if (Boolean(b.isPriority) !== Boolean(a.isPriority)) {
+          return Boolean(b.isPriority) ? 1 : -1;
+        }
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
+
+      totalCount = scored.length;
+      paginatedBanners = scored.slice(skip, skip + limitNum);
+    } else {
+      // Direct DB pagination & sorting
+      const [count, rawBanners] = await Promise.all([
+        Banner.countDocuments(query),
+        Banner.find(query)
+          .populate('gymId', 'name slug area city address location coverPhoto logo')
+          .sort({ isPriority: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+      ]);
+
+      totalCount = count;
+      paginatedBanners = rawBanners;
+    }
+
+    // Global counts for lifecycle badges
+    const [totalAll, totalPriority, totalActive] = await Promise.all([
+      Banner.countDocuments({}),
+      Banner.countDocuments({ isPriority: true }),
+      Banner.countDocuments({ isActive: true }),
+    ]);
 
     return res.status(200).json({
       success: true,
-      data: banners,
-      total: banners.length,
+      data: paginatedBanners,
+      banners: paginatedBanners,
+      pagination: {
+        total: totalCount,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(totalCount / limitNum) || 1,
+        hasMore: skip + limitNum < totalCount,
+      },
+      counts: {
+        total: totalAll,
+        priority: totalPriority,
+        active: totalActive,
+      },
+      didYouMean,
+      total: totalCount,
     });
   } catch (error) {
     console.error('Error fetching admin banners:', error);

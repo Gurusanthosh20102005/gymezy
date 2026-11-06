@@ -69,10 +69,114 @@ export const parsePagination = (reqQuery = {}, defaultLimit = 20, maxLimit = 100
   return { page, limit, skip, isFetchAll };
 };
 
+/**
+ * Resolves standard dashboard date range boundaries.
+ * Supports: 'Today', 'Yesterday', 'This Week', 'This Month', 'All Time',
+ * or custom ranges via startDate & endDate or "DD MMM YYYY - DD MMM YYYY" string.
+ * @param {object} reqQuery - { range, startDate, endDate }
+ * @param {Date} [referenceDate=new Date()] - Reference anchor date for testing/reproducibility
+ * @returns {{ start: Date, end: Date, label: string } | null} - Date bounds or null if all-time
+ */
+export const parseDateRangeFilter = (reqQuery = {}, referenceDate = new Date()) => {
+  if (!reqQuery || typeof reqQuery !== 'object') return null;
+  const range = reqQuery.range || reqQuery.filterType;
+  const { startDate, endDate } = reqQuery;
+
+  // 1. Explicit ISO/Date strings for custom range
+  if (startDate && endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+      s.setHours(0, 0, 0, 0);
+      e.setHours(23, 59, 59, 999);
+      return { start: s, end: e, label: 'Custom Range' };
+    }
+  }
+
+  if (!range) return null;
+
+  const r = String(range).trim().toLowerCase();
+
+  // Explicit All Time / Unrestricted
+  if (r === 'all' || r === 'all_time' || r === 'all time') {
+    return null;
+  }
+
+  const now = new Date(referenceDate);
+
+  // Today
+  if (r === 'today') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    return { start, end, label: 'Today' };
+  }
+
+  // Yesterday
+  if (r === 'yesterday') {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 1);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(now);
+    end.setDate(end.getDate() - 1);
+    end.setHours(23, 59, 59, 999);
+    return { start, end, label: 'Yesterday' };
+  }
+
+  // This Week (from Monday)
+  if (r === 'this week' || r === 'this_week' || r === 'week') {
+    const start = new Date(now);
+    const day = start.getDay();
+    const diff = (day === 0 ? -6 : 1) - day;
+    start.setDate(start.getDate() + diff);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    return { start, end, label: 'This Week' };
+  }
+
+  // This Month (from 1st of current month)
+  if (r === 'this month' || r === 'this_month' || r === 'month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { start, end, label: 'This Month' };
+  }
+
+  // Handle custom range string e.g. "01 Nov 2026 - 06 Nov 2026"
+  if (range.includes('-') && !range.startsWith('-')) {
+    const parts = range.split('-').map((s) => s.trim());
+    if (parts.length === 2) {
+      const s = new Date(parts[0]);
+      const e = new Date(parts[1]);
+      if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+        s.setHours(0, 0, 0, 0);
+        e.setHours(23, 59, 59, 999);
+        return { start: s, end: e, label: `${parts[0]} - ${parts[1]}` };
+      }
+    }
+  }
+
+  return null;
+};
+
+export {
+  damerauLevenshteinDistance,
+  tokenizeAndNormalize,
+  isFuzzyMatch,
+  scoreGymRelevance,
+  scoreBannerRelevance,
+  scoreBookingRelevance,
+  scoreTransactionRelevance,
+  scoreReportCustomerRelevance,
+  getDidYouMeanSuggestion,
+} from './fuzzySearchEngine.js';
+
 export default {
   escapeRegex,
   getSearchTerm,
   buildRegexSearchQuery,
   parsePagination,
+  parseDateRangeFilter,
 };
 
