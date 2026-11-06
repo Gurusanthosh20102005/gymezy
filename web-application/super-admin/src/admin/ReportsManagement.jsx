@@ -16,6 +16,7 @@ import {
   Dropdown,
   DatePicker,
   Tooltip,
+  Avatar,
 } from 'antd';
 import {
   SearchOutlined,
@@ -33,9 +34,19 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { reportService } from '../services/reportService';
+import { ExportModal } from '../general/components/ExportModal';
+import { downloadCSV, getDefaultExportFileName } from '../utils/exportHelper';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
+
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 export const ReportsManagement = () => {
   const { isDarkMode } = useTheme();
@@ -124,47 +135,79 @@ export const ReportsManagement = () => {
     message.info('Filters have been reset.');
   };
 
-  // Handle Export Actual Data as CSV
-  const handleExport = () => {
-    if (!customers || customers.length === 0) {
-      message.warning('No customer records to export');
-      return;
+  // Server-Side Export Modal & Execution
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleOpenExportModal = () => {
+    setIsExportModalOpen(true);
+  };
+
+  const executeExport = async ({ fileName, scope, dateRange: customRange }) => {
+    setIsExporting(true);
+    try {
+      const params = {
+        export: true,
+        limit: 0,
+        page: 1,
+      };
+
+      if (scope === 'filtered') {
+        if (debouncedSearch?.trim()) params.search = debouncedSearch.trim();
+        if (statusFilter !== 'all') params.status = statusFilter;
+        if (customerType !== 'All') params.customerType = customerType;
+        if (bookingType !== 'All') params.bookingType = bookingType;
+        if (dateRange && dateRange[0]) params.startDate = dateRange[0].toISOString();
+        if (dateRange && dateRange[1]) params.endDate = dateRange[1].toISOString();
+      } else if (scope === 'custom' && customRange) {
+        params.startDate = customRange[0].toISOString();
+        params.endDate = customRange[1].toISOString();
+      }
+
+      const res = await reportService.getCustomerReports(params);
+      const list = res?.customers || [];
+      if (list.length === 0) {
+        message.warning('No customer records found matching the requested scope.');
+        return;
+      }
+
+      const headers = [
+        'Customer Name',
+        'Customer ID',
+        'Phone Number',
+        'Email Address',
+        'Status',
+        'Last Activity Date',
+        'Total Bookings',
+        'Completed Bookings',
+        'Cancelled Bookings',
+        'No Show',
+        'Revenue Generated (INR)',
+      ];
+
+      const rows = list.map((c) => [
+        c.name || '',
+        c.customerId || '',
+        c.phone || '',
+        c.email || '',
+        c.status || '',
+        c.lastBookingDate || '',
+        c.totalBookings || 0,
+        c.completed || 0,
+        c.cancelled || 0,
+        c.noShow || 0,
+        c.revenueGenerated || 0,
+      ]);
+
+      downloadCSV(fileName, headers, rows);
+      message.success(`Successfully exported ${list.length} customer report records to ${fileName}.csv`);
+      setIsExportModalOpen(false);
+    } catch (err) {
+      console.error('Export report failed:', err);
+      message.error(err.message || 'Failed to export customer report');
+    } finally {
+      setIsExporting(false);
     }
-    const headers = [
-      'Customer Name',
-      'Customer ID',
-      'Phone Number',
-      'Email',
-      'Status',
-      'Last Activity Date',
-      'Total Bookings',
-      'Completed Bookings',
-      'Cancelled Bookings',
-      'No Show',
-      'Revenue Generated (INR)',
-    ];
-    const rows = customers.map((c) => [
-      `"${c.name || ''}"`,
-      `"${c.customerId || ''}"`,
-      `"${c.phone || ''}"`,
-      `"${c.email || ''}"`,
-      `"${c.status || ''}"`,
-      `"${c.lastBookingDate || ''}"`,
-      c.totalBookings || 0,
-      c.completed || 0,
-      c.cancelled || 0,
-      c.noShow || 0,
-      `"${c.revenueGenerated || 0}"`,
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Gymezy_Customer_Report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    message.success('Actual customer report exported successfully');
   };
 
   // Action Menu Dropdown
@@ -196,23 +239,19 @@ export const ReportsManagement = () => {
       width: 190,
       render: (_, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
+          <Avatar
+            src={hasValidProfilePic(record.avatar) ? record.avatar : undefined}
+            icon={!hasValidProfilePic(record.avatar) ? <UserOutlined style={{ fontSize: 16 }} /> : undefined}
+            size={32}
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              backgroundColor: record.avatarColor,
-              color: record.avatarTextColor,
-              fontWeight: 800,
-              fontSize: 12,
-              display: 'flex',
+              backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+              color: '#6366f1',
+              flexShrink: 0,
+              display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              flexShrink: 0,
             }}
-          >
-            {record.initials}
-          </div>
+          />
           <span style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
             {record.name}
           </span>
@@ -514,7 +553,7 @@ export const ReportsManagement = () => {
             <Button
               type="primary"
               icon={<FileExcelOutlined />}
-              onClick={handleExport}
+              onClick={handleOpenExportModal}
               style={{
                 borderRadius: 'var(--radius-base)',
                 fontWeight: 700,
@@ -862,22 +901,19 @@ export const ReportsManagement = () => {
         {selectedCustomer && (
           <div style={{ paddingTop: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <div
+              <Avatar
+                src={hasValidProfilePic(selectedCustomer.avatar) ? selectedCustomer.avatar : undefined}
+                icon={!hasValidProfilePic(selectedCustomer.avatar) ? <UserOutlined style={{ fontSize: 24 }} /> : undefined}
+                size={48}
                 style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: '50%',
-                  backgroundColor: selectedCustomer.avatarColor,
-                  color: selectedCustomer.avatarTextColor,
-                  fontWeight: 800,
-                  fontSize: 16,
-                  display: 'flex',
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
+                  flexShrink: 0,
+                  display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
-              >
-                {selectedCustomer.initials}
-              </div>
+              />
               <div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
                   {selectedCustomer.name}
@@ -913,6 +949,17 @@ export const ReportsManagement = () => {
           </div>
         )}
       </Modal>
+
+      {/* Universal Server-Side Export Dialog */}
+      <ExportModal
+        open={isExportModalOpen}
+        onCancel={() => setIsExportModalOpen(false)}
+        title="Export Customer Report"
+        defaultFileName={getDefaultExportFileName('Customer_Report')}
+        totalAvailable={totalRecords}
+        onExport={executeExport}
+        loading={isExporting}
+      />
     </div>
   );
 };

@@ -88,6 +88,14 @@ const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
 
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
+
 const formatAmountWithCommas = (val) => {
   if (val === undefined || val === null || val === '') return '';
   const str = String(val).replace(/,/g, '');
@@ -2875,9 +2883,20 @@ export const GymProfileManagement = () => {
                         width: 240,
                         render: (_, record) => (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <Avatar src={record.imageUrl} size={42} style={{ border: '2px solid #722ed1', flexShrink: 0 }}>
-                              {record.name?.[0]?.toUpperCase()}
-                            </Avatar>
+                            <Avatar
+                              src={hasValidProfilePic(record.imageUrl) ? record.imageUrl : undefined}
+                              icon={!hasValidProfilePic(record.imageUrl) ? <UserOutlined style={{ fontSize: 18 }} /> : undefined}
+                              size={42}
+                              style={{
+                                border: '2px solid #722ed1',
+                                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                                color: '#6366f1',
+                                flexShrink: 0,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            />
                             <div>
                               <div style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 14 }}>
                                 {record.name}

@@ -8,9 +8,18 @@ import {
   LogoutOutlined,
   SettingOutlined,
   DownOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { logout } from '../../redux/slices/authSlice';
+
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 const { Header } = Layout;
 
@@ -105,8 +114,14 @@ export const AppBar = ({
   const authUser = useSelector((state) => state.auth?.user);
   const gymFromState = useSelector((state) => state.gym?.gymProfile);
 
+  const [avatarLoadFailed, setAvatarLoadFailed] = React.useState(false);
+
   const currentUser = userProp || authUser;
   const currentGym = gym || gymFromState;
+
+  const userAvatar = currentUser?.profilePicture || currentUser?.avatar;
+  const hasPic = hasValidProfilePic(userAvatar);
+  const showImage = hasPic && !avatarLoadFailed;
 
   const handleSettingsClick = () => {
     if (onSettings) {
@@ -147,6 +162,41 @@ export const AppBar = ({
         icon: <SettingOutlined />,
         label: 'Gym Settings',
         onClick: handleSettingsClick,
+      },
+      {
+        key: 'theme-toggle',
+        icon: isDarkMode ? (
+          <MoonOutlined style={{ color: '#ffd700' }} />
+        ) : (
+          <SunOutlined style={{ color: '#fa8c16' }} />
+        ),
+        label: (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              minWidth: 155,
+              gap: 12,
+            }}
+          >
+            <span>{isDarkMode ? 'Dark Theme' : 'Light Theme'}</span>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Switch
+                size="small"
+                checked={isDarkMode}
+                onChange={toggleTheme}
+                checkedChildren={<MoonOutlined style={{ color: '#ffd700', fontSize: 10 }} />}
+                unCheckedChildren={<SunOutlined style={{ color: '#fa8c16', fontSize: 10 }} />}
+                style={{
+                  backgroundColor: isDarkMode ? '#1677ff' : '#cbd5e1',
+                }}
+              />
+            </div>
+          </div>
+        ),
+        onClick: () => toggleTheme(),
       },
       { type: 'divider' },
       {
@@ -237,41 +287,31 @@ export const AppBar = ({
         </div>
       )}
 
-      {/* Right: Actions, Theme Switch & Profile Dropdown */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+      {/* Right: Actions & Profile Dropdown */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {extra}
-
-        {/* Day / Night Theme Switch */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Switch
-            size="small"
-            checked={isDarkMode}
-            onChange={toggleTheme}
-            checkedChildren={<MoonOutlined style={{ color: '#ffd700', fontSize: 10 }} />}
-            unCheckedChildren={<SunOutlined style={{ color: '#fa8c16', fontSize: 10 }} />}
-            style={{
-              margin: 0,
-              backgroundColor: isDarkMode ? '#1677ff' : '#cbd5e1',
-            }}
-          />
-        </div>
 
         {/* Profile Dropdown */}
         <Dropdown menu={profileMenu} placement="bottomRight" arrow>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
             <Badge dot status="success" offset={[-2, 32]}>
               <Avatar
-                src={currentUser?.avatar}
-                style={{
-                  backgroundColor: '#003882',
-                  color: '#ffffff',
-                  fontWeight: 750,
-                  fontSize: 14,
-                  border: '2px solid rgba(0, 56, 130, 0.15)',
+                src={showImage ? userAvatar : undefined}
+                icon={!showImage ? <UserOutlined style={{ fontSize: 18 }} /> : undefined}
+                onError={() => {
+                  setAvatarLoadFailed(true);
+                  return false;
                 }}
-              >
-                {(currentUser?.fullName || currentUser?.name || 'O').charAt(0).toUpperCase()}
-              </Avatar>
+                size={36}
+                style={{
+                  backgroundColor: showImage ? 'transparent' : (isDarkMode ? 'rgba(0, 56, 130, 0.25)' : '#edf4fe'),
+                  color: showImage ? 'inherit' : (isDarkMode ? '#597ef7' : '#003882'),
+                  border: `2px solid ${isDarkMode ? 'rgba(89, 126, 247, 0.3)' : 'rgba(0, 56, 130, 0.2)'}`,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              />
             </Badge>
             <div
               className="hide-mobile"

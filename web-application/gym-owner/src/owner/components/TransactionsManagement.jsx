@@ -42,6 +42,8 @@ import {
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../theme/ThemeContext';
 import { transactionService } from '../../services/transactionService';
+import { useDebounce } from '../../hooks/useDebounce';
+import { getDidYouMeanSuggestion } from '../../utils/fuzzySearchEngine';
 
 const { Option } = Select;
 const { Text, Title } = Typography;
@@ -91,8 +93,18 @@ export const TransactionsManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 350);
   const [paymentModeFilter, setPaymentModeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  const didYouMean = React.useMemo(() => {
+    return getDidYouMeanSuggestion(debouncedSearchQuery);
+  }, [debouncedSearchQuery]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery, paymentModeFilter, statusFilter]);
 
   // Modal State
   const [selectedTransaction, setSelectedTransaction] = useState(null);
@@ -100,14 +112,14 @@ export const TransactionsManagement = () => {
 
   // Fetch Transactions from Backend API scoped to this gym
   const fetchTransactions = useCallback(
-    async (page = 1, search = searchQuery, mode = paymentModeFilter, status = statusFilter) => {
+    async (page = currentPage, search = debouncedSearchQuery, mode = paymentModeFilter, status = statusFilter) => {
       if (isManager) return;
       setLoading(true);
       try {
         const params = {
           page,
           limit: pageSize,
-          search: search.trim() || undefined,
+          search: search?.trim() || undefined,
           paymentMode: mode === 'all' ? undefined : mode,
           status: status === 'all' ? undefined : status,
         };
@@ -116,7 +128,7 @@ export const TransactionsManagement = () => {
         if (res.stats) setStats(res.stats);
         if (res.pagination) {
           setTotalRecords(res.pagination.totalRecords || 0);
-          setCurrentPage(res.pagination.page || 1);
+          setCurrentPage(res.pagination.page || page);
         }
       } catch (err) {
         console.error('Failed to load gym transactions:', err);
@@ -125,39 +137,38 @@ export const TransactionsManagement = () => {
         setLoading(false);
       }
     },
-    [gymId, pageSize, searchQuery, paymentModeFilter, statusFilter]
+    [gymId, pageSize, debouncedSearchQuery, paymentModeFilter, statusFilter, isManager]
   );
 
   useEffect(() => {
-    fetchTransactions(1, searchQuery, paymentModeFilter, statusFilter);
-  }, [fetchTransactions]);
+    fetchTransactions(currentPage, debouncedSearchQuery, paymentModeFilter, statusFilter);
+  }, [fetchTransactions, currentPage, debouncedSearchQuery, paymentModeFilter, statusFilter]);
 
   const handleSearchChange = (e) => {
-    const val = e.target.value;
-    setSearchQuery(val);
-    fetchTransactions(1, val, paymentModeFilter, statusFilter);
+    setSearchQuery(e.target.value);
   };
 
   const handleModeChange = (val) => {
     setPaymentModeFilter(val);
-    fetchTransactions(1, searchQuery, val, statusFilter);
   };
 
   const handleStatusChange = (val) => {
     setStatusFilter(val);
-    fetchTransactions(1, searchQuery, paymentModeFilter, val);
   };
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setPaymentModeFilter('all');
     setStatusFilter('all');
-    fetchTransactions(1, '', 'all', 'all');
+    setCurrentPage(1);
   };
 
-  const handlePageChange = (page) => {
+  const handlePageChange = (page, newPageSize) => {
     setCurrentPage(page);
-    fetchTransactions(page, searchQuery, paymentModeFilter, statusFilter);
+    if (newPageSize && newPageSize !== pageSize) {
+      setPageSize(newPageSize);
+      setCurrentPage(1);
+    }
   };
 
   const handleCopy = (text, label) => {
@@ -298,18 +309,17 @@ export const TransactionsManagement = () => {
             <Avatar
               size={40}
               src={isProfilePic ? record.avatar : undefined}
-              icon={!isProfilePic ? <UserOutlined /> : undefined}
+              icon={!isProfilePic ? <UserOutlined style={{ fontSize: 18 }} /> : undefined}
               style={{
-                backgroundColor: isProfilePic ? 'transparent' : isDarkMode ? '#1e293b' : '#f1f5f9',
-                color: isDarkMode ? '#94a3b8' : '#64748b',
-                fontWeight: 700,
-                fontSize: 14,
+                backgroundColor: isProfilePic ? 'transparent' : isDarkMode ? '#1e1b4b' : '#ede9fe',
+                color: '#6366f1',
                 border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0',
                 flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
-            >
-              {!isProfilePic ? record.customerInitials || 'M' : null}
-            </Avatar>
+            />
             <div style={{ minWidth: 0 }}>
               <div
                 style={{
@@ -844,6 +854,57 @@ export const TransactionsManagement = () => {
         </Row>
       </Card>
 
+      {/* Typo-Tolerant "Did You Mean" Suggestion Banner */}
+      {didYouMean &&
+        debouncedSearchQuery &&
+        didYouMean.toLowerCase() !== debouncedSearchQuery.toLowerCase().trim() && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 18px',
+              borderRadius: 'var(--radius-base)',
+              backgroundColor: isDarkMode ? '#1e293b' : '#eff6ff',
+              border: `1px solid ${isDarkMode ? '#3b82f6' : '#bfdbfe'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: isDarkMode ? '#93c5fd' : '#1e40af' }}>
+              <SearchOutlined style={{ color: '#3b82f6' }} />
+              <span>
+                Did you mean:{' '}
+                <strong
+                  onClick={() => {
+                    setSearchQuery(didYouMean);
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    color: '#2563eb',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {didYouMean}
+                </strong>
+                ?
+              </span>
+            </div>
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              onClick={() => {
+                setSearchQuery(didYouMean);
+              }}
+              style={{ fontWeight: 700, fontSize: 12, borderRadius: 6 }}
+            >
+              Search for &ldquo;{didYouMean}&rdquo;
+            </Button>
+          </div>
+        )}
+
       {/* 4. Transactions Data Table */}
       <Card
         style={{
@@ -886,6 +947,7 @@ export const TransactionsManagement = () => {
           flexWrap: 'wrap',
           gap: 12,
           paddingBottom: 24,
+          paddingTop: 16,
         }}
       >
         <div style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
@@ -896,8 +958,10 @@ export const TransactionsManagement = () => {
           current={currentPage}
           total={totalRecords}
           pageSize={pageSize}
+          pageSizeOptions={['10', '20', '50', '100']}
+          showSizeChanger
+          showQuickJumper
           onChange={handlePageChange}
-          showSizeChanger={false}
         />
       </div>
 

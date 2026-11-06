@@ -26,6 +26,8 @@ import {
   Badge,
 } from 'antd';
 import { apiClient } from '../../services/apiClient';
+import { useDebounce } from '../../hooks/useDebounce';
+import { getDidYouMeanSuggestion } from '../../utils/fuzzySearchEngine';
 import {
   PlusOutlined,
   SearchOutlined,
@@ -54,6 +56,14 @@ const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 
 export const INITIAL_BOOKINGS = [];
+
+export const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 /**
  * Reusable Bookings Management Component
@@ -286,20 +296,39 @@ export const BookingsManagement = ({
     }
   };
 
-  // Pagination State
+  // Pagination & Debounced Search State
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 7;
+  const [pageSize, setPageSize] = useState(10);
+  const debouncedNameSearch = useDebounce(nameSearch, 350);
+  const debouncedBookingIdSearch = useDebounce(bookingIdSearch, 350);
+  const debouncedCustomerIdSearch = useDebounce(customerIdSearch, 350);
+
+  const didYouMean = useMemo(() => {
+    return getDidYouMeanSuggestion(debouncedNameSearch);
+  }, [debouncedNameSearch]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedNameSearch, debouncedBookingIdSearch, debouncedCustomerIdSearch, bookingType, bookingStatus, sourceFilter]);
 
   // Filter Logic
-  const filteredBookings = bookings.filter((item) => {
-    const matchName = !nameSearch || item.customerName.toLowerCase().includes(nameSearch.toLowerCase());
-    const matchBookingId = !bookingIdSearch || item.bookingId.toLowerCase().includes(bookingIdSearch.toLowerCase());
-    const matchCustomerId = !customerIdSearch || item.customerId.toLowerCase().includes(customerIdSearch.toLowerCase());
-    const matchType = bookingType === 'ALL' || item.type === bookingType;
-    const matchStatus = bookingStatus === 'ALL' || item.status === bookingStatus;
-    const matchSource = sourceFilter === 'ALL' || (item.source || 'APP') === sourceFilter;
-    return matchName && matchBookingId && matchCustomerId && matchType && matchStatus && matchSource;
-  });
+  const filteredBookings = useMemo(() => {
+    return bookings.filter((item) => {
+      const matchName = !debouncedNameSearch || (item.customerName || '').toLowerCase().includes(debouncedNameSearch.toLowerCase());
+      const matchBookingId = !debouncedBookingIdSearch || (item.bookingId || '').toLowerCase().includes(debouncedBookingIdSearch.toLowerCase());
+      const matchCustomerId = !debouncedCustomerIdSearch || (item.customerId || '').toLowerCase().includes(debouncedCustomerIdSearch.toLowerCase());
+      const matchType = bookingType === 'ALL' || item.type === bookingType;
+      const matchStatus = bookingStatus === 'ALL' || item.status === bookingStatus;
+      const matchSource = sourceFilter === 'ALL' || (item.source || 'APP') === sourceFilter;
+      return matchName && matchBookingId && matchCustomerId && matchType && matchStatus && matchSource;
+    });
+  }, [bookings, debouncedNameSearch, debouncedBookingIdSearch, debouncedCustomerIdSearch, bookingType, bookingStatus, sourceFilter]);
+
+  const paginatedBookings = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredBookings.slice(start, start + pageSize);
+  }, [filteredBookings, currentPage, pageSize]);
 
   const clearFilters = () => {
     setNameSearch('');
@@ -508,14 +537,29 @@ export const BookingsManagement = ({
     {
       title: 'Customer',
       key: 'customer',
-      render: (_, record) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar src={record.avatar} size={38} style={{ flexShrink: 0 }} />
-          <div style={{ fontWeight: 650, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13 }}>
-            {record.customerName}
+      render: (_, record) => {
+        const hasPic = hasValidProfilePic(record.avatar);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Avatar
+              src={hasPic ? record.avatar : undefined}
+              icon={!hasPic ? <UserOutlined style={{ fontSize: 18 }} /> : undefined}
+              size={38}
+              style={{
+                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            />
+            <div style={{ fontWeight: 650, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13 }}>
+              {record.customerName}
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: 'Booking Type',
@@ -1149,6 +1193,57 @@ export const BookingsManagement = ({
         </Row>
       </Card>
 
+      {/* Typo-Tolerant "Did You Mean" Suggestion Banner */}
+      {didYouMean &&
+        debouncedNameSearch &&
+        didYouMean.toLowerCase() !== debouncedNameSearch.toLowerCase().trim() && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 18px',
+              borderRadius: 'var(--radius-base)',
+              backgroundColor: isDarkMode ? '#1e293b' : '#eff6ff',
+              border: `1px solid ${isDarkMode ? '#3b82f6' : '#bfdbfe'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: isDarkMode ? '#93c5fd' : '#1e40af' }}>
+              <SearchOutlined style={{ color: '#3b82f6' }} />
+              <span>
+                Did you mean:{' '}
+                <strong
+                  onClick={() => {
+                    setNameSearch(didYouMean);
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    color: '#2563eb',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {didYouMean}
+                </strong>
+                ?
+              </span>
+            </div>
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              onClick={() => {
+                setNameSearch(didYouMean);
+              }}
+              style={{ fontWeight: 700, fontSize: 12, borderRadius: 6 }}
+            >
+              Search for &ldquo;{didYouMean}&rdquo;
+            </Button>
+          </div>
+        )}
+
       {/* BOOKINGS TABLE CARD */}
       <Card
         style={{
@@ -1163,7 +1258,7 @@ export const BookingsManagement = ({
           pagination={false}
           size="middle"
           scroll={{ x: 'max-content' }}
-          dataSource={filteredBookings}
+          dataSource={paginatedBookings}
           columns={columns}
         />
 
@@ -1186,10 +1281,18 @@ export const BookingsManagement = ({
           </div>
           <Pagination
             current={currentPage}
-            onChange={setCurrentPage}
+            onChange={(page, newPageSize) => {
+              setCurrentPage(page);
+              if (newPageSize && newPageSize !== pageSize) {
+                setPageSize(newPageSize);
+                setCurrentPage(1);
+              }
+            }}
             total={filteredBookings.length}
             pageSize={pageSize}
-            showSizeChanger={false}
+            pageSizeOptions={['10', '20', '50', '100']}
+            showSizeChanger
+            showQuickJumper
           />
         </div>
       </Card>
@@ -1497,11 +1600,17 @@ export const BookingsManagement = ({
             {/* Customer Profile Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, marginTop: 8 }}>
               <Avatar
-                src={selectedBooking.avatar}
+                src={hasValidProfilePic(selectedBooking.avatar) ? selectedBooking.avatar : undefined}
+                icon={!hasValidProfilePic(selectedBooking.avatar) ? <UserOutlined style={{ fontSize: 30 }} /> : undefined}
                 size={68}
                 style={{
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
                   border: `2px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
                   flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               />
               <div>

@@ -77,5 +77,29 @@ test('Super Admin Gyms Fleet & Fuzzy Search Architecture Tests', async (t) => {
     assert.strictEqual(skip, 10, 'Page 2 at 10 per page must skip 10 items');
     assert.strictEqual(skip + limit < totalCount, true, 'Page 2 has more items');
   });
+
+  await t.test('5. Gym routes expose /options endpoint for lightweight dropdowns', () => {
+    const routeStack = gymRoutes.stack || [];
+    const registeredPaths = routeStack
+      .filter((layer) => layer.route)
+      .map((layer) => layer.route.path);
+
+    assert.ok(
+      registeredPaths.includes('/options'),
+      '/options route must be registered in gymRoutes'
+    );
+  });
+
+  await t.test('6. Relaxed spacing regex matches collapsed search queries (e.g. supermax -> Super Max Gym)', () => {
+    const query = 'supermax';
+    const cleanAlnum = query.replace(/[^a-zA-Z0-9]/g, '');
+    const relaxedPattern = cleanAlnum.split('').map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s\\-_]*');
+    const regex = new RegExp(relaxedPattern, 'i');
+
+    assert.ok(regex.test('Super Max Gym'), '"supermax" must match "Super Max Gym"');
+    assert.ok(regex.test('SuperMax Fitness'), '"supermax" must match "SuperMax Fitness"');
+    assert.ok(regex.test('Super-Max Arena'), '"supermax" must match "Super-Max Arena"');
+    assert.strictEqual(regex.test('PowerMax Gym'), false, '"supermax" must not match "PowerMax"');
+  });
 });
 

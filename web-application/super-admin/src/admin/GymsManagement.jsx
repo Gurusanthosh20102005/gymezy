@@ -71,6 +71,8 @@ import {
 } from '../redux/slices/gymSlice';
 import { useTheme } from '../theme/ThemeContext';
 import { apiClient } from '../services/apiClient';
+import { ExportModal } from '../general/components/ExportModal';
+import { downloadCSV, getDefaultExportFileName } from '../utils/exportHelper';
 import GymDetailsView from './components/GymDetailsView';
 
 const { Title, Text, Paragraph } = Typography;
@@ -234,6 +236,79 @@ export const GymsManagement = () => {
   const [searchSubscriptionType, setSearchSubscriptionType] = useState('All');
   const [searchLocation, setSearchLocation] = useState('');
   const [searchPhone, setSearchPhone] = useState('');
+
+  // Server-Side Export Modal & Execution
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleOpenExportModal = () => {
+    setIsExportModalOpen(true);
+  };
+
+  const executeExport = async ({ fileName, scope, dateRange }) => {
+    setIsExporting(true);
+    try {
+      const params = {
+        export: true,
+        limit: 0,
+        page: 1,
+        tab: currentTab,
+      };
+
+      if (scope === 'filtered') {
+        if (searchStatus !== 'All') params.status = searchStatus;
+        if (searchSubscriptionType !== 'All') params.subscriptionType = searchSubscriptionType;
+        if (debouncedLocation.trim()) params.location = debouncedLocation.trim();
+        if (debouncedPhone.trim()) params.phone = debouncedPhone.trim();
+        if (debouncedSearchName.trim()) params.search = debouncedSearchName.trim();
+      } else if (scope === 'custom' && dateRange) {
+        params.startDate = dateRange[0].toISOString();
+        params.endDate = dateRange[1].toISOString();
+      }
+
+      const res = await apiClient.get('/gyms/admin/fleet', { params });
+      const list = res.data?.data?.gyms || [];
+      if (list.length === 0) {
+        message.warning('No gym records found matching the requested scope.');
+        return;
+      }
+
+      const headers = [
+        'Partner ID',
+        'Gym Name',
+        'City',
+        'Area / Locality',
+        'Phone Number',
+        'Email Address',
+        'Approval Status',
+        'Operational Status',
+        'SaaS Subscription Plan',
+        'Created Date',
+      ];
+
+      const rows = list.map((g) => [
+        g.partnerId || g.id || '',
+        g.name || '',
+        g.city || '',
+        g.area || '',
+        g.phone || '',
+        g.email || '',
+        g.approvalStatus || 'Approved',
+        g.status || 'Active',
+        g.subscriptionType || 'Standard',
+        g.createdAt ? new Date(g.createdAt).toLocaleDateString('en-GB') : '—',
+      ]);
+
+      downloadCSV(fileName, headers, rows);
+      message.success(`Successfully exported ${list.length} gym records to ${fileName}.csv`);
+      setIsExportModalOpen(false);
+    } catch (err) {
+      console.error('Export gyms failed:', err);
+      message.error(err.message || 'Failed to export gym records');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Debounced filter states to avoid rapid API thrashing
   const [debouncedSearchName, setDebouncedSearchName] = useState(searchName);
@@ -1617,7 +1692,7 @@ export const GymsManagement = () => {
             <Button
               size="small"
               icon={<DownloadOutlined />}
-              onClick={() => message.success('Exporting gyms list as CSV...')}
+              onClick={handleOpenExportModal}
             >
               Export CSV
             </Button>
@@ -2239,6 +2314,17 @@ export const GymsManagement = () => {
           </div>
         </Form>
       </Modal>
+
+      {/* Universal Server-Side Export Dialog */}
+      <ExportModal
+        open={isExportModalOpen}
+        onCancel={() => setIsExportModalOpen(false)}
+        title="Export Gyms Fleet"
+        defaultFileName={getDefaultExportFileName('Gyms_Fleet')}
+        totalAvailable={pagination?.total || reduxGyms.length}
+        onExport={executeExport}
+        loading={isExporting}
+      />
     </div>
   );
 };

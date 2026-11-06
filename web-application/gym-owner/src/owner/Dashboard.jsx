@@ -40,10 +40,19 @@ import {
   CalendarOutlined,
   DownOutlined,
   SettingOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { recordCheckIn, recordCheckOut } from '../redux/slices/gymSlice';
 import { apiClient } from '../services/apiClient';
+
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -134,10 +143,17 @@ export const Dashboard = () => {
       render: (text, record) => (
         <Space orientation="horizontal" size={12}>
           <Avatar
-            style={{ backgroundColor: '#1677ff', fontWeight: 700 }}
-          >
-            {text.charAt(0)}
-          </Avatar>
+            src={hasValidProfilePic(record.avatar) ? record.avatar : undefined}
+            icon={<UserOutlined style={{ fontSize: 16 }} />}
+            style={{
+              backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+              color: '#6366f1',
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          />
           <div>
             <div style={{ fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>{text}</div>
             <div style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>{record.customerId}</div>
@@ -599,19 +615,34 @@ export const Dashboard = () => {
                   title: 'Customer Name',
                   dataIndex: 'name',
                   key: 'name',
-                  render: (text, record) => (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Avatar src={record.avatar} size={36} />
-                      <div>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>
-                          {text}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                          {record.phone}
+                  render: (text, record) => {
+                    const hasPic = hasValidProfilePic(record.avatar);
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar
+                          src={hasPic ? record.avatar : undefined}
+                          icon={!hasPic ? <UserOutlined style={{ fontSize: 18 }} /> : undefined}
+                          size={36}
+                          style={{
+                            backgroundColor: 'var(--bg-tag)',
+                            color: 'var(--color-primary)',
+                            flexShrink: 0,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>
+                            {text}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                            {record.phone}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ),
+                    );
+                  },
                 },
                 {
                   title: 'Time',
@@ -763,14 +794,29 @@ export const Dashboard = () => {
                   title: 'Customer Name',
                   dataIndex: 'name',
                   key: 'name',
-                  render: (text, record) => (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Avatar src={record.avatar} size={36} />
-                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>
-                        {text}
-                      </span>
-                    </div>
-                  ),
+                  render: (text, record) => {
+                    const hasPic = hasValidProfilePic(record.avatar);
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar
+                          src={hasPic ? record.avatar : undefined}
+                          icon={!hasPic ? <UserOutlined style={{ fontSize: 18 }} /> : undefined}
+                          size={36}
+                          style={{
+                            backgroundColor: 'var(--bg-tag)',
+                            color: 'var(--color-primary)',
+                            flexShrink: 0,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        />
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>
+                          {text}
+                        </span>
+                      </div>
+                    );
+                  },
                 },
                 {
                   title: 'Membership Type',
