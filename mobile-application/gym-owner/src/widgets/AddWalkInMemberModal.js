@@ -753,7 +753,7 @@ export const AddWalkInMemberModal = ({
               styles.footerRow,
               {
                 borderTopColor: isDark ? AppColors.darkBorder : '#F1F5F9',
-                paddingBottom: Math.max(insets.bottom, 12),
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 16,
               },
             ]}
           >

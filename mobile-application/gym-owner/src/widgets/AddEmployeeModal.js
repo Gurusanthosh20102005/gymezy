@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppColors } from '../theme/appTheme';
 import { useToast } from './CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
@@ -118,6 +119,7 @@ export const AddEmployeeModal = ({
   const modalTitle = title || (initialEmployee ? 'Edit Employee Details' : 'Add New Employee');
   const modalSubtitle = subtitle || (initialEmployee ? 'Update employee role, delegation permissions, and info' : 'Add trainer, coach, or operational gym employee');
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { gym } = useAuth();
 
@@ -534,7 +536,11 @@ export const AddEmployeeModal = ({
           <View
             style={[
               styles.modalSheet,
-              { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: '92%' },
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                maxHeight: '92%',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : (Platform.OS === 'ios' ? 34 : 24),
+              },
             ]}
           >
             {/* Header */}
@@ -1880,7 +1886,17 @@ export const AddEmployeeModal = ({
         onRequestClose={() => setShowAttachDocModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 560, width: '100%' }]}>
+          <View
+            style={[
+              styles.pickerModalCard,
+              {
+                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                maxHeight: 560,
+                width: '100%',
+                paddingBottom: insets.bottom > 0 ? insets.bottom + 16 : 24,
+              },
+            ]}
+          >
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 {attachCategory === 'employment'

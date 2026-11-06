@@ -121,7 +121,12 @@ const AnimatedNavItem = ({ item, isSelected, onTap, isDark }) => {
 export const CustomFloatingNavBar = ({ currentIndex, onTap }) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const bottomMargin = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : Math.max(insets.bottom, 20) + 16;
+  const bottomMargin =
+    insets.bottom > 0
+      ? insets.bottom + 6
+      : Platform.OS === 'ios'
+      ? 20
+      : 16;
   const [rowWidth, setRowWidth] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scalePillAnim = useRef(new Animated.Value(1)).current;

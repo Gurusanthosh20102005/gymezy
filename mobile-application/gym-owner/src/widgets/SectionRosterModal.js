@@ -8,14 +8,17 @@ import {
   StyleSheet,
   ActivityIndicator,
   Image,
+  Platform,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { apiService } from '../services/apiService';
 
 export const SectionRosterModal = ({ visible, onClose, section }) => {
   const { isDark } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [enrollments, setEnrollments] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -67,7 +70,15 @@ export const SectionRosterModal = ({ visible, onClose, section }) => {
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <View style={[styles.container, { backgroundColor: bg }]}>
+        <View
+          style={[
+            styles.container,
+            {
+              backgroundColor: bg,
+              paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : (Platform.OS === 'ios' ? 34 : 24),
+            },
+          ]}
+        >
           {/* Header */}
           <View style={[styles.headerRow, { borderBottomColor: borderCol }]}>
             <View style={{ flex: 1, marginRight: 12 }}>
