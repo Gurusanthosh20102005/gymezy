@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Card,
   Row,
@@ -31,251 +31,11 @@ import {
   FileExcelOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
+import { useDebounce } from '../hooks/useDebounce';
+import { reportService } from '../services/reportService';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
-
-// Initial Customers Report Data matching mockup exactly
-const INITIAL_REPORT_DATA = [
-  {
-    key: '1',
-    id: 1,
-    name: 'Arun Kumar',
-    customerId: 'CUST100245',
-    phone: '+91 98765 43210',
-    initials: 'AK',
-    avatarColor: '#f3e8ff',
-    avatarTextColor: '#7e22ce',
-    lastBookingDate: '18 May 2026  07:30 PM',
-    status: 'Active',
-    totalBookings: 24,
-    completed: 20,
-    cancelled: 2,
-    noShow: 2,
-    revenueGenerated: '5,280',
-  },
-  {
-    key: '2',
-    id: 2,
-    name: 'Priya Sharma',
-    customerId: 'CUST100246',
-    phone: '+91 91234 56789',
-    initials: 'PS',
-    avatarColor: '#fce7f3',
-    avatarTextColor: '#db2777',
-    lastBookingDate: '17 May 2026  06:15 PM',
-    status: 'Active',
-    totalBookings: 18,
-    completed: 16,
-    cancelled: 1,
-    noShow: 1,
-    revenueGenerated: '4,120',
-  },
-  {
-    key: '3',
-    id: 3,
-    name: 'Rahul Krishnan',
-    customerId: 'CUST100247',
-    phone: '+91 99887 66554',
-    initials: 'RK',
-    avatarColor: '#dcfce7',
-    avatarTextColor: '#16a34a',
-    lastBookingDate: '16 May 2026  08:45 PM',
-    status: 'Active',
-    totalBookings: 31,
-    completed: 28,
-    cancelled: 2,
-    noShow: 1,
-    revenueGenerated: '7,960',
-  },
-  {
-    key: '4',
-    id: 4,
-    name: 'Sneha Nair',
-    customerId: 'CUST100248',
-    phone: '+91 90123 45678',
-    initials: 'SN',
-    avatarColor: '#ffedd5',
-    avatarTextColor: '#ea580c',
-    lastBookingDate: '12 May 2026  07:10 PM',
-    status: 'Inactive',
-    totalBookings: 15,
-    completed: 13,
-    cancelled: 1,
-    noShow: 1,
-    revenueGenerated: '3,420',
-  },
-  {
-    key: '5',
-    id: 5,
-    name: 'Vijay Joseph',
-    customerId: 'CUST100249',
-    phone: '+91 93456 78901',
-    initials: 'VJ',
-    avatarColor: '#e0e7ff',
-    avatarTextColor: '#4f46e5',
-    lastBookingDate: '10 May 2026  09:20 PM',
-    status: 'Active',
-    totalBookings: 27,
-    completed: 24,
-    cancelled: 2,
-    noShow: 1,
-    revenueGenerated: '6,540',
-  },
-  {
-    key: '6',
-    id: 6,
-    name: 'Deepa Krishnan',
-    customerId: 'CUST100250',
-    phone: '+91 99654 32109',
-    initials: 'DK',
-    avatarColor: '#e2e8f0',
-    avatarTextColor: '#475569',
-    lastBookingDate: '08 May 2026  06:40 PM',
-    status: 'Inactive',
-    totalBookings: 9,
-    completed: 8,
-    cancelled: 0,
-    noShow: 1,
-    revenueGenerated: '1,860',
-  },
-  {
-    key: '7',
-    id: 7,
-    name: 'Manoj G',
-    customerId: 'CUST100251',
-    phone: '+91 98123 65432',
-    initials: 'MG',
-    avatarColor: '#fef3c7',
-    avatarTextColor: '#d97706',
-    lastBookingDate: '08 May 2026  07:55 PM',
-    status: 'Active',
-    totalBookings: 22,
-    completed: 19,
-    cancelled: 1,
-    noShow: 2,
-    revenueGenerated: '5,060',
-  },
-  {
-    key: '8',
-    id: 8,
-    name: 'Rohit Singh',
-    customerId: 'CUST100253',
-    phone: '+91 98712 34567',
-    initials: 'AS',
-    avatarColor: '#ccfbf1',
-    avatarTextColor: '#0d9488',
-    lastBookingDate: '06 May 2026  09:10 PM',
-    status: 'Active',
-    totalBookings: 30,
-    completed: 26,
-    cancelled: 3,
-    noShow: 1,
-    revenueGenerated: '7,450',
-  },
-  {
-    key: '9',
-    id: 9,
-    name: 'Nandini Roy',
-    customerId: 'CUST100254',
-    phone: '+91 94876 54321',
-    initials: 'NP',
-    avatarColor: '#dbeafe',
-    avatarTextColor: '#1d4ed8',
-    lastBookingDate: '05 May 2026  05:45 PM',
-    status: 'Inactive',
-    totalBookings: 6,
-    completed: 5,
-    cancelled: 0,
-    noShow: 1,
-    revenueGenerated: '1,130',
-  },
-  {
-    key: '10',
-    id: 10,
-    name: 'Suresh Kumar',
-    customerId: 'CUST100255',
-    phone: '+91 90987 61234',
-    initials: 'SK',
-    avatarColor: '#e0e7ff',
-    avatarTextColor: '#4338ca',
-    lastBookingDate: '04 May 2026  07:25 PM',
-    status: 'Active',
-    totalBookings: 21,
-    completed: 18,
-    cancelled: 2,
-    noShow: 1,
-    revenueGenerated: '4,830',
-  },
-  {
-    key: '11',
-    id: 11,
-    name: 'Harish B',
-    customerId: 'CUST100256',
-    phone: '+91 98765 12340',
-    initials: 'HB',
-    avatarColor: '#fce7f3',
-    avatarTextColor: '#be185d',
-    lastBookingDate: '03 May 2026  08:30 PM',
-    status: 'Active',
-    totalBookings: 14,
-    completed: 12,
-    cancelled: 1,
-    noShow: 1,
-    revenueGenerated: '2,780',
-  },
-  {
-    key: '12',
-    id: 12,
-    name: 'Lavanya S',
-    customerId: 'CUST100257',
-    phone: '+91 93456 12345',
-    initials: 'LS',
-    avatarColor: '#f3e8ff',
-    avatarTextColor: '#9333ea',
-    lastBookingDate: '03 May 2026  06:20 PM',
-    status: 'Active',
-    totalBookings: 19,
-    completed: 17,
-    cancelled: 1,
-    noShow: 1,
-    revenueGenerated: '3,910',
-  },
-  {
-    key: '13',
-    id: 13,
-    name: 'Karthik Prabhu',
-    customerId: 'CUST100258',
-    phone: '+91 99887 12345',
-    initials: 'KP',
-    avatarColor: '#dcfce7',
-    avatarTextColor: '#15803d',
-    lastBookingDate: '02 May 2026  07:00 PM',
-    status: 'Active',
-    totalBookings: 25,
-    completed: 21,
-    cancelled: 2,
-    noShow: 2,
-    revenueGenerated: '5,940',
-  },
-  {
-    key: '14',
-    id: 14,
-    name: 'James Michael',
-    customerId: 'CUST100259',
-    phone: '+91 90123 98765',
-    initials: 'JM',
-    avatarColor: '#ffedd5',
-    avatarTextColor: '#c2410c',
-    lastBookingDate: '01 May 2026  06:50 PM',
-    status: 'Inactive',
-    totalBookings: 7,
-    completed: 5,
-    cancelled: 1,
-    noShow: 1,
-    revenueGenerated: '1,320',
-  },
-];
 
 export const ReportsManagement = () => {
   const { isDarkMode } = useTheme();
@@ -285,22 +45,72 @@ export const ReportsManagement = () => {
   const [customerType, setCustomerType] = useState('All');
   const [bookingType, setBookingType] = useState('All');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 350);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
+  const [dateRange, setDateRange] = useState(null);
+
+  // Live Database Data & KPI Metrics State
+  const [customers, setCustomers] = useState([]);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [didYouMean, setDidYouMean] = useState(null);
+  const [stats, setStats] = useState({
+    totalCustomers: '0',
+    activeCustomers: '0',
+    activePct: '0%',
+    inactiveCustomers: '0',
+    inactivePct: '0%',
+    totalBookings: '0',
+    revenueGenerated: '0',
+  });
 
   // Detail Modal State
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Filtered Data
-  const filteredData = useMemo(() => {
-    return INITIAL_REPORT_DATA.filter((item) => {
-      if (statusFilter !== 'all' && item.status.toLowerCase() !== statusFilter.toLowerCase()) {
-        return false;
+  // Fetch Actual Report Data from Backend API
+  const fetchReports = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = {
+        page: currentPage,
+        limit: pageSize,
+        search: debouncedSearch?.trim() || undefined,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        customerType: customerType === 'All' ? undefined : customerType,
+        bookingType: bookingType === 'All' ? undefined : bookingType,
+        startDate: dateRange && dateRange[0] ? dateRange[0].toISOString() : undefined,
+        endDate: dateRange && dateRange[1] ? dateRange[1].toISOString() : undefined,
+      };
+      const res = await reportService.getCustomerReports(params);
+      if (res?.customers) {
+        setCustomers(res.customers);
+        setTotalRecords(res.pagination?.totalRecords ?? res.customers.length);
+        if (res.stats) setStats(res.stats);
+        setDidYouMean(res.didYouMean || null);
       }
-      return true;
-    });
-  }, [statusFilter]);
+    } catch (err) {
+      console.error('Failed to load actual customer reports:', err);
+      message.error('Failed to load actual report data');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, pageSize, debouncedSearch, statusFilter, customerType, bookingType, dateRange]);
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  // Global App Refresh listener (from breadcrumbs)
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchReports();
+    };
+    window.addEventListener('app:refresh', handleRefresh);
+    return () => window.removeEventListener('app:refresh', handleRefresh);
+  }, [fetchReports]);
 
   // Handle Reset
   const handleReset = () => {
@@ -308,12 +118,53 @@ export const ReportsManagement = () => {
     setCustomerType('All');
     setBookingType('All');
     setStatusFilter('all');
+    setSearchQuery('');
+    setDateRange(null);
+    setCurrentPage(1);
     message.info('Filters have been reset.');
   };
 
-  // Handle Export
+  // Handle Export Actual Data as CSV
   const handleExport = () => {
-    message.success('Exporting report as Excel spreadsheet...');
+    if (!customers || customers.length === 0) {
+      message.warning('No customer records to export');
+      return;
+    }
+    const headers = [
+      'Customer Name',
+      'Customer ID',
+      'Phone Number',
+      'Email',
+      'Status',
+      'Last Activity Date',
+      'Total Bookings',
+      'Completed Bookings',
+      'Cancelled Bookings',
+      'No Show',
+      'Revenue Generated (INR)',
+    ];
+    const rows = customers.map((c) => [
+      `"${c.name || ''}"`,
+      `"${c.customerId || ''}"`,
+      `"${c.phone || ''}"`,
+      `"${c.email || ''}"`,
+      `"${c.status || ''}"`,
+      `"${c.lastBookingDate || ''}"`,
+      c.totalBookings || 0,
+      c.completed || 0,
+      c.cancelled || 0,
+      c.noShow || 0,
+      `"${c.revenueGenerated || 0}"`,
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Gymezy_Customer_Report_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    message.success('Actual customer report exported successfully');
   };
 
   // Action Menu Dropdown
@@ -536,6 +387,24 @@ export const ReportsManagement = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           {/* Filters on Left */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flex: 1 }}>
+            {/* Search Input */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 4 }}>
+                Search Customer
+              </div>
+              <Input
+                placeholder="Search name, phone, ID..."
+                prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ width: 200, borderRadius: 'var(--radius-base)' }}
+                allowClear
+              />
+            </div>
+
             {/* Report Type */}
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 4 }}>
@@ -555,8 +424,13 @@ export const ReportsManagement = () => {
                 Date Range
               </div>
               <RangePicker
+                value={dateRange}
+                onChange={(dates) => {
+                  setDateRange(dates);
+                  setCurrentPage(1);
+                }}
                 format="DD MMM YYYY"
-                placeholder={['21 May 2026', '20 Jun 2026']}
+                placeholder={['Start Date', 'End Date']}
                 style={{ borderRadius: 'var(--radius-base)', width: 230 }}
               />
             </div>
@@ -566,7 +440,14 @@ export const ReportsManagement = () => {
               <div style={{ fontSize: 11, fontWeight: 700, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 4 }}>
                 Customer Type
               </div>
-              <Select value={customerType} onChange={setCustomerType} style={{ width: 130 }}>
+              <Select
+                value={customerType}
+                onChange={(val) => {
+                  setCustomerType(val);
+                  setCurrentPage(1);
+                }}
+                style={{ width: 130 }}
+              >
                 <Option value="All">All</Option>
                 <Option value="New">New</Option>
                 <Option value="Returning">Returning</Option>
@@ -579,7 +460,14 @@ export const ReportsManagement = () => {
               <div style={{ fontSize: 11, fontWeight: 700, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 4 }}>
                 Booking Type
               </div>
-              <Select value={bookingType} onChange={setBookingType} style={{ width: 130 }}>
+              <Select
+                value={bookingType}
+                onChange={(val) => {
+                  setBookingType(val);
+                  setCurrentPage(1);
+                }}
+                style={{ width: 130 }}
+              >
                 <Option value="All">All</Option>
                 <Option value="App Booking">App Booking</Option>
                 <Option value="Walk-in">Walk-in</Option>
@@ -591,7 +479,14 @@ export const ReportsManagement = () => {
               <div style={{ fontSize: 11, fontWeight: 700, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 4 }}>
                 Status
               </div>
-              <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 130 }}>
+              <Select
+                value={statusFilter}
+                onChange={(val) => {
+                  setStatusFilter(val);
+                  setCurrentPage(1);
+                }}
+                style={{ width: 130 }}
+              >
                 <Option value="all">All Status</Option>
                 <Option value="active">Active</Option>
                 <Option value="inactive">Inactive</Option>
@@ -671,7 +566,7 @@ export const ReportsManagement = () => {
                 Total Customers
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                12,486
+                {stats.totalCustomers || '0'}
               </div>
             </div>
           </div>
@@ -706,10 +601,10 @@ export const ReportsManagement = () => {
                 Active Customers
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                8,756
+                {stats.activeCustomers || '0'}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#00bf62' }}>
-                70.15%
+                {stats.activePct || '0%'}
               </div>
             </div>
           </div>
@@ -744,10 +639,10 @@ export const ReportsManagement = () => {
                 Inactive Customers
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                3,730
+                {stats.inactiveCustomers || '0'}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>
-                29.85%
+                {stats.inactivePct || '0%'}
               </div>
             </div>
           </div>
@@ -782,7 +677,7 @@ export const ReportsManagement = () => {
                 Total Bookings
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                32,845
+                {stats.totalBookings || '0'}
               </div>
             </div>
           </div>
@@ -817,12 +712,61 @@ export const ReportsManagement = () => {
                 Revenue Generated
               </div>
               <div style={{ fontSize: 17, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0', whiteSpace: 'nowrap' }}>
-                ₹ 18,75,430
+                ₹ {stats.revenueGenerated || '0'}
               </div>
             </div>
           </div>
         </Card>
       </div>
+
+      {/* "Did You Mean" Interactive Spelling Suggestion Banner */}
+      {didYouMean && (
+        <div
+          style={{
+            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.15)' : '#eef2ff',
+            border: `1px solid ${isDarkMode ? 'rgba(99, 102, 241, 0.3)' : '#c7d2fe'}`,
+            borderRadius: 8,
+            padding: '10px 16px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span style={{ fontSize: 16 }}>💡</span>
+            <span style={{ color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+              Did you mean{' '}
+              <strong
+                onClick={() => {
+                  setSearchQuery(didYouMean);
+                  setCurrentPage(1);
+                }}
+                style={{
+                  color: '#6366f1',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                "{didYouMean}"
+              </strong>
+              ?
+            </span>
+          </div>
+          <Button
+            size="small"
+            type="link"
+            onClick={() => {
+              setSearchQuery(didYouMean);
+              setCurrentPage(1);
+            }}
+            style={{ color: '#6366f1', fontWeight: 600, padding: 0 }}
+          >
+            Apply Correction
+          </Button>
+        </div>
+      )}
 
       {/* 3. REPORT DATA TABLE */}
       <Card
@@ -848,39 +792,60 @@ export const ReportsManagement = () => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>
-              Showing {filteredData.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} to {Math.min(currentPage * pageSize, filteredData.length)} of {filteredData.length} entries
+              Showing {totalRecords > 0 ? (currentPage - 1) * pageSize + 1 : 0} to {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} entries
             </span>
-            <Pagination current={currentPage} total={filteredData.length} pageSize={pageSize} onChange={setCurrentPage} size="small" />
+            <Pagination
+              current={currentPage}
+              total={totalRecords}
+              pageSize={pageSize}
+              onChange={(page, pSize) => {
+                setCurrentPage(page);
+                setPageSize(pSize);
+              }}
+              size="small"
+            />
           </div>
         </div>
 
         <Table
           columns={columns}
-          dataSource={filteredData}
+          dataSource={customers}
+          loading={loading}
           pagination={false}
-          rowKey="key"
+          rowKey={(record) => record._id || record.customerId || record.key}
           scroll={{ x: 1350 }}
         />
+
+        {/* Bottom Pagination Bar */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '16px 20px',
+            borderTop: `1px solid ${isDarkMode ? '#1e293b' : '#e2e8f0'}`,
+            flexWrap: 'wrap',
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+            Showing {totalRecords > 0 ? (currentPage - 1) * pageSize + 1 : 0} to{' '}
+            {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} entries
+          </div>
+          <Pagination
+            current={currentPage}
+            total={totalRecords}
+            pageSize={pageSize}
+            onChange={(page, pSize) => {
+              setCurrentPage(page);
+              setPageSize(pSize);
+            }}
+            showSizeChanger
+            showQuickJumper
+            pageSizeOptions={['10', '20', '50', '100']}
+          />
+        </div>
       </Card>
-
-      {/* 4. BOTTOM PAGINATION BAR */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 4px', flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
-          <span>Rows per page:</span>
-          <Select value={pageSize} onChange={setPageSize} style={{ width: 80 }} size="small">
-            <Option value={10}>10</Option>
-            <Option value={25}>25</Option>
-            <Option value={50}>50</Option>
-          </Select>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
-            Showing {filteredData.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} to {Math.min(currentPage * pageSize, filteredData.length)} of {filteredData.length} entries
-          </span>
-          <Pagination current={currentPage} total={filteredData.length} pageSize={pageSize} onChange={setCurrentPage} />
-        </div>
-      </div>
 
       {/* CUSTOMER REPORT DETAILS MODAL */}
       <Modal

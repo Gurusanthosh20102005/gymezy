@@ -75,5 +75,40 @@ test('Gym Owner Scoped Dashboard Stats & Access Architecture Tests', async (t) =
     assert.strictEqual(computeAccessTypeFromRole('Security'), 'None');
     assert.strictEqual(computeAccessTypeFromRole('Maintenance'), 'None');
   });
+
+  await t.test('4. Date range filter partitions metrics correctly for Today vs This Month vs All Time', () => {
+    const today = new Date();
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const lastMonth = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+
+    const mockRecords = [
+      { id: '1', createdAt: today, amount: 1000, source: 'APP' },
+      { id: '2', createdAt: yesterday, amount: 2000, source: 'WALK_IN' },
+      { id: '3', createdAt: lastMonth, amount: 5000, source: 'APP' },
+    ];
+
+    // Filter for Today
+    const todayRecords = mockRecords.filter((r) => {
+      const d = new Date(r.createdAt);
+      return d.toDateString() === today.toDateString();
+    });
+    const todayTotal = todayRecords.reduce((sum, r) => sum + r.amount, 0);
+
+    // Filter for Yesterday
+    const yesterdayRecords = mockRecords.filter((r) => {
+      const d = new Date(r.createdAt);
+      return d.toDateString() === yesterday.toDateString();
+    });
+    const yesterdayTotal = yesterdayRecords.reduce((sum, r) => sum + r.amount, 0);
+
+    // All Time
+    const allTimeTotal = mockRecords.reduce((sum, r) => sum + r.amount, 0);
+
+    assert.strictEqual(todayRecords.length, 1);
+    assert.strictEqual(todayTotal, 1000, 'Today revenue must strictly isolate today entries');
+    assert.strictEqual(yesterdayRecords.length, 1);
+    assert.strictEqual(yesterdayTotal, 2000, 'Yesterday revenue must strictly isolate yesterday entries');
+    assert.strictEqual(allTimeTotal, 8000, 'All Time must aggregate all historical records');
+  });
 });
 

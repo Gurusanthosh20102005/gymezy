@@ -55,6 +55,12 @@ export const Dashboard = () => {
   const { user } = useSelector((state) => state.auth || {});
   const { liveOccupancy, capacity, members, checkIns, bookings, gymProfile } = useSelector((state) => state.gym);
 
+  const isManager = Boolean(
+    user?.isManager ||
+    user?.role === 'MANAGER' ||
+    String(user?.role || '').toUpperCase() === 'MANAGER'
+  );
+
   // Scoped gym partner identity
   const activeGym = user?.gym || gymProfile || {};
   const gymId = activeGym._id || activeGym.id || user?.gymId?._id || user?.gymId || user?.partnerId || 'me';
@@ -64,7 +70,8 @@ export const Dashboard = () => {
 
   const [quickOtp, setQuickOtp] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [selectedDate, setSelectedDate] = useState('Today');
+  const [selectedDate, setSelectedDate] = useState('This Month');
+  const [customDateRange, setCustomDateRange] = useState({ startDate: null, endDate: null });
   const [isCustomDateModalOpen, setIsCustomDateModalOpen] = useState(false);
   const [tempCustomRange, setTempCustomRange] = useState(null);
 
@@ -72,9 +79,12 @@ export const Dashboard = () => {
     if (!gymId) return;
     setLoadingStats(true);
     try {
-      const res = await apiClient.get(`/gyms/${gymId}/dashboard-stats`, {
-        params: { range: selectedDate },
-      });
+      const params = { range: selectedDate };
+      if (customDateRange?.startDate && customDateRange?.endDate) {
+        params.startDate = customDateRange.startDate;
+        params.endDate = customDateRange.endDate;
+      }
+      const res = await apiClient.get(`/gyms/${gymId}/dashboard-stats`, { params });
       if (res?.data?.data) {
         setDashboardStats(res.data.data);
       }
@@ -83,7 +93,7 @@ export const Dashboard = () => {
     } finally {
       setLoadingStats(false);
     }
-  }, [gymId, selectedDate]);
+  }, [gymId, selectedDate, customDateRange]);
 
   useEffect(() => {
     fetchDashboardStats();
@@ -196,12 +206,18 @@ export const Dashboard = () => {
 
   const occupancyPercent = Math.round((liveOccupancy / capacity) * 100);
 
+  const handleSelectDateRange = (label) => {
+    setCustomDateRange({ startDate: null, endDate: null });
+    setSelectedDate(label);
+  };
+
   const dateFilterMenu = {
     items: [
-      { key: 'today', label: 'Today', onClick: () => setSelectedDate('Today') },
-      { key: 'yesterday', label: 'Yesterday', onClick: () => setSelectedDate('Yesterday') },
-      { key: 'this_week', label: 'This Week', onClick: () => setSelectedDate('This Week') },
-      { key: 'this_month', label: 'This Month', onClick: () => setSelectedDate('This Month') },
+      { key: 'today', label: 'Today', onClick: () => handleSelectDateRange('Today') },
+      { key: 'yesterday', label: 'Yesterday', onClick: () => handleSelectDateRange('Yesterday') },
+      { key: 'this_week', label: 'This Week', onClick: () => handleSelectDateRange('This Week') },
+      { key: 'this_month', label: 'This Month', onClick: () => handleSelectDateRange('This Month') },
+      { key: 'all_time', label: 'All Time', onClick: () => handleSelectDateRange('All Time') },
       { type: 'divider' },
       {
         key: 'custom',
@@ -261,135 +277,140 @@ export const Dashboard = () => {
 
       {/* 6 OVERVIEW METRIC CARDS GRID */}
       <Row gutter={[20, 20]} style={{ marginBottom: 28 }}>
-        {/* 1. Total Revenue */}
-        <Col xs={24} sm={12} lg={8}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px 24px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div
+        {/* 1-3. Financial & Revenue Metrics (Restricted to Gym Owner / Admin Only) */}
+        {!isManager && (
+          <>
+            {/* 1. Total Revenue */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card
                 style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-success-bg)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--color-success)',
-                  fontSize: 22,
-                  fontWeight: 700,
-                  flexShrink: 0,
+                  backgroundColor: 'var(--bg-surface-elevated)',
+                  borderColor: 'var(--border-color)',
+                  borderRadius: 'var(--radius-base)',
+                  boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
                 }}
+                styles={{ body: { padding: '20px 24px' } }}
               >
-                ₹
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Total Revenue
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--color-success-bg)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--color-success)',
+                      fontSize: 22,
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}
+                  >
+                    ₹
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      Total Revenue
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
+                      ₹{Number(dashboardStats?.metrics?.totalRevenue ?? 0).toLocaleString('en-IN')}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      {selectedDate === 'This Month' ? 'Monthly GMV' : `${selectedDate} GMV`}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{Number(dashboardStats?.metrics?.totalRevenue ?? gymProfile?.monthlyRevenue ?? 0).toLocaleString('en-IN')}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Monthly GMV
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
+              </Card>
+            </Col>
 
-        {/* 2. Member Revenue */}
-        <Col xs={24} sm={12} lg={8}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px 24px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div
+            {/* 2. Member Revenue */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card
                 style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-info-bg)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--color-info)',
-                  fontSize: 20,
-                  flexShrink: 0,
+                  backgroundColor: 'var(--bg-surface-elevated)',
+                  borderColor: 'var(--border-color)',
+                  borderRadius: 'var(--radius-base)',
+                  boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
                 }}
+                styles={{ body: { padding: '20px 24px' } }}
               >
-                <UserAddOutlined />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Membership Plans
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--color-info-bg)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--color-info)',
+                      fontSize: 20,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <UserAddOutlined />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      Membership Plans
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
+                      ₹{Number(dashboardStats?.metrics?.memberRevenue ?? 0).toLocaleString('en-IN')}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      Active Plan Subscriptions
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{Number(dashboardStats?.metrics?.memberRevenue ?? (members || []).reduce((acc, m) => acc + (parseInt(String(m.amount || '').replace(/[^\d]/g, ''), 10) || 0), 0)).toLocaleString('en-IN')}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Active Plan Subscriptions
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
+              </Card>
+            </Col>
 
-        {/* 3. App Booking Revenue */}
-        <Col xs={24} sm={12} lg={8}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px 24px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div
+            {/* 3. App Booking Revenue */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card
                 style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-purple-bg)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--color-purple)',
-                  fontSize: 20,
-                  flexShrink: 0,
+                  backgroundColor: 'var(--bg-surface-elevated)',
+                  borderColor: 'var(--border-color)',
+                  borderRadius: 'var(--radius-base)',
+                  boxShadow: isDarkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.03)',
                 }}
+                styles={{ body: { padding: '20px 24px' } }}
               >
-                <MobileOutlined />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Session Bookings
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--color-purple-bg)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--color-purple)',
+                      fontSize: 20,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <MobileOutlined />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      Session Bookings
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
+                      ₹{Number(dashboardStats?.metrics?.appBookingRevenue ?? 0).toLocaleString('en-IN')}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      Day Passes & Group Classes
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: '2px 0' }}>
-                  ₹{Number(dashboardStats?.metrics?.appBookingRevenue ?? (checkIns || []).reduce((acc, b) => acc + (Number(b.price) || 0), 0)).toLocaleString('en-IN')}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Day Passes & Group Classes
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
+              </Card>
+            </Col>
+          </>
+        )}
 
         {/* 4. App Count */}
         <Col xs={24} sm={12} lg={8}>
@@ -1165,11 +1186,17 @@ export const Dashboard = () => {
         }}
         onOk={() => {
           if (tempCustomRange && tempCustomRange.length === 2 && tempCustomRange[0] && tempCustomRange[1]) {
-            const startStr = tempCustomRange[0].format ? tempCustomRange[0].format('DD MMM YYYY') : String(tempCustomRange[0]);
-            const endStr = tempCustomRange[1].format ? tempCustomRange[1].format('DD MMM YYYY') : String(tempCustomRange[1]);
-            setSelectedDate(`${startStr} - ${endStr}`);
+            const startObj = tempCustomRange[0];
+            const endObj = tempCustomRange[1];
+            const startFormatted = startObj.format ? startObj.format('DD MMM YYYY') : String(startObj);
+            const endFormatted = endObj.format ? endObj.format('DD MMM YYYY') : String(endObj);
+            const startIso = startObj.toISOString ? startObj.toISOString() : (startObj.format ? startObj.format('YYYY-MM-DD') : String(startObj));
+            const endIso = endObj.toISOString ? endObj.toISOString() : (endObj.format ? endObj.format('YYYY-MM-DD') : String(endObj));
+
+            setCustomDateRange({ startDate: startIso, endDate: endIso });
+            setSelectedDate(`${startFormatted} - ${endFormatted}`);
             setIsCustomDateModalOpen(false);
-            message.success(`Overview filtered for: ${startStr} - ${endStr}`);
+            message.success(`Overview filtered for: ${startFormatted} - ${endFormatted}`);
           } else {
             message.warning('Please select a start and end date');
           }

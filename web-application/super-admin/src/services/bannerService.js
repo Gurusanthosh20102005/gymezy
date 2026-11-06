@@ -1,8 +1,8 @@
 import apiClient from './apiClient';
 
 export const bannerService = {
-  getAllBanners: async () => {
-    const res = await apiClient.get('/banners/admin/all');
+  getAllBanners: async (params = {}) => {
+    const res = await apiClient.get('/banners/admin/all', { params });
     return res.data;
   },
   createBanner: async (data) => {

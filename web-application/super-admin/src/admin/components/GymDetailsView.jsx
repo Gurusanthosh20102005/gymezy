@@ -827,32 +827,46 @@ export const GymDetailsView = ({
                       <Text strong style={{ display: 'block', marginBottom: 8 }}>
                         Workout Disciplines:
                       </Text>
-                      <Space wrap size={[8, 8]}>
-                        {(gym.workouts && gym.workouts.length > 0
-                          ? gym.workouts
-                          : ['Gym & Weights', 'Cardio', 'HIIT', 'Crossfit', 'Yoga', 'Strength Training']
-                        ).map((w, i) => (
-                          <Tag key={i} color="blue" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6 }}>
-                            {w}
-                          </Tag>
-                        ))}
-                      </Space>
+                      {Array.isArray(gym.workouts) && gym.workouts.length > 0 ? (
+                        <Space wrap size={[8, 8]}>
+                          {gym.workouts.map((w, i) => (
+                            <Tag key={i} color="blue" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6 }}>
+                              {w}
+                            </Tag>
+                          ))}
+                        </Space>
+                      ) : (
+                        <Text type="secondary" style={{ fontSize: 13 }}>
+                          General Fitness & Gym Floor
+                        </Text>
+                      )}
                     </div>
 
                     <div>
                       <Text strong style={{ display: 'block', marginBottom: 8 }}>
                         Available Amenities:
                       </Text>
-                      <Space wrap size={[8, 8]}>
-                        {(gym.amenities && gym.amenities.length > 0
-                          ? gym.amenities
-                          : ['Air Conditioned', 'Locker Facility', 'Shower Rooms', 'Free Wi-Fi', 'RO Drinking Water', 'CCTV 24/7', 'Parking Available']
-                        ).map((a, i) => (
-                          <Tag key={i} color="green" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6 }}>
-                            <CheckCircleOutlined style={{ marginRight: 4 }} /> {a}
-                          </Tag>
-                        ))}
-                      </Space>
+                      {Array.isArray(gym.amenities) && gym.amenities.length > 0 ? (
+                        <Space wrap size={[8, 8]}>
+                          {gym.amenities.map((a, i) => (
+                            <Tag key={i} color="green" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6 }}>
+                              <CheckCircleOutlined style={{ marginRight: 4 }} /> {a}
+                            </Tag>
+                          ))}
+                        </Space>
+                      ) : Array.isArray(gym.facilities) && gym.facilities.length > 0 ? (
+                        <Space wrap size={[8, 8]}>
+                          {gym.facilities.map((f, i) => (
+                            <Tag key={i} color="green" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6 }}>
+                              <CheckCircleOutlined style={{ marginRight: 4 }} /> {typeof f === 'string' ? f : f.name}
+                            </Tag>
+                          ))}
+                        </Space>
+                      ) : (
+                        <Text type="secondary" style={{ fontSize: 13 }}>
+                          Standard Fitness Equipment & Lockers
+                        </Text>
+                      )}
                     </div>
                   </Card>
                 </Col>

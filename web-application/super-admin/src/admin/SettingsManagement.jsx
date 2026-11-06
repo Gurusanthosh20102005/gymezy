@@ -12,7 +12,6 @@ import {
 } from 'antd';
 import {
   SafetyCertificateOutlined,
-  CheckCircleFilled,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../hooks';
@@ -172,21 +171,8 @@ export const SettingsManagement = () => {
                 <Text style={{ fontSize: 12, color: isDarkMode ? '#71717a' : '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
                   Role Level
                 </Text>
-                <div style={{ marginTop: 4 }}>
-                  <Tag color="gold" style={{ fontWeight: 700, padding: '2px 8px' }}>
-                    SUPER_ADMIN (Level 1)
-                  </Tag>
-                </div>
-              </div>
-
-              <Divider style={{ margin: '6px 0' }} />
-
-              <div>
-                <Text style={{ fontSize: 12, color: isDarkMode ? '#71717a' : '#94a3b8', textTransform: 'uppercase', fontWeight: 600 }}>
-                  Firebase Notification Relay
-                </Text>
-                <div style={{ fontSize: 13, color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                  <CheckCircleFilled /> Push Delivery Online
+                <div style={{ fontSize: 14, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', marginTop: 2 }}>
+                  Super Admin
                 </div>
               </div>
             </div>

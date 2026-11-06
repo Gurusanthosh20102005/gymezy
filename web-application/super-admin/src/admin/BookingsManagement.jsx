@@ -36,6 +36,7 @@ import {
   KeyOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
+import { useDebounce } from '../hooks/useDebounce';
 import { bookingService } from '../services/bookingService';
 import { apiClient } from '../services/apiClient';
 
@@ -80,6 +81,8 @@ export const BookingsManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 350);
+  const [didYouMean, setDidYouMean] = useState(null);
   const [gymFilter, setGymFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -114,7 +117,7 @@ export const BookingsManagement = () => {
 
   // Fetch Bookings from API
   const fetchBookings = useCallback(
-    async (page = 1, type = activeTab, status = statusFilter, gym = gymFilter, search = searchQuery) => {
+    async (page = 1, type = activeTab, status = statusFilter, gym = gymFilter, search = debouncedSearch) => {
       setLoading(true);
       try {
         const params = {
@@ -123,10 +126,11 @@ export const BookingsManagement = () => {
           type: type === 'all' ? undefined : type,
           status: status === 'all' ? undefined : status,
           gymId: gym === 'all' ? undefined : gym,
-          search: search.trim() || undefined,
+          search: search?.trim() || undefined,
         };
         const res = await bookingService.getBookings(params);
         setBookings(res.bookings || []);
+        setDidYouMean(res.didYouMean || null);
         if (res.summary) setSummary(res.summary);
         if (res.pagination) {
           setTotalRecords(res.pagination.totalRecords || 0);
@@ -139,12 +143,21 @@ export const BookingsManagement = () => {
         setLoading(false);
       }
     },
-    [activeTab, statusFilter, gymFilter, searchQuery, pageSize]
+    [activeTab, statusFilter, gymFilter, debouncedSearch, pageSize]
   );
 
   useEffect(() => {
-    fetchBookings(currentPage, activeTab, statusFilter, gymFilter, searchQuery);
-  }, [fetchBookings, currentPage, activeTab, statusFilter, gymFilter]);
+    fetchBookings(currentPage, activeTab, statusFilter, gymFilter, debouncedSearch);
+  }, [fetchBookings, currentPage, activeTab, statusFilter, gymFilter, debouncedSearch]);
+
+  // Global App Refresh listener (from breadcrumb bar)
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchBookings(currentPage, activeTab, statusFilter, gymFilter, debouncedSearch);
+    };
+    window.addEventListener('app:refresh', handleRefresh);
+    return () => window.removeEventListener('app:refresh', handleRefresh);
+  }, [fetchBookings, currentPage, activeTab, statusFilter, gymFilter, debouncedSearch]);
 
   const handleTabChange = (key) => {
     setActiveTab(key);
@@ -787,6 +800,55 @@ export const BookingsManagement = () => {
         </div>
       </Card>
 
+      {/* "Did You Mean" Interactive Spelling Suggestion Banner */}
+      {didYouMean && (
+        <div
+          style={{
+            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.15)' : '#eef2ff',
+            border: `1px solid ${isDarkMode ? 'rgba(99, 102, 241, 0.3)' : '#c7d2fe'}`,
+            borderRadius: 8,
+            padding: '10px 16px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span style={{ fontSize: 16 }}>💡</span>
+            <span style={{ color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+              Did you mean{' '}
+              <strong
+                onClick={() => {
+                  setSearchQuery(didYouMean);
+                  setCurrentPage(1);
+                }}
+                style={{
+                  color: '#6366f1',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                "{didYouMean}"
+              </strong>
+              ?
+            </span>
+          </div>
+          <Button
+            size="small"
+            type="link"
+            onClick={() => {
+              setSearchQuery(didYouMean);
+              setCurrentPage(1);
+            }}
+            style={{ color: '#6366f1', fontWeight: 600, padding: 0 }}
+          >
+            Apply Correction
+          </Button>
+        </div>
+      )}
+
       {/* 3. BOOKINGS DATA TABLE */}
       <Card
         style={{
@@ -808,7 +870,7 @@ export const BookingsManagement = () => {
         />
 
         {/* Server-Side Pagination Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderTop: `1px solid ${isDarkMode ? '#1e293b' : '#e2e8f0'}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderTop: `1px solid ${isDarkMode ? '#1e293b' : '#e2e8f0'}`, flexWrap: 'wrap', gap: 12 }}>
           <span style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
             Showing {bookings.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} to{' '}
             {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} records
@@ -822,7 +884,8 @@ export const BookingsManagement = () => {
               setPageSize(pSize);
             }}
             showSizeChanger
-            pageSizeOptions={['10', '20', '50']}
+            showQuickJumper
+            pageSizeOptions={['10', '20', '50', '100']}
           />
         </div>
       </Card>

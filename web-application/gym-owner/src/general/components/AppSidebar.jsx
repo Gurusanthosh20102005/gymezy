@@ -28,43 +28,43 @@ export const DEFAULT_NAV_ITEMS = [
     key: '/owner/dashboard',
     icon: <DashboardOutlined />,
     label: 'Live Dashboard',
-    roles: ['owner', 'admin'],
+    roles: ['owner', 'admin', 'manager'],
   },
   {
     key: '/owner/checkin',
     icon: <QrcodeOutlined />,
     label: 'QR Turnstile Check-In',
-    roles: ['owner', 'admin', 'staff', 'frontdesk'],
+    roles: ['owner', 'admin', 'manager', 'staff', 'frontdesk'],
   },
   {
     key: '/owner/sections',
     icon: <AppstoreOutlined />,
     label: 'Sections & Batches',
-    roles: ['owner', 'admin'],
+    roles: ['owner', 'admin', 'manager'],
   },
   {
     key: 'membership-sub',
     icon: <IdcardOutlined />,
     label: 'Membership',
-    roles: ['owner', 'admin', 'staff'],
+    roles: ['owner', 'admin', 'manager', 'staff'],
     children: [
       {
         key: '/owner/members?tab=members',
         icon: <TeamOutlined />,
         label: 'All Members',
-        roles: ['owner', 'admin', 'staff'],
+        roles: ['owner', 'admin', 'manager', 'staff'],
       },
       {
         key: '/owner/members?tab=switches',
         icon: <SyncOutlined />,
         label: 'Plan Switch Requests',
-        roles: ['owner', 'admin', 'staff'],
+        roles: ['owner', 'admin', 'manager', 'staff'],
       },
       {
         key: '/owner/members?tab=cancellations',
         icon: <StopOutlined />,
         label: 'Cancellation Requests',
-        roles: ['owner', 'admin', 'staff'],
+        roles: ['owner', 'admin', 'manager', 'staff'],
       },
     ],
   },
@@ -72,7 +72,7 @@ export const DEFAULT_NAV_ITEMS = [
     key: '/owner/bookings',
     icon: <ScheduleOutlined />,
     label: 'Bookings & Passes',
-    roles: ['owner', 'admin', 'trainer', 'staff'],
+    roles: ['owner', 'admin', 'manager', 'trainer', 'staff'],
   },
   {
     key: '/owner/transactions',
@@ -84,22 +84,23 @@ export const DEFAULT_NAV_ITEMS = [
     key: '/owner/employees',
     icon: <UserSwitchOutlined />,
     label: 'Employees',
-    roles: ['owner', 'admin'],
+    roles: ['owner', 'admin', 'manager'],
   },
   {
     key: '/owner/settings',
     icon: <SettingOutlined />,
     label: 'Gym Profile',
-    roles: ['owner', 'admin'],
+    roles: ['owner', 'admin', 'manager'],
   },
 ];
 
-// Helper to normalize role strings (handles 'GYM_OWNER', 'owner', 'ADMIN', etc.)
+// Helper to normalize role strings (handles 'GYM_OWNER', 'owner', 'ADMIN', 'MANAGER', etc.)
 export const normalizeRole = (role) => {
   if (!role) return 'owner';
   const r = String(role).toLowerCase().trim();
   if (r.includes('owner')) return 'owner';
   if (r.includes('admin')) return 'admin';
+  if (r.includes('manager')) return 'manager';
   if (r.includes('trainer')) return 'trainer';
   if (r.includes('staff') || r.includes('frontdesk')) return 'staff';
   return r;

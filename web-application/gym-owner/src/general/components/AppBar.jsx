@@ -293,7 +293,7 @@ export const AppBar = ({
                 {currentUser?.fullName || currentUser?.name || 'Gym Owner'}
               </div>
               <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', lineHeight: 1.2 }}>
-                {currentUser?.role === 'GYM_OWNER' || currentUser?.role === 'owner' ? 'Owner' : 'Partner'}
+                {currentUser?.role === 'MANAGER' ? 'Manager' : (currentUser?.role === 'GYM_OWNER' || currentUser?.role === 'owner' ? 'Owner' : 'Partner')}
               </div>
             </div>
             <DownOutlined style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', marginLeft: 2 }} />

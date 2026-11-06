@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import mongoose from 'mongoose';
 import { PAYMENT_METHODS as BOOKING_PAYMENT_METHODS, PAYMENT_STATUS as BOOKING_PAYMENT_STATUS } from '../src/models/booking.model.js';
 import { PAYMENT_METHODS as MEMBERSHIP_PAYMENT_METHODS, PAYMENT_STATUS as MEMBERSHIP_PAYMENT_STATUS } from '../src/models/membership.model.js';
+import { scoreTransactionRelevance } from '../src/utils/fuzzySearchEngine.js';
 
 test('Admin Transactions & Payments Architecture Tests', async (t) => {
   await t.test('1. Payment methods and statuses align between Booking and Membership (SSOT)', () => {
@@ -40,6 +41,37 @@ test('Admin Transactions & Payments Architecture Tests', async (t) => {
     assert.strictEqual(totalPages, 3);
     assert.strictEqual(skip + limit, 20);
     assert.strictEqual(page < totalPages, true); // hasNextPage
+  });
+
+  await t.test('4. scoreTransactionRelevance correctly scores exact and typo-tolerant queries', () => {
+    const tx = {
+      transactionId: 'TXN-BK-998877',
+      referenceId: 'BK100245',
+      customerName: 'Priya Sharma',
+      customerId: 'CUST100246',
+      customerPhone: '9123456789',
+      gymName: 'PowerHouse Fitness Hub',
+      gymLocation: 'T. Nagar, Chennai',
+      title: 'Power Yoga Pass',
+      paymentMode: 'UPI',
+      status: 'Completed',
+    };
+
+    // Exact transaction ID match
+    const scoreTxn = scoreTransactionRelevance(tx, ['txn-bk-998877']);
+    assert.ok(scoreTxn > 10, 'Expected high score for transaction ID match');
+
+    // Typo in customer name: 'sharmaa' -> 'Sharma'
+    const scoreCustomerTypo = scoreTransactionRelevance(tx, ['sharmaa']);
+    assert.ok(scoreCustomerTypo > 0, 'Expected typo match for customer name');
+
+    // Typo in gym name: 'fitnes' -> 'Fitness'
+    const scoreGymTypo = scoreTransactionRelevance(tx, ['fitnes']);
+    assert.ok(scoreGymTypo > 0, 'Expected typo match for gym name');
+
+    // Unrelated query
+    const scoreZero = scoreTransactionRelevance(tx, ['completelyunrelatedterm']);
+    assert.strictEqual(scoreZero, 0);
   });
 });
 

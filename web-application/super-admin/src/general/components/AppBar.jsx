@@ -1,7 +1,6 @@
 import React from 'react';
-import { Layout, Avatar, Dropdown, Switch, Badge, Breadcrumb } from 'antd';
+import { Layout, Avatar, Dropdown, Switch, Badge, Breadcrumb, Button, Tooltip } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
 import {
   SunOutlined,
   MoonOutlined,
@@ -9,9 +8,11 @@ import {
   SettingOutlined,
   DownOutlined,
   HomeOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { useAuth } from '../../hooks';
+import { useRefresh } from '../../context/RefreshContext';
 
 const { Header } = Layout;
 
@@ -40,6 +41,7 @@ export const AppBar = ({
   const location = useLocation();
   const { isDarkMode, toggleTheme } = useTheme();
   const { user: authUser, logout } = useAuth();
+  const { isRefreshing, triggerRefresh } = useRefresh();
 
   const currentUser = userProp || authUser || null;
 
@@ -73,6 +75,41 @@ export const AppBar = ({
         icon: <SettingOutlined />,
         label: 'Platform Settings',
         onClick: () => navigate('/admin/settings'),
+      },
+      {
+        key: 'theme-toggle',
+        icon: isDarkMode ? (
+          <MoonOutlined style={{ color: '#ffd700' }} />
+        ) : (
+          <SunOutlined style={{ color: '#fa8c16' }} />
+        ),
+        label: (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              minWidth: 155,
+              gap: 12,
+            }}
+          >
+            <span>{isDarkMode ? 'Dark Theme' : 'Light Theme'}</span>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Switch
+                size="small"
+                checked={isDarkMode}
+                onChange={toggleTheme}
+                checkedChildren={<MoonOutlined style={{ color: '#ffd700', fontSize: 10 }} />}
+                unCheckedChildren={<SunOutlined style={{ color: '#fa8c16', fontSize: 10 }} />}
+                style={{
+                  backgroundColor: isDarkMode ? '#1677ff' : '#cbd5e1',
+                }}
+              />
+            </div>
+          </div>
+        ),
+        onClick: () => toggleTheme(),
       },
       { type: 'divider' },
       {
@@ -110,8 +147,8 @@ export const AppBar = ({
         zIndex: 99,
       }}
     >
-      {/* Left: Dynamic Breadcrumbs */}
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      {/* Left: Dynamic Breadcrumbs & Refresh */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Breadcrumb
           items={[
             {
@@ -147,26 +184,37 @@ export const AppBar = ({
             },
           ]}
         />
+
+        <Tooltip title="Refresh page" placement="bottom">
+          <Button
+            size="small"
+            icon={<ReloadOutlined spin={isRefreshing} style={{ color: isDarkMode ? '#818cf8' : '#4f46e5' }} />}
+            onClick={triggerRefresh}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 12,
+              fontWeight: 600,
+              height: 28,
+              padding: '0 10px',
+              borderRadius: 'var(--radius-base, 6px)',
+              borderColor: isDarkMode ? '#27272a' : '#e2e8f0',
+              backgroundColor: isDarkMode ? '#18181b' : '#ffffff',
+              color: isDarkMode ? '#e2e8f0' : '#334155',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            Refresh
+          </Button>
+        </Tooltip>
       </div>
 
-      {/* Right: Actions, Theme Switch & Profile Dropdown */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+      {/* Right: Actions & Profile Dropdown */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {extra}
-
-        {/* Day / Night Theme Switch */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Switch
-            size="small"
-            checked={isDarkMode}
-            onChange={toggleTheme}
-            checkedChildren={<MoonOutlined style={{ color: '#ffd700', fontSize: 10 }} />}
-            unCheckedChildren={<SunOutlined style={{ color: '#fa8c16', fontSize: 10 }} />}
-            style={{
-              margin: 0,
-              backgroundColor: isDarkMode ? '#1677ff' : '#cbd5e1',
-            }}
-          />
-        </div>
 
         {/* Profile Dropdown */}
         <Dropdown menu={profileMenu} placement="bottomRight" arrow>

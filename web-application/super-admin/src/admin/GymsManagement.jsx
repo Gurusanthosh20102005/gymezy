@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Card,
   Row,
@@ -213,14 +213,15 @@ export const GymsManagement = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentTab = searchParams.get('tab') || 'all';
+  const currentTab = searchParams.get('tab') || 'approved';
 
-  // Redux Fleet Data directly from store (zero mock fallbacks)
-  const { gyms: reduxGyms = [], loading = false } = useSelector((state) => state.gyms) || {};
-
-  useEffect(() => {
-    dispatch(fetchGyms({ force: true }));
-  }, [dispatch, currentTab]);
+  // Redux Fleet Data directly from store (with middleware pagination & counts)
+  const {
+    gyms: reduxGyms = [],
+    pagination = {},
+    counts = {},
+    loading = false,
+  } = useSelector((state) => state.gyms) || {};
 
   // Navigation Views: 'list' | 'review' | 'timing_diff'
   const [currentView, setCurrentView] = useState('list');
@@ -234,6 +235,32 @@ export const GymsManagement = () => {
   const [searchLocation, setSearchLocation] = useState('');
   const [searchPhone, setSearchPhone] = useState('');
 
+  // Debounced filter states to avoid rapid API thrashing
+  const [debouncedSearchName, setDebouncedSearchName] = useState(searchName);
+  const [debouncedLocation, setDebouncedLocation] = useState(searchLocation);
+  const [debouncedPhone, setDebouncedPhone] = useState(searchPhone);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchName(searchName);
+    }, 280);
+    return () => clearTimeout(handler);
+  }, [searchName]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedLocation(searchLocation);
+    }, 280);
+    return () => clearTimeout(handler);
+  }, [searchLocation]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedPhone(searchPhone);
+    }, 280);
+    return () => clearTimeout(handler);
+  }, [searchPhone]);
+
   // Modals
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
   const [isHoldModalOpen, setIsHoldModalOpen] = useState(false);
@@ -245,45 +272,52 @@ export const GymsManagement = () => {
   const [holdNotes, setHoldNotes] = useState('');
   const [adminNote, setAdminNote] = useState('');
 
-  // Pagination
+  // Pagination (driven completely by middleware)
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
-  // Active dataset depending on active Tab from Redux
-  const activeGymsList = useMemo(() => {
-    if (currentTab === 'pending') {
-      return reduxGyms.filter(
-        (g) => g.approvalStatus === 'Pending Approval' || g.status === 'Pending' || g.approvalStatus === 'Pending'
-      );
-    }
-    if (currentTab === 'approved') {
-      return reduxGyms.filter(
-        (g) => g.approvalStatus === 'Approved' || g.status === 'Active' || g.status === 'Approved'
-      );
-    }
-    if (currentTab === 'rejected') {
-      return reduxGyms.filter(
-        (g) => g.approvalStatus === 'Rejected' || g.status === 'Rejected'
-      );
-    }
-    if (currentTab === 'on_hold') {
-      return reduxGyms.filter(
-        (g) => g.approvalStatus === 'On Hold' || g.status === 'On Hold' || g.status === 'Inactive'
-      );
-    }
-    return reduxGyms;
-  }, [currentTab, reduxGyms]);
+  // Total matching gyms from server pagination metadata
+  const totalGyms = pagination.total ?? reduxGyms.length;
 
-  const filteredGyms = useMemo(() => {
-    return activeGymsList.filter((gym) => {
-      const matchName = String(gym.name || '').toLowerCase().includes(searchName.toLowerCase());
-      const matchStatus = searchStatus === 'All' || gym.approvalStatus === searchStatus || gym.status === searchStatus;
-      const matchSubType = searchSubscriptionType === 'All' || gym.subscriptionType === searchSubscriptionType;
-      const locStr = getGymLocation(gym);
-      const matchLocation = locStr.toLowerCase().includes(searchLocation.toLowerCase());
-      const matchPhone = String(gym.phone || '').toLowerCase().includes(searchPhone.toLowerCase());
-      return matchName && matchStatus && matchSubType && matchLocation && matchPhone;
-    });
-  }, [activeGymsList, searchName, searchStatus, searchSubscriptionType, searchLocation, searchPhone]);
+  // Reset pagination page to 1 whenever filters or tabs change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [currentTab, searchStatus, searchSubscriptionType, debouncedSearchName, debouncedLocation, debouncedPhone]);
+
+  // Dispatch fetch to middleware with complete server-side filters & pagination
+  const loadGyms = useCallback(
+    (extraParams = {}) => {
+      dispatch(
+        fetchGyms({
+          tab: currentTab,
+          status: searchStatus !== 'All' ? searchStatus : undefined,
+          subscriptionType: searchSubscriptionType !== 'All' ? searchSubscriptionType : undefined,
+          location: debouncedLocation.trim() || undefined,
+          phone: debouncedPhone.trim() || undefined,
+          search: debouncedSearchName.trim() || undefined,
+          page: currentPage,
+          limit: pageSize,
+          force: true,
+          ...extraParams,
+        })
+      );
+    },
+    [
+      dispatch,
+      currentTab,
+      searchStatus,
+      searchSubscriptionType,
+      debouncedLocation,
+      debouncedPhone,
+      debouncedSearchName,
+      currentPage,
+      pageSize,
+    ]
+  );
+
+  useEffect(() => {
+    loadGyms();
+  }, [loadGyms]);
 
   // Reset currentView to 'list' whenever sidebar tab changes
   useEffect(() => {
@@ -1368,23 +1402,23 @@ export const GymsManagement = () => {
   const getHeaderBadge = () => {
     switch (currentTab) {
       case 'pending': {
-        const count = reduxGyms.filter((g) => g.approvalStatus === 'Pending Approval' || g.status === 'Pending' || g.approvalStatus === 'Pending').length;
+        const count = counts.pending ?? reduxGyms.filter((g) => g.approvalStatus === 'Pending Approval' || g.status === 'Pending' || g.approvalStatus === 'Pending').length;
         return count > 0 ? <Badge count={count} style={{ backgroundColor: '#d97706', fontWeight: 800 }} /> : null;
       }
       case 'approved': {
-        const count = reduxGyms.filter((g) => g.approvalStatus === 'Approved' || g.status === 'Active').length;
+        const count = counts.approved ?? reduxGyms.filter((g) => g.approvalStatus === 'Approved' || g.status === 'Active').length;
         return count > 0 ? <Badge count={count} overflowCount={9999} style={{ backgroundColor: '#16a34a', fontWeight: 800 }} /> : null;
       }
       case 'on_hold': {
-        const count = reduxGyms.filter((g) => g.approvalStatus === 'On Hold' || g.status === 'On Hold' || g.status === 'Inactive').length;
+        const count = counts.on_hold ?? reduxGyms.filter((g) => g.approvalStatus === 'On Hold' || g.status === 'On Hold' || g.status === 'Inactive').length;
         return count > 0 ? <Badge count={count} style={{ backgroundColor: '#3b82f6', fontWeight: 800 }} /> : null;
       }
       case 'rejected': {
-        const count = reduxGyms.filter((g) => g.approvalStatus === 'Rejected' || g.status === 'Rejected').length;
+        const count = counts.rejected ?? reduxGyms.filter((g) => g.approvalStatus === 'Rejected' || g.status === 'Rejected').length;
         return count > 0 ? <Badge count={count} style={{ backgroundColor: '#ef4444', fontWeight: 800 }} /> : null;
       }
       default: {
-        const count = reduxGyms.length;
+        const count = counts.total ?? totalGyms;
         return count > 0 ? <Badge count={count} overflowCount={9999} style={{ backgroundColor: '#4338ca', fontWeight: 800 }} /> : null;
       }
     }
@@ -1393,15 +1427,15 @@ export const GymsManagement = () => {
   const getHeaderTitle = () => {
     switch (currentTab) {
       case 'pending':
-        return 'Gym Onboarding Approvals';
+        return 'Gym Onboarding Requests';
       case 'approved':
-        return 'Active & Approved Gyms';
+        return 'Approved Partner Gyms';
       case 'on_hold':
         return 'On Hold Gyms';
       case 'rejected':
         return 'Rejected Gyms';
       default:
-        return 'All Gyms Directory';
+        return 'Approved Partner Gyms';
     }
   };
 
@@ -1416,7 +1450,7 @@ export const GymsManagement = () => {
       case 'rejected':
         return 'Gym listings that did not meet onboarding quality and compliance standards.';
       default:
-        return `View, search, filter, and manage all ${reduxGyms.length} partner gyms across the nationwide network.`;
+        return 'Verified and published gym partners operating live on the Gymezy platform.';
     }
   };
 
@@ -1558,11 +1592,11 @@ export const GymsManagement = () => {
             {loading ? (
               <>
                 <Spin size="small" />
-                <span>Loading gyms fleet...</span>
+                <span>Searching gyms fleet...</span>
               </>
             ) : (
               <>
-                Found <strong style={{ color: isDarkMode ? '#fff' : '#0f172a' }}>{filteredGyms.length}</strong> matching gyms
+                Found <strong style={{ color: isDarkMode ? '#fff' : '#0f172a' }}>{totalGyms}</strong> matching gyms
               </>
             )}
           </div>
@@ -1575,6 +1609,7 @@ export const GymsManagement = () => {
                 setSearchSubscriptionType('All');
                 setSearchLocation('');
                 setSearchPhone('');
+                setCurrentPage(1);
               }}
             >
               Reset Filters
@@ -1590,6 +1625,58 @@ export const GymsManagement = () => {
         </div>
       </Card>
 
+      {/* 3. Typo-Tolerant "Did You Mean" Suggestion Banner */}
+      {pagination?.didYouMean &&
+        debouncedSearchName &&
+        pagination.didYouMean.toLowerCase() !== debouncedSearchName.toLowerCase().trim() && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 18px',
+              borderRadius: 'var(--radius-base)',
+              backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.12)' : '#eff6ff',
+              border: `1px solid ${isDarkMode ? 'rgba(99, 102, 241, 0.3)' : '#bfdbfe'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: isDarkMode ? '#cbd5e1' : '#1e3a8a' }}>
+              <SearchOutlined style={{ color: '#3b82f6' }} />
+              <span>
+                Did you mean:{" "}
+                <strong
+                  onClick={() => {
+                    setSearchName(pagination.didYouMean);
+                    setDebouncedSearchName(pagination.didYouMean);
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    color: '#2563eb',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {pagination.didYouMean}
+                </strong>
+                ?
+              </span>
+            </div>
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              onClick={() => {
+                setSearchName(pagination.didYouMean);
+                setDebouncedSearchName(pagination.didYouMean);
+              }}
+              style={{ fontWeight: 700, fontSize: 12, borderRadius: 6 }}
+            >
+              Search for &ldquo;{pagination.didYouMean}&rdquo;
+            </Button>
+          </div>
+        )}
+
       {/* 4. Main Tables Area */}
       <Card
         style={{
@@ -1604,7 +1691,7 @@ export const GymsManagement = () => {
         {isPendingView ? (
           /* PENDING APPROVAL TABLE */
           <Table
-            dataSource={filteredGyms}
+            dataSource={reduxGyms}
             rowKey={(record) => record.id || record._id || String(Math.random())}
             pagination={false}
             loading={{
@@ -1663,21 +1750,25 @@ export const GymsManagement = () => {
                 title: 'Gym Name',
                 dataIndex: 'name',
                 key: 'name',
-                width: 200,
+                width: 260,
                 render: (name, record) => (
-                  <div>
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        color: isDarkMode ? '#f8fafc' : '#0f172a',
-                        fontSize: 13.5,
-                        lineHeight: '1.4',
-                      }}
-                    >
-                      {name}
-                    </span>
-                    <div style={{ marginTop: 3 }}>
-                      <Tag color="cyan" style={{ fontSize: 10, padding: '0 5px', borderRadius: 4, margin: 0, fontWeight: 600 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, justifyContent: 'center' }}>
+                    <Tooltip title={name}>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          color: isDarkMode ? '#f8fafc' : '#0f172a',
+                          fontSize: 13.5,
+                          lineHeight: '1.4',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {name}
+                      </span>
+                    </Tooltip>
+                    <div>
+                      <Tag color="cyan" style={{ fontSize: 10, padding: '0 6px', borderRadius: 4, margin: 0, fontWeight: 600 }}>
                         {record.genderAllowed || 'Unisex'}
                       </Tag>
                     </div>
@@ -1688,9 +1779,9 @@ export const GymsManagement = () => {
                 title: 'Phone Number',
                 dataIndex: 'phone',
                 key: 'phone',
-                width: 140,
+                width: 150,
                 render: (phone) => (
-                  <span style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
+                  <span style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>
                     {phone || '—'}
                   </span>
                 ),
@@ -1699,23 +1790,29 @@ export const GymsManagement = () => {
                 title: 'Location',
                 dataIndex: 'location',
                 key: 'location',
-                width: 190,
-                render: (_, record) => (
-                  <span
-                    style={{
-                      color: isDarkMode ? '#d1d5db' : '#334155',
-                      fontSize: 13,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      lineHeight: '18px',
-                    }}
-                    title={getGymLocation(record)}
-                  >
-                    {getGymLocation(record)}
-                  </span>
-                ),
+                width: 200,
+                render: (_, record) => {
+                  const loc = getGymLocation(record);
+                  return (
+                    <Tooltip title={loc}>
+                      <span
+                        style={{
+                          color: isDarkMode ? '#d1d5db' : '#334155',
+                          fontSize: 13,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          lineHeight: '18px',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {loc}
+                      </span>
+                    </Tooltip>
+                  );
+                },
               },
               {
                 title: 'Requested By',
@@ -1801,7 +1898,7 @@ export const GymsManagement = () => {
         ) : (
           /* ALL / APPROVED / ON-HOLD / REJECTED GYMS TABLE */
           <Table
-            dataSource={filteredGyms}
+            dataSource={reduxGyms}
             rowKey={(record) => record.id || record._id || String(Math.random())}
             pagination={false}
             loading={{
@@ -1860,21 +1957,25 @@ export const GymsManagement = () => {
                 title: 'Gym Name',
                 dataIndex: 'name',
                 key: 'name',
-                width: 200,
+                width: 260,
                 render: (name, record) => (
-                  <div>
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        color: isDarkMode ? '#f8fafc' : '#0f172a',
-                        fontSize: 13.5,
-                        lineHeight: '1.4',
-                      }}
-                    >
-                      {name}
-                    </span>
-                    <div style={{ marginTop: 3 }}>
-                      <Tag color="cyan" style={{ fontSize: 10, padding: '0 5px', borderRadius: 4, margin: 0, fontWeight: 600 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, justifyContent: 'center' }}>
+                    <Tooltip title={name}>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          color: isDarkMode ? '#f8fafc' : '#0f172a',
+                          fontSize: 13.5,
+                          lineHeight: '1.4',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {name}
+                      </span>
+                    </Tooltip>
+                    <div>
+                      <Tag color="cyan" style={{ fontSize: 10, padding: '0 6px', borderRadius: 4, margin: 0, fontWeight: 600 }}>
                         {record.genderAllowed || 'Unisex'}
                       </Tag>
                     </div>
@@ -1885,9 +1986,9 @@ export const GymsManagement = () => {
                 title: 'Phone Number',
                 dataIndex: 'phone',
                 key: 'phone',
-                width: 140,
+                width: 150,
                 render: (phone) => (
-                  <span style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
+                  <span style={{ fontSize: 13, color: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 500, whiteSpace: 'nowrap' }}>
                     {phone || '—'}
                   </span>
                 ),
@@ -1896,23 +1997,29 @@ export const GymsManagement = () => {
                 title: 'Location',
                 dataIndex: 'location',
                 key: 'location',
-                width: 190,
-                render: (_, record) => (
-                  <span
-                    style={{
-                      color: isDarkMode ? '#d1d5db' : '#334155',
-                      fontSize: 13,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      lineHeight: '18px',
-                    }}
-                    title={getGymLocation(record)}
-                  >
-                    {getGymLocation(record)}
-                  </span>
-                ),
+                width: 200,
+                render: (_, record) => {
+                  const loc = getGymLocation(record);
+                  return (
+                    <Tooltip title={loc}>
+                      <span
+                        style={{
+                          color: isDarkMode ? '#d1d5db' : '#334155',
+                          fontSize: 13,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          lineHeight: '18px',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {loc}
+                      </span>
+                    </Tooltip>
+                  );
+                },
               },
               {
                 title: 'Partner / Owner',
@@ -2016,18 +2123,25 @@ export const GymsManagement = () => {
         )}
       </Card>
 
-      {/* 5. Pagination */}
+      {/* 5. Server-Side Pagination */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
-          Showing {filteredGyms.length > 0 ? (currentPage - 1) * 10 + 1 : 0} to{" "}
-          {Math.min(currentPage * 10, filteredGyms.length)} of {filteredGyms.length} gyms
+          Showing {totalGyms > 0 ? (currentPage - 1) * pageSize + 1 : 0} to{" "}
+          {Math.min(currentPage * pageSize, totalGyms)} of {totalGyms} gyms
         </div>
         <Pagination
           current={currentPage}
-          total={filteredGyms.length}
-          pageSize={10}
-          onChange={setCurrentPage}
-          showSizeChanger={false}
+          total={totalGyms}
+          pageSize={pageSize}
+          onChange={(newPage, newPageSize) => {
+            setCurrentPage(newPage);
+            if (newPageSize && newPageSize !== pageSize) {
+              setPageSize(newPageSize);
+              setCurrentPage(1);
+            }
+          }}
+          showSizeChanger
+          pageSizeOptions={['10', '20', '50', '100']}
         />
       </div>
 

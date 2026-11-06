@@ -422,15 +422,17 @@ html.dark .ant-layout-sider {
   background-color: #000000 !important;
 }
 
-.ant-table-thead>tr>th,
-html.dark .ant-table-thead>tr>th {
+.ant-table-thead > tr > th,
+html.dark .ant-table-thead > tr > th {
   white-space: nowrap !important;
   font-weight: var(--font-semibold);
+  vertical-align: middle !important;
 }
 
 .ant-table-cell,
-html.dark .ant-table-cell {
-  white-space: nowrap !important;
+html.dark .ant-table-cell,
+.ant-table-tbody > tr > td {
+  vertical-align: middle !important;
 }
 
 html.dark .ant-table {

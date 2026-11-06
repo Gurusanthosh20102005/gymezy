@@ -48,7 +48,7 @@ class GymService {
   getCachedGyms(params = {}) {
     const latKey = typeof params.lat === 'number' ? params.lat.toFixed(2) : (params.lat || '');
     const lngKey = typeof params.lng === 'number' ? params.lng.toFixed(2) : (params.lng || '');
-    const cacheKey = `${latKey}_${lngKey}_${params.city || ''}_${params.area || ''}_${params.category || ''}_${params.type || ''}_${params.facility || ''}_${params.workout || ''}_${params.search || ''}_${params.page || 1}_${params.limit || 50}`;
+    const cacheKey = `${latKey}_${lngKey}_${params.city || ''}_${params.area || ''}_${params.category || ''}_${params.type || ''}_${params.facility || ''}_${params.workout || ''}_${params.search || ''}_${params.page || 1}_${params.limit || 15}`;
     const cached = gymsCache.get(cacheKey);
     const now = Date.now();
     if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
@@ -79,7 +79,7 @@ class GymService {
     search,
     sortBy = 'nearest',
     page = 1,
-    limit = 50,
+    limit = 15,
   } = {}) {
     const latKey = typeof lat === 'number' ? lat.toFixed(2) : (lat || '');
     const lngKey = typeof lng === 'number' ? lng.toFixed(2) : (lng || '');
@@ -125,6 +125,7 @@ class GymService {
           const result = {
             gyms: json.data.gyms,
             pagination: json.data.pagination || { total: json.data.gyms.length, page: 1, pages: 1 },
+            didYouMean: json.data.didYouMean || json.data.pagination?.didYouMean || null,
             isBackend: true,
           };
           gymsCache.set(cacheKey, { timestamp: Date.now(), data: result });

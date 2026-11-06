@@ -32,6 +32,7 @@ import {
   ShopOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
+import { useDebounce } from '../hooks/useDebounce';
 import { transactionService } from '../services/transactionService';
 
 const { Option } = Select;
@@ -67,6 +68,8 @@ export const TransactionsManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 350);
+  const [didYouMean, setDidYouMean] = useState(null);
   const [paymentModeFilter, setPaymentModeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -79,18 +82,19 @@ export const TransactionsManagement = () => {
 
   // Fetch Transactions from Backend API
   const fetchTransactions = useCallback(
-    async (page = 1, search = searchQuery, mode = paymentModeFilter, status = statusFilter) => {
+    async (page = 1, search = debouncedSearch, mode = paymentModeFilter, status = statusFilter) => {
       setLoading(true);
       try {
         const params = {
           page,
           limit: pageSize,
-          search: search.trim() || undefined,
+          search: search?.trim() || undefined,
           paymentMode: mode === 'all' ? undefined : mode,
           status: status === 'all' ? undefined : status,
         };
         const res = await transactionService.getTransactions(params);
         setTransactions(res.transactions || []);
+        setDidYouMean(res.didYouMean || null);
         if (res.stats) setStats(res.stats);
         if (res.pagination) {
           setTotalRecords(res.pagination.totalRecords || 0);
@@ -103,12 +107,21 @@ export const TransactionsManagement = () => {
         setLoading(false);
       }
     },
-    [pageSize, searchQuery, paymentModeFilter, statusFilter]
+    [pageSize, debouncedSearch, paymentModeFilter, statusFilter]
   );
 
   useEffect(() => {
-    fetchTransactions(currentPage, searchQuery, paymentModeFilter, statusFilter);
-  }, [fetchTransactions, currentPage, paymentModeFilter, statusFilter]);
+    fetchTransactions(currentPage, debouncedSearch, paymentModeFilter, statusFilter);
+  }, [fetchTransactions, currentPage, debouncedSearch, paymentModeFilter, statusFilter]);
+
+  // Global App Refresh listener (from breadcrumb bar)
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchTransactions(currentPage, debouncedSearch, paymentModeFilter, statusFilter);
+    };
+    window.addEventListener('app:refresh', handleRefresh);
+    return () => window.removeEventListener('app:refresh', handleRefresh);
+  }, [fetchTransactions, currentPage, debouncedSearch, paymentModeFilter, statusFilter]);
 
   // Open Details Modal
   const handleView = (record) => {
@@ -682,6 +695,55 @@ export const TransactionsManagement = () => {
         </div>
       </Card>
 
+      {/* "Did You Mean" Interactive Spelling Suggestion Banner */}
+      {didYouMean && (
+        <div
+          style={{
+            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.15)' : '#eef2ff',
+            border: `1px solid ${isDarkMode ? 'rgba(99, 102, 241, 0.3)' : '#c7d2fe'}`,
+            borderRadius: 8,
+            padding: '10px 16px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span style={{ fontSize: 16 }}>💡</span>
+            <span style={{ color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+              Did you mean{' '}
+              <strong
+                onClick={() => {
+                  setSearchQuery(didYouMean);
+                  setCurrentPage(1);
+                }}
+                style={{
+                  color: '#6366f1',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                "{didYouMean}"
+              </strong>
+              ?
+            </span>
+          </div>
+          <Button
+            size="small"
+            type="link"
+            onClick={() => {
+              setSearchQuery(didYouMean);
+              setCurrentPage(1);
+            }}
+            style={{ color: '#6366f1', fontWeight: 600, padding: 0 }}
+          >
+            Apply Correction
+          </Button>
+        </div>
+      )}
+
       {/* 3. TRANSACTIONS TABLE */}
       <Card
         style={{
@@ -727,7 +789,8 @@ export const TransactionsManagement = () => {
               setPageSize(pSize);
             }}
             showSizeChanger
-            pageSizeOptions={['10', '20', '50']}
+            showQuickJumper
+            pageSizeOptions={['10', '20', '50', '100']}
           />
         </div>
       </Card>

@@ -30,7 +30,7 @@ export const OwnerLayout = () => {
         collapsed={collapsed}
         onCollapse={setCollapsed}
         role={user?.role || 'owner'}
-        roleTitle="Owner Console"
+        roleTitle={user?.role === 'MANAGER' ? 'Manager Console' : 'Owner Console'}
         brandRedirect="/owner/dashboard"
       />
 

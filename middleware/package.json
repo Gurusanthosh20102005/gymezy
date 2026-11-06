@@ -7,7 +7,9 @@
     "test:proration": "node --test test/proration.test.js",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "cron:attendance": "node src/services/attendanceCron.service.js"
+    "cron:attendance": "node src/services/attendanceCron.service.js",
+    "seed:gyms": "node src/scripts/seedGyms.js",
+    "seed:100": "node src/scripts/seed100ChennaiGyms.js"
   },
   "keywords": [],
   "author": "",

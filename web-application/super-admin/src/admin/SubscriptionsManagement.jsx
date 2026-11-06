@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Card,
   Row,
@@ -47,245 +47,35 @@ import { apiClient } from '../services/apiClient';
 
 const { Option } = Select;
 
-// Sample Initial Subscriptions Data matching user mockup exactly
-const INITIAL_PARTNERS = [
-  {
-    key: '1',
-    id: 1,
-    gymName: 'FitZone Gym',
-    gymId: 'GYM1001',
-    gymLocation: 'Anna Nagar, Chennai',
-    logoText: 'FZ',
-    logoSub: 'FITZONE GYM',
-    subscriptionType: 'Hybrid',
-    subscriptionPeriod: 'Monthly',
-    startDate: '18 May 2026',
-    nextBillingDate: '18 Jun 2026',
-    billingAmount: '₹ 2,999.00 / Month',
-    paymentMethod: 'UPI',
-    autoRenewal: 'Enabled',
-    status: 'Active',
-    usage: {
-      appBookings: 156,
-      walkIn: 312,
-      totalRevenue: '45,260',
-      profileViews: '2,845',
-    },
-  },
-  {
-    key: '2',
-    id: 2,
-    gymName: 'Powerhouse Gym',
-    gymId: 'GYM1002',
-    gymLocation: 'T. Nagar, Chennai',
-    logoText: 'PH',
-    logoSub: 'POWERHOUSE',
-    subscriptionType: 'App Only',
-    subscriptionPeriod: 'Quarterly',
-    startDate: '05 May 2026',
-    nextBillingDate: '05 Aug 2026',
-    billingAmount: '₹ 4,999.00 / Quarter',
-    paymentMethod: 'Card',
-    autoRenewal: 'Enabled',
-    status: 'Active',
-    usage: {
-      appBookings: 240,
-      walkIn: 180,
-      totalRevenue: '68,400',
-      profileViews: '4,120',
-    },
-  },
-  {
-    key: '3',
-    id: 3,
-    gymName: 'Muscle Factory',
-    gymId: 'GYM1003',
-    gymLocation: 'Adyar, Chennai',
-    logoText: 'MF',
-    logoSub: 'MUSCLE FACTORY',
-    subscriptionType: 'GMS',
-    subscriptionPeriod: 'Annual',
-    startDate: '10 Apr 2026',
-    nextBillingDate: '10 Apr 2027',
-    billingAmount: '₹ 14,999.00 / Year',
-    paymentMethod: 'NetBanking',
-    autoRenewal: 'Enabled',
-    status: 'Active',
-    usage: {
-      appBookings: 88,
-      walkIn: 450,
-      totalRevenue: '92,150',
-      profileViews: '1,980',
-    },
-  },
-  {
-    key: '4',
-    id: 4,
-    gymName: 'Iron Club',
-    gymId: 'GYM1004',
-    gymLocation: 'Velachery, Chennai',
-    logoText: 'IC',
-    logoSub: 'IRON CLUB',
-    subscriptionType: 'Listing Only',
-    subscriptionPeriod: 'Monthly',
-    startDate: '20 May 2026',
-    nextBillingDate: '20 Jun 2026',
-    billingAmount: '₹ 999.00 / Month',
-    paymentMethod: 'UPI',
-    autoRenewal: 'Enabled',
-    status: 'Active',
-    usage: {
-      appBookings: 45,
-      walkIn: 90,
-      totalRevenue: '18,200',
-      profileViews: '3,450',
-    },
-  },
-  {
-    key: '5',
-    id: 5,
-    gymName: 'Fitness First',
-    gymId: 'GYM1005',
-    gymLocation: 'Porur, Chennai',
-    logoText: 'FF',
-    logoSub: 'FITNESS FIRST',
-    subscriptionType: 'Hybrid',
-    subscriptionPeriod: 'Half Year',
-    startDate: '15 Feb 2026',
-    nextBillingDate: '15 Aug 2026',
-    billingAmount: '₹ 8,499.00 / 6 Mo',
-    paymentMethod: 'UPI',
-    autoRenewal: 'Enabled',
-    status: 'Active',
-    usage: {
-      appBookings: 310,
-      walkIn: 520,
-      totalRevenue: '1,24,000',
-      profileViews: '5,600',
-    },
-  },
-  {
-    key: '6',
-    id: 6,
-    gymName: 'Body Garage',
-    gymId: 'GYM1006',
-    gymLocation: 'OMR, Chennai',
-    logoText: 'BG',
-    logoSub: 'BODY GARAGE',
-    subscriptionType: 'App Only',
-    subscriptionPeriod: 'Quarterly',
-    startDate: '22 Apr 2026',
-    nextBillingDate: '22 Jul 2026',
-    billingAmount: '₹ 4,999.00 / Quarter',
-    paymentMethod: 'Card',
-    autoRenewal: 'Enabled',
-    status: 'Active',
-    usage: {
-      appBookings: 195,
-      walkIn: 110,
-      totalRevenue: '54,300',
-      profileViews: '2,900',
-    },
-  },
-  {
-    key: '7',
-    id: 7,
-    gymName: 'Next Level Fitness',
-    gymId: 'GYM1007',
-    gymLocation: 'Tambaram, Chennai',
-    logoText: 'NL',
-    logoSub: 'NEXT LEVEL',
-    subscriptionType: 'GMS',
-    subscriptionPeriod: 'Annual',
-    startDate: '01 Jan 2026',
-    nextBillingDate: '01 Jan 2027',
-    billingAmount: '₹ 14,999.00 / Year',
-    paymentMethod: 'UPI',
-    autoRenewal: 'Disabled',
-    status: 'Expiring Soon',
-    usage: {
-      appBookings: 60,
-      walkIn: 380,
-      totalRevenue: '76,500',
-      profileViews: '1,750',
-    },
-  },
-  {
-    key: '8',
-    id: 8,
-    gymName: 'Fitness Pro',
-    gymId: 'GYM1008',
-    gymLocation: 'Nungambakkam, Chennai',
-    logoText: 'FP',
-    logoSub: 'FITNESS PRO',
-    subscriptionType: 'Hybrid',
-    subscriptionPeriod: 'Monthly',
-    startDate: '25 May 2026',
-    nextBillingDate: '25 Jun 2026',
-    billingAmount: '₹ 2,999.00 / Month',
-    paymentMethod: 'Card',
-    autoRenewal: 'Disabled',
-    status: 'Expiring Soon',
-    usage: {
-      appBookings: 140,
-      walkIn: 220,
-      totalRevenue: '48,900',
-      profileViews: '3,100',
-    },
-  },
-  {
-    key: '9',
-    id: 9,
-    gymName: 'Alpha Fitness',
-    gymId: 'GYM1009',
-    gymLocation: 'Chromepet, Chennai',
-    logoText: 'AF',
-    logoSub: 'ALPHA FITNESS',
-    subscriptionType: 'Listing Only',
-    subscriptionPeriod: 'Quarterly',
-    startDate: '28 Mar 2026',
-    nextBillingDate: '28 Jun 2026',
-    billingAmount: '₹ 2,499.00 / Quarter',
-    paymentMethod: 'UPI',
-    autoRenewal: 'Disabled',
-    status: 'Cancelled',
-    usage: {
-      appBookings: 20,
-      walkIn: 45,
-      totalRevenue: '9,800',
-      profileViews: '980',
-    },
-  },
-  {
-    key: '10',
-    id: 10,
-    gymName: 'XTREME Gym',
-    gymId: 'GYM1010',
-    gymLocation: 'Pallikaranai, Chennai',
-    logoText: 'XG',
-    logoSub: 'XTREME GYM',
-    subscriptionType: 'App Only',
-    subscriptionPeriod: 'Half Year',
-    startDate: '10 Dec 2025',
-    nextBillingDate: '10 Jun 2026',
-    billingAmount: '₹ 6,999.00 / 6 Mo',
-    paymentMethod: 'UPI',
-    autoRenewal: 'Disabled',
-    status: 'Cancelled',
-    usage: {
-      appBookings: 80,
-      walkIn: 95,
-      totalRevenue: '22,400',
-      profileViews: '1,450',
-    },
-  },
-];
-
 export const SubscriptionsManagement = () => {
   const { isDarkMode } = useTheme();
 
+  // Live Partner Gym Subscriptions State from Middleware API
+  const [partners, setPartners] = useState([]);
+  const [kpis, setKpis] = useState({
+    totalPartners: 0,
+    activeSubscriptions: 0,
+    activeRate: '0.0',
+    expiringSoon: 0,
+    cancelled: 0,
+    hybridCount: 0,
+    appOnlyCount: 0,
+    gmsCount: 0,
+    listingCount: 0,
+    mrr: 0,
+  });
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 10,
+    pages: 1,
+    didYouMean: null,
+  });
+  const [isLoadingPartners, setIsLoadingPartners] = useState(false);
+
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [periodFilter, setPeriodFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -303,6 +93,53 @@ export const SubscriptionsManagement = () => {
   const [adminReqToReject, setAdminReqToReject] = useState(null);
   const [switchSearch, setSwitchSearch] = useState('');
   const [switchStatusFilter, setSwitchStatusFilter] = useState('ALL');
+
+  // Debounce search input (280ms) to prevent unnecessary network roundtrips
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 280);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
+  // Reset pagination to page 1 on filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, typeFilter, periodFilter, statusFilter]);
+
+  // Fetch partner subscriptions from middleware API
+  const fetchPartnerSubscriptions = useCallback(async () => {
+    setIsLoadingPartners(true);
+    try {
+      const res = await apiClient.get('/admin/subscriptions', {
+        params: {
+          search: debouncedSearch.trim() || undefined,
+          typeFilter: typeFilter !== 'all' ? typeFilter : undefined,
+          statusFilter: statusFilter !== 'all' ? statusFilter : undefined,
+          periodFilter: periodFilter !== 'all' ? periodFilter : undefined,
+          page: currentPage,
+          limit: pageSize,
+        },
+      });
+      const data = res.data?.data;
+      if (data) {
+        setPartners(data.partners || []);
+        if (data.kpis) setKpis(data.kpis);
+        if (data.pagination) setPagination(data.pagination);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch partner subscriptions:', err);
+      message.error(err.response?.data?.message || err.message || 'Failed to load subscriptions');
+    } finally {
+      setIsLoadingPartners(false);
+    }
+  }, [debouncedSearch, typeFilter, periodFilter, statusFilter, currentPage, pageSize]);
+
+  useEffect(() => {
+    if (mainTab === 'partner_subs') {
+      void fetchPartnerSubscriptions();
+    }
+  }, [mainTab, fetchPartnerSubscriptions]);
 
   const fetchAdminSwitchRequests = async () => {
     setIsSwitchLoading(true);
@@ -633,7 +470,7 @@ export const SubscriptionsManagement = () => {
   ];
 
   // Selected Partner for details modal
-  const [selectedPartner, setSelectedPartner] = useState(INITIAL_PARTNERS[0]);
+  const [selectedPartner, setSelectedPartner] = useState(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
   // Modals State
@@ -641,36 +478,64 @@ export const SubscriptionsManagement = () => {
   const [isDowngradeModalOpen, setIsDowngradeModalOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [selectedPlanOption, setSelectedPlanOption] = useState('Hybrid');
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
-  // Filtered Partners
-  const filteredPartners = useMemo(() => {
-    return INITIAL_PARTNERS.filter((item) => {
-      // Type Filter
-      if (typeFilter !== 'all' && item.subscriptionType.toLowerCase() !== typeFilter.toLowerCase()) {
-        return false;
-      }
+  // Modal Handlers calling live Middleware API
+  const handleConfirmUpgrade = async () => {
+    if (!selectedPartner?.id) return;
+    setIsSubmittingAction(true);
+    try {
+      await apiClient.patch(`/admin/subscriptions/${selectedPartner.id}`, {
+        action: 'UPGRADE',
+        subscriptionType: selectedPlanOption,
+      });
+      message.success(`Upgraded ${selectedPartner?.gymName} to ${selectedPlanOption} tier successfully!`);
+      setIsUpgradeModalOpen(false);
+      void fetchPartnerSubscriptions();
+    } catch (err) {
+      console.error('Failed to upgrade subscription:', err);
+      message.error(err.response?.data?.message || 'Failed to upgrade subscription');
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
 
-      // Period Filter
-      if (periodFilter !== 'all' && item.subscriptionPeriod.toLowerCase() !== periodFilter.toLowerCase()) {
-        return false;
-      }
+  const handleConfirmDowngrade = async () => {
+    if (!selectedPartner?.id) return;
+    setIsSubmittingAction(true);
+    try {
+      await apiClient.patch(`/admin/subscriptions/${selectedPartner.id}`, {
+        action: 'DOWNGRADE',
+        subscriptionType: selectedPlanOption,
+      });
+      message.warning(`Downgraded ${selectedPartner?.gymName} to ${selectedPlanOption} tier.`);
+      setIsDowngradeModalOpen(false);
+      void fetchPartnerSubscriptions();
+    } catch (err) {
+      console.error('Failed to downgrade subscription:', err);
+      message.error(err.response?.data?.message || 'Failed to downgrade subscription');
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
 
-      // Status Filter
-      if (statusFilter !== 'all' && item.status.toLowerCase() !== statusFilter.toLowerCase()) {
-        return false;
-      }
-
-      // Search Query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchName = item.gymName.toLowerCase().includes(q) || item.gymLocation.toLowerCase().includes(q);
-        const matchId = item.gymId.toLowerCase().includes(q);
-        if (!matchName && !matchId) return false;
-      }
-
-      return true;
-    });
-  }, [searchQuery, typeFilter, periodFilter, statusFilter]);
+  const handleConfirmCancel = async () => {
+    if (!selectedPartner?.id) return;
+    setIsSubmittingAction(true);
+    try {
+      await apiClient.patch(`/admin/subscriptions/${selectedPartner.id}`, {
+        action: 'CANCEL',
+      });
+      message.error(`Subscription for ${selectedPartner?.gymName} cancelled.`);
+      setIsCancelModalOpen(false);
+      void fetchPartnerSubscriptions();
+    } catch (err) {
+      console.error('Failed to cancel subscription:', err);
+      message.error(err.response?.data?.message || 'Failed to cancel subscription');
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
 
   // Filtered Switch Requests
   const filteredSwitchRequests = useMemo(() => {
@@ -1062,7 +927,7 @@ export const SubscriptionsManagement = () => {
                 Total Partners
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                742
+                {kpis.totalPartners || 0}
               </div>
               <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
                 All time
@@ -1100,10 +965,10 @@ export const SubscriptionsManagement = () => {
                 Active Subscriptions
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                612
+                {kpis.activeSubscriptions || 0}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#00bf62' }}>
-                82.48%
+                {kpis.activeRate}%
               </div>
             </div>
           </div>
@@ -1138,10 +1003,10 @@ export const SubscriptionsManagement = () => {
                 Expiring Soon
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                58
+                {kpis.expiringSoon || 0}
               </div>
               <div style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span>7.82%</span>
+                <span>{kpis.totalPartners > 0 ? ((kpis.expiringSoon / kpis.totalPartners) * 100).toFixed(2) : '0.00'}%</span>
                 <span style={{ fontSize: 9, padding: '1px 4px', borderRadius: 4, backgroundColor: isDarkMode ? 'rgba(245,158,11,0.2)' : '#fef3c7' }}>7 days</span>
               </div>
             </div>
@@ -1177,10 +1042,10 @@ export const SubscriptionsManagement = () => {
                 Cancelled
               </div>
               <div style={{ fontSize: 20, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0' }}>
-                72
+                {kpis.cancelled || 0}
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>
-                9.70%
+                {kpis.totalPartners > 0 ? ((kpis.cancelled / kpis.totalPartners) * 100).toFixed(2) : '0.00'}%
               </div>
             </div>
           </div>
@@ -1215,7 +1080,7 @@ export const SubscriptionsManagement = () => {
                 Total Revenue
               </div>
               <div style={{ fontSize: 17, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, margin: '2px 0', whiteSpace: 'nowrap' }}>
-                ₹ 28,75,430
+                ₹ {Number(kpis.mrr || 0).toLocaleString('en-IN')}
               </div>
               <div style={{ fontSize: 11, color: isDarkMode ? '#64748b' : '#94a3b8' }}>
                 All time
@@ -1237,7 +1102,7 @@ export const SubscriptionsManagement = () => {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <Input
-            placeholder="Search by partner name, gym ID..."
+            placeholder="Search by partner name, gym ID, area... (fuzzy typo-tolerant)"
             prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -1251,10 +1116,10 @@ export const SubscriptionsManagement = () => {
             style={{ width: 180 }}
           >
             <Option value="all">All Subscription Types</Option>
-            <Option value="hybrid">Hybrid</Option>
-            <Option value="app only">App Only</Option>
-            <Option value="gms">GMS</Option>
-            <Option value="listing only">Listing Only</Option>
+            <Option value="Hybrid">Hybrid (₹4,999/mo)</Option>
+            <Option value="App Only">App Only (₹2,999/mo)</Option>
+            <Option value="GMS">GMS (₹1,999/mo)</Option>
+            <Option value="Listing Only">Listing Only (₹999/mo)</Option>
           </Select>
 
           <Select
@@ -1263,10 +1128,10 @@ export const SubscriptionsManagement = () => {
             style={{ width: 140 }}
           >
             <Option value="all">All Periods</Option>
-            <Option value="monthly">Monthly</Option>
-            <Option value="quarterly">Quarterly</Option>
-            <Option value="half year">Half Year</Option>
-            <Option value="annual">Annual</Option>
+            <Option value="Monthly">Monthly</Option>
+            <Option value="Quarterly">Quarterly</Option>
+            <Option value="Half Year">Half Year</Option>
+            <Option value="Annual">Annual</Option>
           </Select>
 
           <Select
@@ -1275,12 +1140,50 @@ export const SubscriptionsManagement = () => {
             style={{ width: 140 }}
           >
             <Option value="all">All Status</Option>
-            <Option value="active">Active</Option>
-            <Option value="expiring soon">Expiring Soon</Option>
-            <Option value="cancelled">Cancelled</Option>
+            <Option value="Active">Active</Option>
+            <Option value="Expiring Soon">Expiring Soon</Option>
+            <Option value="Cancelled">Cancelled</Option>
           </Select>
+
+          <Button
+            icon={<ReloadOutlined spin={isLoadingPartners} />}
+            onClick={() => void fetchPartnerSubscriptions()}
+            style={{ borderRadius: 'var(--radius-base)' }}
+          >
+            Refresh
+          </Button>
         </div>
       </Card>
+
+      {/* "Did You Mean" Suggestion Banner */}
+      {pagination.didYouMean && (
+        <div
+          style={{
+            padding: '10px 16px',
+            marginBottom: 14,
+            borderRadius: 'var(--radius-base)',
+            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.12)' : '#eef2ff',
+            border: `1px solid ${isDarkMode ? 'rgba(99, 102, 241, 0.3)' : '#c7d2fe'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: 13,
+            color: isDarkMode ? '#cbd5e1' : '#334155',
+          }}
+        >
+          <span>
+            Did you mean <strong style={{ color: '#4f46e5' }}>"{pagination.didYouMean}"</strong>? Showing closest matching partner gym subscriptions.
+          </span>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => setSearchQuery(pagination.didYouMean)}
+            style={{ padding: 0, fontWeight: 700, color: '#4f46e5' }}
+          >
+            Search "{pagination.didYouMean}" instead
+          </Button>
+        </div>
+      )}
 
       {/* Table */}
       <Card
@@ -1294,9 +1197,10 @@ export const SubscriptionsManagement = () => {
       >
         <Table
           columns={columns}
-          dataSource={filteredPartners}
+          dataSource={partners}
+          loading={isLoadingPartners}
           pagination={false}
-          rowKey="key"
+          rowKey={(record) => record.id || record.gymId || record.key}
           scroll={{ x: 1200 }}
         />
       </Card>
@@ -1304,13 +1208,33 @@ export const SubscriptionsManagement = () => {
       {/* Pagination */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
-          Showing 1 to {filteredPartners.length} of 742 partners
+          Showing {pagination.total > 0 ? (currentPage - 1) * pageSize + 1 : 0} to {Math.min(currentPage * pageSize, pagination.total || 0)} of {pagination.total || 0} partner subscriptions
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Pagination current={currentPage} total={742} pageSize={pageSize} onChange={setCurrentPage} />
+          <Pagination
+            current={currentPage}
+            total={pagination.total || 0}
+            pageSize={pageSize}
+            onChange={(newPage, newPageSize) => {
+              setCurrentPage(newPage);
+              if (newPageSize && newPageSize !== pageSize) {
+                setPageSize(newPageSize);
+                setCurrentPage(1);
+              }
+            }}
+            showSizeChanger={false}
+          />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
             <span>Rows per page:</span>
-            <Select value={pageSize} onChange={setPageSize} style={{ width: 75 }} size="small">
+            <Select
+              value={pageSize}
+              onChange={(val) => {
+                setPageSize(val);
+                setCurrentPage(1);
+              }}
+              style={{ width: 75 }}
+              size="small"
+            >
               <Option value={10}>10</Option>
               <Option value={25}>25</Option>
               <Option value={50}>50</Option>
@@ -1601,8 +1525,8 @@ export const SubscriptionsManagement = () => {
                   flexShrink: 0,
                 }}
               >
-                <span style={{ fontSize: 16, fontWeight: 900 }}>{selectedPartner.logoText}</span>
-                <span style={{ fontSize: 7, fontWeight: 700, color: '#94a3b8', marginTop: 2 }}>{selectedPartner.logoSub.split(' ')[0]}</span>
+                <span style={{ fontSize: 16, fontWeight: 900 }}>{selectedPartner.logoText || 'G'}</span>
+                <span style={{ fontSize: 7, fontWeight: 700, color: '#94a3b8', marginTop: 2 }}>{(selectedPartner.logoSub || '').split(' ')[0]}</span>
               </div>
 
               <div style={{ flex: 1 }}>
@@ -1734,7 +1658,7 @@ export const SubscriptionsManagement = () => {
                 >
                   <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 600 }}>App Bookings</div>
                   <div style={{ fontSize: 18, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', marginTop: 4 }}>
-                    {selectedPartner.usage.appBookings}
+                    {selectedPartner.usage?.appBookings ?? 0}
                   </div>
                 </div>
 
@@ -1748,7 +1672,7 @@ export const SubscriptionsManagement = () => {
                 >
                   <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 600 }}>Walk-in (GMS)</div>
                   <div style={{ fontSize: 18, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', marginTop: 4 }}>
-                    {selectedPartner.usage.walkIn}
+                    {selectedPartner.usage?.walkIn ?? 0}
                   </div>
                 </div>
 
@@ -1762,7 +1686,7 @@ export const SubscriptionsManagement = () => {
                 >
                   <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 600 }}>Total Revenue</div>
                   <div style={{ fontSize: 16, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', marginTop: 4 }}>
-                    ₹ {selectedPartner.usage.totalRevenue}
+                    ₹ {selectedPartner.usage?.totalRevenue ?? 0}
                   </div>
                 </div>
 
@@ -1776,7 +1700,7 @@ export const SubscriptionsManagement = () => {
                 >
                   <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 600 }}>Profile Views</div>
                   <div style={{ fontSize: 18, fontWeight: 900, color: isDarkMode ? '#ffffff' : '#0f172a', marginTop: 4 }}>
-                    {selectedPartner.usage.profileViews}
+                    {selectedPartner.usage?.profileViews ?? 0}
                   </div>
                 </div>
               </div>
@@ -1859,10 +1783,8 @@ export const SubscriptionsManagement = () => {
         title={<span style={{ fontWeight: 800 }}>Upgrade Subscription Plan</span>}
         open={isUpgradeModalOpen}
         onCancel={() => setIsUpgradeModalOpen(false)}
-        onOk={() => {
-          message.success(`Upgraded ${selectedPartner?.gymName} to ${selectedPlanOption} Plan successfully!`);
-          setIsUpgradeModalOpen(false);
-        }}
+        onOk={handleConfirmUpgrade}
+        confirmLoading={isSubmittingAction}
         okText="Confirm Upgrade"
         okButtonProps={{ style: { backgroundColor: '#16a34a' } }}
         centered
@@ -1878,10 +1800,10 @@ export const SubscriptionsManagement = () => {
             style={{ width: '100%', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}
           >
             <Radio value="Hybrid" style={{ padding: '10px 14px', border: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`, borderRadius: 8 }}>
-              <strong>Hybrid Tier (₹ 2,999/mo)</strong> — Full GMS Software + GYMEZY App Listings
+              <strong>Hybrid Tier (₹ 4,999/mo)</strong> — Full GMS ERP + GYMEZY App Marketplace Listing
             </Radio>
-            <Radio value="Enterprise" style={{ padding: '10px 14px', border: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`, borderRadius: 8 }}>
-              <strong>Enterprise Pro (₹ 5,999/mo)</strong> — Multi-Branch + Priority Customer Placement
+            <Radio value="App Only" style={{ padding: '10px 14px', border: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`, borderRadius: 8 }}>
+              <strong>App Only (₹ 2,999/mo)</strong> — Discovery Marketplace & App Walk-In Bookings
             </Radio>
           </Radio.Group>
         </div>
@@ -1892,10 +1814,8 @@ export const SubscriptionsManagement = () => {
         title={<span style={{ fontWeight: 800 }}>Downgrade Subscription Plan</span>}
         open={isDowngradeModalOpen}
         onCancel={() => setIsDowngradeModalOpen(false)}
-        onOk={() => {
-          message.warning(`Downgraded ${selectedPartner?.gymName} plan.`);
-          setIsDowngradeModalOpen(false);
-        }}
+        onOk={handleConfirmDowngrade}
+        confirmLoading={isSubmittingAction}
         okText="Confirm Downgrade"
         centered
       >
@@ -1908,11 +1828,11 @@ export const SubscriptionsManagement = () => {
             onChange={(e) => setSelectedPlanOption(e.target.value)}
             style={{ width: '100%', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}
           >
-            <Radio value="App Only" style={{ padding: '10px 14px', border: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`, borderRadius: 8 }}>
-              <strong>App Only (₹ 1,499/mo)</strong> — Receive app bookings only
+            <Radio value="GMS" style={{ padding: '10px 14px', border: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`, borderRadius: 8 }}>
+              <strong>GMS Standalone (₹ 1,999/mo)</strong> — Standalone Gym Management Software
             </Radio>
             <Radio value="Listing Only" style={{ padding: '10px 14px', border: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`, borderRadius: 8 }}>
-              <strong>Listing Only (₹ 999/mo)</strong> — Directory discoverability only
+              <strong>Listing Only (₹ 999/mo)</strong> — Basic directory discovery without GMS
             </Radio>
           </Radio.Group>
         </div>
@@ -1923,10 +1843,8 @@ export const SubscriptionsManagement = () => {
         title={<span style={{ fontWeight: 800, color: '#ef4444' }}>Cancel Subscription</span>}
         open={isCancelModalOpen}
         onCancel={() => setIsCancelModalOpen(false)}
-        onOk={() => {
-          message.error(`Subscription for ${selectedPartner?.gymName} cancelled.`);
-          setIsCancelModalOpen(false);
-        }}
+        onOk={handleConfirmCancel}
+        confirmLoading={isSubmittingAction}
         okText="Yes, Cancel Subscription"
         okButtonProps={{ danger: true }}
         centered
