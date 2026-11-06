@@ -8,7 +8,14 @@ import Counter from '../models/counter.model.js';
 import { syncGymTrainersFromEmployees } from './employee.controller.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
-import { getSearchTerm, escapeRegex } from '../utils/searchHelper.js';
+import {
+  getSearchTerm,
+  escapeRegex,
+  tokenizeAndNormalize,
+  scoreGymRelevance,
+  getDidYouMeanSuggestion,
+  parseDateRangeFilter,
+} from '../utils/searchHelper.js';
 import { ApiError } from '../utils/apiError.js';
 import {
   formatAndCompressFile,
@@ -778,7 +785,7 @@ export const getGyms = asyncHandler(async (req, res) => {
     radius_km,
     sortBy,
     page = 1,
-    limit = 50,
+    limit = 15,
   } = req.query;
 
   const isSuperAdmin = req.user?.role === USER_ROLES.SUPER_ADMIN;
@@ -786,9 +793,10 @@ export const getGyms = asyncHandler(async (req, res) => {
   const userLng = Number(lng || longitude);
   const hasCoordinates = !Number.isNaN(userLat) && !Number.isNaN(userLng);
   const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 50));
+  const limitNum = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 15));
   const skip = (pageNum - 1) * limitNum;
   const maxRadius = Number(radius_km || radius);
+  const gymSearch = getSearchTerm(req.query);
 
   // Fast in-memory cache lookup for public customer queries
   const cacheKey = JSON.stringify({
@@ -802,7 +810,7 @@ export const getGyms = asyncHandler(async (req, res) => {
     genderAllowed: genderAllowed || '',
     facility: facility || '',
     workout: workout || '',
-    search: (search || '').trim().toLowerCase(),
+    search: gymSearch.toLowerCase(),
     lat: hasCoordinates ? userLat.toFixed(2) : '',
     lng: hasCoordinates ? userLng.toFixed(2) : '',
     radius: !Number.isNaN(maxRadius) && maxRadius > 0 ? maxRadius : '',
@@ -913,39 +921,11 @@ export const getGyms = asyncHandler(async (req, res) => {
     query.workouts = { $regex: new RegExp(workout.trim(), 'i') };
   }
 
-  // Keyword Search (SSOT)
-  const gymSearch = getSearchTerm(req.query);
-  if (gymSearch) {
-    const s = escapeRegex(gymSearch);
-    const searchRegex = new RegExp(s, 'i');
-    const searchOr = [
-      { partnerId: searchRegex },
-      { name: searchRegex },
-      { ownerName: searchRegex },
-      { city: searchRegex },
-      { area: searchRegex },
-      { address: searchRegex },
-      { tags: searchRegex },
-      { workouts: searchRegex },
-      { facilities: searchRegex },
-    ];
-    if (query.$or) {
-      const existingOr = query.$or;
-      delete query.$or;
-      query.$and = (query.$and || []).concat([{ $or: existingOr }, { $or: searchOr }]);
-    } else {
-      query.$or = searchOr;
-    }
-  }
-
   // Optimized lean projection: fetch only essential card fields (exclude heavy photos, gallery, trainers, reviews, rules, documents)
   const cardProjection =
     'partnerId slug name location area city state address fullAddress phone email ownerName rating reviewsCount singleSessionPrice singleSessionBookingEnabled enabledSessionCategories pricingPlans.singleSession pricingPlans.monthly monthlyPrice logo coverPhoto image images badgeText tags workouts businessType facilities subscriptionType status approvalStatus createdAt';
 
-  const [totalCount, rawGyms] = await Promise.all([
-    Gym.countDocuments(query),
-    Gym.find(query).select(cardProjection).lean(),
-  ]);
+  const rawGyms = await Gym.find(query).select(cardProjection).lean();
 
   // Transform and calculate distance dynamically
   let processedGyms = rawGyms.map((g, index) => {
@@ -1008,13 +988,33 @@ export const getGyms = asyncHandler(async (req, res) => {
     };
   });
 
+  // Typo-Tolerant Multi-Field Fuzzy Keyword Search & Relevance Scoring
+  const searchTokens = tokenizeAndNormalize(gymSearch);
+  const didYouMean = searchTokens.length > 0 ? getDidYouMeanSuggestion(gymSearch) : null;
+
+  if (searchTokens.length > 0) {
+    processedGyms = processedGyms
+      .map((g) => ({
+        ...g,
+        relevanceScore: scoreGymRelevance(g, searchTokens),
+      }))
+      .filter((g) => g.relevanceScore > 0);
+  }
+
   // Filter by radius if provided
   if (!Number.isNaN(maxRadius) && maxRadius > 0 && hasCoordinates) {
     processedGyms = processedGyms.filter((g) => g.distance <= maxRadius);
   }
 
-  // Sorting
-  if (sortBy === 'rating') {
+  // Sorting: Hybrid relevance + distance ranking when search is active
+  if (searchTokens.length > 0 && (!sortBy || sortBy === 'nearest' || sortBy === 'relevance')) {
+    processedGyms.sort((a, b) => {
+      if (b.relevanceScore !== a.relevanceScore) {
+        return b.relevanceScore - a.relevanceScore;
+      }
+      return a.distance - b.distance;
+    });
+  } else if (sortBy === 'rating') {
     processedGyms.sort((a, b) => b.rating - a.rating);
   } else if (sortBy === 'price_low') {
     processedGyms.sort((a, b) => a.pricePerSession - b.pricePerSession);
@@ -1036,7 +1036,10 @@ export const getGyms = asyncHandler(async (req, res) => {
         page: pageNum,
         limit: limitNum,
         pages: Math.ceil(processedGyms.length / limitNum) || 1,
+        hasMore: skip + limitNum < processedGyms.length,
+        didYouMean,
       },
+      didYouMean,
     },
     'Gyms retrieved successfully'
   );
@@ -1065,18 +1068,37 @@ export const clearFleetCache = () => {
  */
 export const getAdminGymsFleet = asyncHandler(async (req, res) => {
   const {
-    tab = 'all',
+    tab = 'approved',
     status,
     approvalStatus,
     subscriptionType,
     search,
+    name,
+    q,
     city,
+    location,
+    phone,
     page = 1,
-    limit = 100,
+    limit = 10,
     force,
   } = req.query;
 
-  const cacheKey = JSON.stringify({ tab, status, approvalStatus, subscriptionType, search, city, page, limit });
+  const searchQuery = (search || name || q || '').trim();
+  const searchTokens = tokenizeAndNormalize(searchQuery);
+  const didYouMean = searchTokens.length > 0 ? getDidYouMeanSuggestion(searchQuery) : null;
+
+  const cacheKey = JSON.stringify({
+    tab,
+    status,
+    approvalStatus,
+    subscriptionType,
+    searchQuery,
+    city,
+    location,
+    phone,
+    page,
+    limit,
+  });
   const cached = fleetCache.get(cacheKey);
   const now = Date.now();
 
@@ -1087,15 +1109,25 @@ export const getAdminGymsFleet = asyncHandler(async (req, res) => {
   const query = {};
 
   // Tab filtering for Super Admin Dashboard
-  const activeTab = (tab || '').toLowerCase().trim();
+  const activeTab = (tab || 'approved').toLowerCase().trim();
   if (activeTab === 'pending') {
     query.approvalStatus = {
-      $in: ['Pending Approval', 'Pending Admin Review', 'On Hold', 'pending', 'under_review'],
+      $in: ['Pending Approval', 'Pending Admin Review', 'pending', 'under_review', 'Pending'],
     };
+    query.status = { $nin: ['Rejected', 'rejected', 'On Hold', 'Inactive'] };
   } else if (activeTab === 'approved') {
-    query.approvalStatus = 'Approved';
+    query.approvalStatus = { $in: ['Approved', 'approved'] };
+    query.status = { $nin: ['Rejected', 'rejected'] };
+  } else if (activeTab === 'on_hold' || activeTab === 'hold') {
+    query.$or = [
+      { approvalStatus: { $in: ['On Hold', 'on_hold', 'Hold'] } },
+      { status: { $in: ['On Hold', 'Inactive'] } },
+    ];
   } else if (activeTab === 'rejected') {
-    query.approvalStatus = 'Rejected';
+    query.$or = [
+      { approvalStatus: { $in: ['Rejected', 'rejected'] } },
+      { status: { $in: ['Rejected', 'rejected'] } },
+    ];
   } else if (activeTab === 'changes') {
     query.$or = [
       { changesCount: { $gt: 0 } },
@@ -1104,7 +1136,7 @@ export const getAdminGymsFleet = asyncHandler(async (req, res) => {
     ];
   }
 
-  // Explicit status override
+  // Explicit status filter overrides
   if (status && status !== 'All') {
     query.status = status;
   }
@@ -1114,41 +1146,58 @@ export const getAdminGymsFleet = asyncHandler(async (req, res) => {
   if (subscriptionType && subscriptionType !== 'All') {
     query.subscriptionType = subscriptionType;
   }
-  if (city && city !== 'All') {
-    query.city = new RegExp(city.trim(), 'i');
+  if (city && city !== 'All' && city.trim()) {
+    query.city = new RegExp(escapeRegex(city.trim()), 'i');
   }
-
-  // Search filter across partner ID, gym name, owner name, email, phone, city, area
-  if (search && search.trim()) {
-    const s = search.trim();
-    const searchRegex = new RegExp(s, 'i');
+  if (location && location !== 'All' && location.trim()) {
+    const locRegex = new RegExp(escapeRegex(location.trim()), 'i');
     query.$or = [
-      { partnerId: searchRegex },
-      { name: searchRegex },
-      { ownerName: searchRegex },
-      { email: searchRegex },
-      { phone: searchRegex },
-      { city: searchRegex },
-      { area: searchRegex },
-      { address: searchRegex },
+      { city: locRegex },
+      { area: locRegex },
+      { address: locRegex },
+      { fullAddress: locRegex },
     ];
+  }
+  if (phone && phone.trim()) {
+    const cleanDigits = phone.trim().replace(/[^0-9]/g, '');
+    if (cleanDigits) {
+      query.phone = new RegExp(escapeRegex(cleanDigits), 'i');
+    }
   }
 
   const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
-  const limitNum = Math.min(200, Math.max(1, Number.parseInt(limit, 10) || 100));
+  const limitNum = Math.min(200, Math.max(1, Number.parseInt(limit, 10) || 10));
   const skip = (pageNum - 1) * limitNum;
 
-  const [totalCount, rawGyms] = await Promise.all([
-    Gym.countDocuments(query),
-    Gym.find(query)
-      .select('-documents -galleryPhotos -auditHistory -images')
-      .sort({ createdAt: -1, partnerId: 1 })
-      .skip(skip)
-      .limit(limitNum)
-      .lean(),
+  // Global tab counts for sidebar and badges (evaluated in parallel)
+  const countsPromise = Promise.all([
+    Gym.countDocuments({
+      approvalStatus: { $in: ['Approved', 'approved'] },
+      status: { $nin: ['Rejected', 'rejected'] },
+    }),
+    Gym.countDocuments({
+      approvalStatus: { $in: ['Pending Approval', 'Pending Admin Review', 'pending', 'under_review', 'Pending'] },
+      status: { $nin: ['Rejected', 'rejected', 'On Hold', 'Inactive'] },
+    }),
+    Gym.countDocuments({
+      $or: [
+        { approvalStatus: { $in: ['On Hold', 'on_hold', 'Hold'] } },
+        { status: { $in: ['On Hold', 'Inactive'] } },
+      ],
+    }),
+    Gym.countDocuments({
+      $or: [
+        { approvalStatus: { $in: ['Rejected', 'rejected'] } },
+        { status: { $in: ['Rejected', 'rejected'] } },
+      ],
+    }),
+    Gym.countDocuments({}),
   ]);
 
-  const gyms = rawGyms.map((g) => {
+  let totalCount = 0;
+  let paginatedGyms = [];
+
+  const transformGym = (g) => {
     const media = resolveGymMediaUrls(g);
     const gymId = g.partnerId || g._id.toString();
     const displayLocation = g.area ? `${g.area}, ${g.city}` : (g.city || 'Chennai');
@@ -1168,16 +1217,70 @@ export const getAdminGymsFleet = asyncHandler(async (req, res) => {
       imageUrl: media.imageUrl,
       thumbnailImage: media.thumbnailImage,
     };
-  });
+  };
+
+  if (searchTokens.length > 0) {
+    // Professional Multi-Field Typo-Tolerant Search & Relevance Scoring
+    const candidates = await Gym.find(query)
+      .select('-documents -galleryPhotos -auditHistory -images')
+      .lean();
+
+    const scored = candidates
+      .map((g) => {
+        const transformed = transformGym(g);
+        const relevanceScore = scoreGymRelevance(transformed, searchTokens);
+        return {
+          ...transformed,
+          relevanceScore,
+        };
+      })
+      .filter((g) => g.relevanceScore > 0);
+
+    // Sort by highest relevance score first, then newest
+    scored.sort((a, b) => {
+      if (b.relevanceScore !== a.relevanceScore) {
+        return b.relevanceScore - a.relevanceScore;
+      }
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
+
+    totalCount = scored.length;
+    paginatedGyms = scored.slice(skip, skip + limitNum);
+  } else {
+    // Direct DB pagination & sorting
+    const [count, rawGyms] = await Promise.all([
+      Gym.countDocuments(query),
+      Gym.find(query)
+        .select('-documents -galleryPhotos -auditHistory -images')
+        .sort({ createdAt: -1, partnerId: 1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+    ]);
+
+    totalCount = count;
+    paginatedGyms = rawGyms.map(transformGym);
+  }
+
+  const [approvedCount, pendingCount, onHoldCount, rejectedCount, totalCountAll] = await countsPromise;
 
   const responsePayload = ApiResponse.success(
     {
-      gyms,
+      gyms: paginatedGyms,
       pagination: {
         total: totalCount,
         page: pageNum,
         limit: limitNum,
         pages: Math.ceil(totalCount / limitNum) || 1,
+        hasMore: skip + limitNum < totalCount,
+        didYouMean,
+      },
+      counts: {
+        approved: approvedCount,
+        pending: pendingCount,
+        on_hold: onHoldCount,
+        rejected: rejectedCount,
+        total: totalCountAll,
       },
     },
     'Super Admin Gyms Fleet retrieved successfully'
@@ -2298,14 +2401,25 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
 
   const gymObjectId = new mongoose.Types.ObjectId(gymId);
 
+  // Parse Date Range filter: Today, Yesterday, This Week, This Month, All Time, or Custom
+  const dateBounds = parseDateRangeFilter(req.query);
+
+  const bookingFilter = { gymId: gymObjectId };
+  const membershipFilter = { gymId: gymObjectId };
+
+  if (dateBounds) {
+    bookingFilter.createdAt = { $gte: dateBounds.start, $lte: dateBounds.end };
+    membershipFilter.createdAt = { $gte: dateBounds.start, $lte: dateBounds.end };
+  }
+
   // Parallel database queries
   const [gymDoc, bookings, memberships] = await Promise.all([
     targetGym ? targetGym : Gym.findById(gymObjectId).lean(),
-    Booking.find({ gymId: gymObjectId })
+    Booking.find(bookingFilter)
       .populate('userId', 'fullName name email phone avatar profilePicture customerId')
       .sort({ createdAt: -1 })
       .lean(),
-    Membership.find({ gymId: gymObjectId })
+    Membership.find(membershipFilter)
       .populate('userId', 'fullName name email phone avatar profilePicture customerId')
       .sort({ createdAt: -1 })
       .lean(),
@@ -2443,6 +2557,12 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
           name: gymDoc?.name || 'Partner Gym',
           partnerId: gymDoc?.partnerId || '',
           city: gymDoc?.city || '',
+        },
+        range: dateBounds?.label || (req.query.range ? String(req.query.range) : 'All Time'),
+        filter: {
+          appliedRange: req.query.range || 'All Time',
+          startDate: dateBounds?.start || null,
+          endDate: dateBounds?.end || null,
         },
         metrics: {
           totalRevenue,

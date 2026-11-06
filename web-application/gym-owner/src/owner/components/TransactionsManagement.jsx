@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Card,
   Input,
@@ -16,6 +17,7 @@ import {
   Row,
   Col,
   Space,
+  Result,
 } from 'antd';
 import {
   SearchOutlined,
@@ -53,9 +55,16 @@ const hasValidProfilePic = (avatar) => {
 };
 
 export const TransactionsManagement = () => {
+  const navigate = useNavigate();
   const { isDarkMode } = useTheme();
   const { user } = useSelector((state) => state.auth || {});
   const gymProfile = useSelector((state) => state.gym?.gymProfile || {});
+
+  const isManager = Boolean(
+    user?.isManager ||
+    user?.role === 'MANAGER' ||
+    String(user?.role || '').toUpperCase() === 'MANAGER'
+  );
 
   // Resolve target gym details strictly for this gym owner
   const gym = user?.gym || gymProfile || {};
@@ -92,6 +101,7 @@ export const TransactionsManagement = () => {
   // Fetch Transactions from Backend API scoped to this gym
   const fetchTransactions = useCallback(
     async (page = 1, search = searchQuery, mode = paymentModeFilter, status = statusFilter) => {
+      if (isManager) return;
       setLoading(true);
       try {
         const params = {
@@ -504,6 +514,27 @@ export const TransactionsManagement = () => {
       ),
     },
   ];
+
+  if (isManager) {
+    return (
+      <div style={{ maxWidth: 800, margin: '60px auto', padding: '40px 24px', textAlign: 'center' }}>
+        <Result
+          status="403"
+          title="Access Restricted"
+          subTitle="Financial transactions, settlement records, and revenue audits are strictly reserved for the Gym Owner."
+          extra={
+            <Button
+              type="primary"
+              onClick={() => navigate('/owner/dashboard')}
+              style={{ backgroundColor: 'var(--color-primary)', fontWeight: 600 }}
+            >
+              Return to Dashboard
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 1320, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>

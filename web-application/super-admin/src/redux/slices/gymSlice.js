@@ -6,7 +6,15 @@ export const fetchGyms = createAsyncThunk(
   async (params, { rejectWithValue }) => {
     try {
       const response = await apiClient.get('/gyms/admin/fleet', { params });
-      return response.data?.data?.gyms || response.data?.data || [];
+      const data = response.data?.data;
+      if (data && Array.isArray(data.gyms)) {
+        return {
+          gyms: data.gyms,
+          pagination: data.pagination || {},
+          counts: data.counts || {},
+        };
+      }
+      return Array.isArray(data) ? { gyms: data, pagination: {}, counts: {} } : { gyms: [], pagination: {}, counts: {} };
     } catch (err) {
       return rejectWithValue(
         err.response?.data?.message || err.message || 'Failed to fetch gyms fleet'
@@ -58,6 +66,20 @@ try {
 
 const initialState = {
   gyms: [],
+  pagination: {
+    total: 0,
+    page: 1,
+    limit: 10,
+    pages: 1,
+    didYouMean: null,
+  },
+  counts: {
+    approved: 0,
+    pending: 0,
+    on_hold: 0,
+    rejected: 0,
+    total: 0,
+  },
   selectedGym: null,
   filterStatus: 'All',
   filterSubscription: 'All',
@@ -149,7 +171,17 @@ export const gymSlice = createSlice({
       })
       .addCase(fetchGyms.fulfilled, (state, action) => {
         state.loading = false;
-        state.gyms = Array.isArray(action.payload) ? action.payload : [];
+        if (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) {
+          state.gyms = Array.isArray(action.payload.gyms) ? action.payload.gyms : [];
+          if (action.payload.pagination) {
+            state.pagination = action.payload.pagination;
+          }
+          if (action.payload.counts) {
+            state.counts = action.payload.counts;
+          }
+        } else if (Array.isArray(action.payload)) {
+          state.gyms = action.payload;
+        }
       })
       .addCase(fetchGyms.rejected, (state, action) => {
         state.loading = false;

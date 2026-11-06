@@ -72,7 +72,8 @@ export const SplashScreen = ({ navigation }) => {
     await gymService.fetchGyms({
       lat: savedLocation.latitude,
       lng: savedLocation.longitude,
-      limit: 50,
+      page: 1,
+      limit: 15,
     });
 
     const elapsed = Date.now() - startTime;

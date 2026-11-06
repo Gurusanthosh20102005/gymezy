@@ -57,25 +57,26 @@ export const AppSidebar = ({
   const location = useLocation();
   const { isDarkMode } = useTheme();
 
+  const gymCounts = useSelector((state) => state.gyms?.counts);
   const gyms = useSelector((state) => state.gyms?.gyms || []);
   const stats = useSelector((state) => state.dashboard?.stats || {});
 
-  // Compute live dynamic counts directly from fleet data if loaded, or fallback to dashboard stats
-  const totalGyms = gyms.length > 0 ? gyms.length : (stats.registeredGyms?.total || stats.totalGyms || 0);
-  const pendingCount = gyms.length > 0
+  // Compute live dynamic counts directly from fleet counts if loaded, or fallback to dashboard stats
+  const totalGyms = gymCounts?.total ?? (gyms.length > 0 ? gyms.length : (stats.registeredGyms?.total || stats.totalGyms || 0));
+  const pendingCount = gymCounts?.pending ?? (gyms.length > 0
     ? gyms.filter(
         (g) => g.approvalStatus === 'Pending Approval' || g.status === 'Pending' || g.approvalStatus === 'Pending'
       ).length
-    : (stats.pendingApprovalsCount || (Array.isArray(stats.pendingApprovals) ? stats.pendingApprovals.length : 0));
-  const approvedCount = gyms.length > 0
+    : (stats.pendingApprovalsCount || (Array.isArray(stats.pendingApprovals) ? stats.pendingApprovals.length : 0)));
+  const approvedCount = gymCounts?.approved ?? (gyms.length > 0
     ? gyms.filter((g) => g.approvalStatus === 'Approved' || g.status === 'Active').length
-    : (stats.registeredGyms?.active || stats.activeGyms || 0);
-  const onHoldCount = gyms.length > 0
+    : (stats.registeredGyms?.active || stats.activeGyms || 0));
+  const onHoldCount = gymCounts?.on_hold ?? (gyms.length > 0
     ? gyms.filter((g) => g.approvalStatus === 'On Hold' || g.status === 'On Hold' || g.status === 'Inactive').length
-    : (stats.registeredGyms?.inactive || 0);
-  const rejectedCount = gyms.length > 0
+    : (stats.registeredGyms?.inactive || 0));
+  const rejectedCount = gymCounts?.rejected ?? (gyms.length > 0
     ? gyms.filter((g) => g.approvalStatus === 'Rejected' || g.status === 'Rejected').length
-    : 0;
+    : 0);
 
   const totalActionRequired = pendingCount;
 
@@ -96,11 +97,11 @@ export const AppSidebar = ({
       ),
       children: [
         {
-          key: '/admin/gyms?tab=all',
+          key: '/admin/gyms?tab=approved',
           label: (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 2 }}>
-              <span>All Gyms</span>
-              {renderMenuBadge(totalGyms, false)}
+              <span>Approved</span>
+              {renderMenuBadge(approvedCount, false)}
             </div>
           ),
         },
@@ -108,7 +109,7 @@ export const AppSidebar = ({
           key: '/admin/gyms?tab=pending',
           label: (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 2 }}>
-              <span>Gym Approvals</span>
+              <span>Onboarding Requests</span>
               {pendingCount > 0 && (
                 <span
                   style={{
@@ -129,15 +130,6 @@ export const AppSidebar = ({
                   {pendingCount}
                 </span>
               )}
-            </div>
-          ),
-        },
-        {
-          key: '/admin/gyms?tab=approved',
-          label: (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 2 }}>
-              <span>Approved / Active</span>
-              {renderMenuBadge(approvedCount, false)}
             </div>
           ),
         },
@@ -248,7 +240,7 @@ export const AppSidebar = ({
   // Compute active key matching exact route and query parameter tab
   const getActiveKey = () => {
     if (location.pathname === '/admin/gyms') {
-      const search = location.search || '?tab=all';
+      const search = location.search || '?tab=approved';
       return `/admin/gyms${search}`;
     }
     if (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Card,
   Row,
@@ -19,8 +19,10 @@ import {
   Upload,
   Spin,
   Badge,
+  Pagination,
 } from 'antd';
 import {
+  SearchOutlined,
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
@@ -37,6 +39,7 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { bannerService } from '../services/bannerService';
 import { apiClient } from '../services/apiClient';
+import { useDebounce } from '../hooks/useDebounce';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -63,31 +66,65 @@ export const BannerManagement = () => {
   const [editingBanner, setEditingBanner] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 350);
   const [priorityFilter, setPriorityFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+
+  // Server-Side Pagination States (driven by SSOT Specification)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalBanners, setTotalBanners] = useState(0);
+  const [didYouMean, setDidYouMean] = useState(null);
 
   // Image Upload State
   const [previewImage, setPreviewImage] = useState('');
   const [imageSizeKb, setImageSizeKb] = useState(0);
 
-  // Fetch Banners
-  const fetchBanners = async () => {
-    try {
-      setLoading(true);
-      const res = await bannerService.getAllBanners();
-      const bannerList = Array.isArray(res?.data)
-        ? res.data
-        : Array.isArray(res)
-          ? res
-          : [];
-      setBanners(bannerList);
-    } catch (err) {
-      console.error('Failed to load banners:', err);
-      message.error(err.message || 'Failed to load promotional banners');
-      setBanners([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Live Modal Preview States
+  const [formTitle, setFormTitle] = useState('');
+  const [formSubtitle, setFormSubtitle] = useState('');
+  const [formBadge, setFormBadge] = useState('FEATURED DEAL');
+
+  // Fetch Banners with Server-Side Typo-Tolerant Search & Pagination
+  const fetchBanners = useCallback(
+    async (
+      page = currentPage,
+      limit = pageSize,
+      search = debouncedSearch,
+      priority = priorityFilter,
+      status = statusFilter
+    ) => {
+      try {
+        setLoading(true);
+        const res = await bannerService.getAllBanners({
+          page,
+          limit,
+          search,
+          priority,
+          status,
+        });
+
+        const bannerList = Array.isArray(res?.data)
+          ? res.data
+          : Array.isArray(res?.banners)
+            ? res.banners
+            : Array.isArray(res)
+              ? res
+              : [];
+
+        setBanners(bannerList);
+        setTotalBanners(res?.pagination?.total ?? res?.total ?? bannerList.length);
+        setDidYouMean(res?.didYouMean || null);
+      } catch (err) {
+        console.error('Failed to load banners:', err);
+        message.error(err.message || 'Failed to load promotional banners');
+        setBanners([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [currentPage, pageSize, debouncedSearch, priorityFilter, statusFilter]
+  );
 
   // Fetch Gyms for Dropdown
   const fetchGyms = async () => {
@@ -114,39 +151,41 @@ export const BannerManagement = () => {
     }
   };
 
+  // Initial load & gym mapping
   useEffect(() => {
-    fetchBanners();
     fetchGyms();
   }, []);
 
-  // Filtered Banners
-  const filteredBanners = useMemo(() => {
-    const list = Array.isArray(banners) ? banners : [];
-    return list.filter((b) => {
-      const matchSearch =
-        searchQuery === '' ||
-        b.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.gymName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.gymArea?.toLowerCase().includes(searchQuery.toLowerCase());
+  // Re-fetch when pagination, search, or filters change
+  useEffect(() => {
+    fetchBanners(currentPage, pageSize, debouncedSearch, priorityFilter, statusFilter);
+  }, [fetchBanners, currentPage, pageSize, debouncedSearch, priorityFilter, statusFilter]);
 
-      const matchPriority =
-        priorityFilter === 'ALL' ||
-        (priorityFilter === 'PRIORITY' && b.isPriority) ||
-        (priorityFilter === 'NORMAL' && !b.isPriority);
+  // Reset to page 1 on filter or search query change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, priorityFilter, statusFilter]);
 
-      return matchSearch && matchPriority;
-    });
-  }, [banners, searchQuery, priorityFilter]);
+  // Listen to Global App Refresh event (from breadcrumb bar)
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchBanners(currentPage, pageSize, debouncedSearch, priorityFilter, statusFilter);
+    };
+    window.addEventListener('app:refresh', handleRefresh);
+    return () => window.removeEventListener('app:refresh', handleRefresh);
+  }, [fetchBanners, currentPage, pageSize, debouncedSearch, priorityFilter, statusFilter]);
 
-  // Statistics
-  const bannerListSafe = Array.isArray(banners) ? banners : [];
-  const totalBanners = bannerListSafe.length;
+  // Data to render in table (driven by server pagination)
+  const filteredBanners = banners;
 
   // Open Create Modal
   const handleOpenCreateModal = () => {
     setEditingBanner(null);
     setPreviewImage('');
     setImageSizeKb(0);
+    setFormTitle('');
+    setFormSubtitle('');
+    setFormBadge('FEATURED DEAL');
     form.resetFields();
     form.setFieldsValue({
       badgeText: 'FEATURED DEAL',
@@ -162,6 +201,9 @@ export const BannerManagement = () => {
     const existingImg = banner.image?.fileData || banner.imageUrl || '';
     setPreviewImage(existingImg);
     setImageSizeKb(banner.image?.fileSizeKb || 0);
+    setFormTitle(banner.title || '');
+    setFormSubtitle(banner.subtitle || '');
+    setFormBadge(banner.badgeText || 'FEATURED DEAL');
 
     form.resetFields();
     form.setFieldsValue({
@@ -452,14 +494,14 @@ export const BannerManagement = () => {
   ];
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ maxWidth: 1400, margin: '0 auto' }}>
       {/* Header Row */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 24,
+          marginBottom: 20,
           gap: 16,
         }}
       >
@@ -499,7 +541,6 @@ export const BannerManagement = () => {
         </Button>
       </div>
 
-
       {/* Filter Toolbar */}
       <Card
         bordered={false}
@@ -509,35 +550,97 @@ export const BannerManagement = () => {
           marginBottom: 16,
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
         }}
+        styles={{ body: { padding: '16px 20px' } }}
       >
         <Row gutter={[16, 16]} align="middle">
           <Col xs={24} sm={12} md={8}>
             <Input
-              placeholder="Search by title, gym name, or area..."
+              prefix={<SearchOutlined style={{ color: isDarkMode ? '#94a3b8' : '#64748b', marginRight: 4 }} />}
+              placeholder="Search by title, gym name, area, or tag..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               allowClear
               style={{ borderRadius: 8 }}
             />
           </Col>
-          <Col xs={24} sm={12} md={6}>
+          <Col xs={24} sm={12} md={5}>
             <Select
               value={priorityFilter}
               onChange={setPriorityFilter}
               style={{ width: '100%', borderRadius: 8 }}
             >
-              <Option value="ALL">All Banners</Option>
+              <Option value="ALL">All Priority Levels</Option>
               <Option value="PRIORITY">Priority Only</Option>
               <Option value="NORMAL">Normal Only</Option>
             </Select>
           </Col>
-          <Col xs={24} md={10} style={{ textAlign: 'right' }}>
-            <Text style={{ color: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 13 }}>
-              Showing {filteredBanners.length} of {totalBanners} banners
+          <Col xs={24} sm={12} md={5}>
+            <Select
+              value={statusFilter}
+              onChange={setStatusFilter}
+              style={{ width: '100%', borderRadius: 8 }}
+            >
+              <Option value="ALL">All Statuses</Option>
+              <Option value="ACTIVE">Active Only</Option>
+              <Option value="INACTIVE">Inactive Only</Option>
+            </Select>
+          </Col>
+          <Col xs={24} sm={12} md={6} style={{ textAlign: 'right' }}>
+            <Text style={{ color: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 13, fontWeight: 500 }}>
+              Showing {totalBanners > 0 ? (currentPage - 1) * pageSize + 1 : 0} -{' '}
+              {Math.min(currentPage * pageSize, totalBanners)} of {totalBanners} banners
             </Text>
           </Col>
         </Row>
       </Card>
+
+      {/* "Did You Mean" Interactive Spelling Suggestion Banner */}
+      {didYouMean && (
+        <div
+          style={{
+            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.15)' : '#eef2ff',
+            border: `1px solid ${isDarkMode ? 'rgba(99, 102, 241, 0.3)' : '#c7d2fe'}`,
+            borderRadius: 8,
+            padding: '10px 16px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span style={{ fontSize: 16 }}>💡</span>
+            <span style={{ color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+              Did you mean{' '}
+              <strong
+                onClick={() => {
+                  setSearchQuery(didYouMean);
+                  setCurrentPage(1);
+                }}
+                style={{
+                  color: '#6366f1',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                "{didYouMean}"
+              </strong>
+              ?
+            </span>
+          </div>
+          <Button
+            size="small"
+            type="link"
+            onClick={() => {
+              setSearchQuery(didYouMean);
+              setCurrentPage(1);
+            }}
+            style={{ color: '#6366f1', fontWeight: 600, padding: 0 }}
+          >
+            Apply Correction
+          </Button>
+        </div>
+      )}
 
       {/* Banners Table */}
       <Card
@@ -548,203 +651,326 @@ export const BannerManagement = () => {
           boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           overflow: 'hidden',
         }}
+        styles={{ body: { padding: 0 } }}
       >
         <Table
-          dataSource={filteredBanners}
+          dataSource={banners}
           columns={columns}
           rowKey="_id"
           loading={loading}
-          pagination={{ pageSize: 8, showSizeChanger: true }}
-          locale={{ emptyText: 'No promotional banners found. Click "Create New Banner" to add one!' }}
+          pagination={false}
+          locale={{ emptyText: 'No promotional banners found matching your criteria.' }}
         />
       </Card>
 
-      {/* Create / Edit Modal */}
+      {/* Numbered Server-Side Pagination Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '16px 0 24px',
+          flexWrap: 'wrap',
+          gap: 12,
+        }}
+      >
+        <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
+          Showing {totalBanners > 0 ? (currentPage - 1) * pageSize + 1 : 0} to{' '}
+          {Math.min(currentPage * pageSize, totalBanners)} of {totalBanners} banners
+        </div>
+        <Pagination
+          current={currentPage}
+          total={totalBanners}
+          pageSize={pageSize}
+          onChange={(newPage, newPageSize) => {
+            setCurrentPage(newPage);
+            if (newPageSize !== pageSize) {
+              setPageSize(newPageSize);
+            }
+          }}
+          showSizeChanger
+          pageSizeOptions={['10', '20', '50', '100']}
+          showQuickJumper
+        />
+      </div>
+
+      {/* Create / Edit Modal (Landscape Design) */}
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <PictureOutlined style={{ color: '#6366f1' }} />
-            <span>{editingBanner ? 'Edit Promotional Banner' : 'Create Promotional Banner'}</span>
+            <span style={{ fontWeight: 800 }}>{editingBanner ? 'Edit Promotional Banner' : 'Create Promotional Banner'}</span>
           </div>
         }
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
         footer={null}
-        width={680}
+        width={960}
+        centered
         destroyOnClose
+        styles={{ body: { padding: '8px 4px 16px' } }}
       >
         <Form
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          style={{ marginTop: 16 }}
+          style={{ marginTop: 12 }}
         >
-          {/* Gym Selector (Searchable Dropdown) */}
-          <Form.Item
-            label="Select Gym (Auto-maps Mongo ObjectId & Location Slug)"
-            name="gymId"
-            rules={[{ required: true, message: 'Please select a gym' }]}
-            extra="User app automatically calculates distance to this gym and enables direct booking on tap."
-          >
-            <Select
-              showSearch
-              placeholder="Search and select gym..."
-              loading={gymsLoading}
-              optionFilterProp="label"
-              filterOption={(input, option) =>
-                String(option?.label || '')
-                  .toLowerCase()
-                  .includes(String(input || '').trim().toLowerCase())
-              }
-              options={(Array.isArray(gyms) ? gyms : []).map((g) => ({
-                value: g._id || g.id,
-                label: `${g.name || 'Gym'} — ${g.area || g.city || 'Chennai'}${g.slug ? ` (/${g.slug})` : ''}`,
-              }))}
-              style={{ borderRadius: 8 }}
-            />
-          </Form.Item>
-
-          {/* Banner Title */}
-          <Form.Item
-            label="Banner Title / Headline"
-            name="title"
-            rules={[{ required: true, message: 'Banner headline is required' }]}
-          >
-            <Input
-              placeholder="e.g. 30% Off Pass, Summer Fitness Festival"
-              maxLength={120}
-              style={{ borderRadius: 8 }}
-            />
-          </Form.Item>
-
-          {/* Subtitle / Description */}
-          <Form.Item label="Subtitle / Tagline (Optional)" name="subtitle">
-            <Input
-              placeholder="e.g. Valid on all day passes & weekly workouts"
-              maxLength={200}
-              style={{ borderRadius: 8 }}
-            />
-          </Form.Item>
-
-          {/* Promotional Badge */}
-          <Form.Item
-            label="Promotional Badge Tag"
-            name="badgeText"
-            extra="Quick tags click to auto-fill:"
-          >
-            <Input placeholder="e.g. 30% OFF PASS" maxLength={50} style={{ borderRadius: 8 }} />
-          </Form.Item>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16, marginTop: -8 }}>
-            {QUICK_BADGES.map((b) => (
-              <Tag
-                key={b}
-                style={{ cursor: 'pointer', borderRadius: 4 }}
-                onClick={() => form.setFieldsValue({ badgeText: b })}
-              >
-                + {b}
-              </Tag>
-            ))}
-          </div>
-
-          {/* Priority & Status Switches */}
-          <Row gutter={16}>
-            <Col span={12}>
+          <Row gutter={[24, 16]}>
+            {/* Left Column: Form Controls */}
+            <Col xs={24} lg={13}>
+              {/* Gym Selector */}
               <Form.Item
-                label="Priority Flag"
-                name="isPriority"
-                valuePropName="checked"
-                extra="Priority banners always float to top of user app regardless of distance."
+                label="Select Gym (Auto-maps Mongo ObjectId & Location Slug)"
+                name="gymId"
+                rules={[{ required: true, message: 'Please select a gym' }]}
+                style={{ marginBottom: 14 }}
+                extra="User app automatically calculates distance to this gym and enables direct booking on tap."
               >
-                <Switch
-                  checkedChildren="PRIORITY"
-                  unCheckedChildren="NORMAL"
-                  style={{ backgroundColor: form.getFieldValue('isPriority') ? '#f59e0b' : undefined }}
+                <Select
+                  showSearch
+                  placeholder="Search and select gym..."
+                  loading={gymsLoading}
+                  optionFilterProp="label"
+                  filterOption={(input, option) =>
+                    String(option?.label || '')
+                      .toLowerCase()
+                      .includes(String(input || '').trim().toLowerCase())
+                  }
+                  options={(Array.isArray(gyms) ? gyms : []).map((g) => ({
+                    value: g._id || g.id,
+                    label: `${g.name || 'Gym'} — ${g.area || g.city || 'Chennai'}${g.slug ? ` (/${g.slug})` : ''}`,
+                  }))}
+                  style={{ borderRadius: 8 }}
                 />
               </Form.Item>
-            </Col>
-            <Col span={12}>
+
+              {/* Banner Title */}
               <Form.Item
-                label="Active Status"
-                name="isActive"
-                valuePropName="checked"
-                extra="When active, displayed live in user mobile application carousel."
+                label="Banner Title / Headline"
+                name="title"
+                rules={[{ required: true, message: 'Banner headline is required' }]}
+                style={{ marginBottom: 14 }}
               >
-                <Switch checkedChildren="ACTIVE" unCheckedChildren="HIDDEN" />
+                <Input
+                  placeholder="e.g. 30% Off Pass, Summer Fitness Festival"
+                  maxLength={120}
+                  style={{ borderRadius: 8 }}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                />
               </Form.Item>
-            </Col>
-          </Row>
 
-          {/* Image Upload Zone */}
-          <Form.Item
-            label="Banner Graphic Image"
-            required={!editingBanner}
-            extra="Recommended size: 800x450 or 1200x600. File is automatically optimized to ultra-fast WebP."
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <Upload
-                beforeUpload={handleImageSelect}
-                showUploadList={false}
-                accept="image/*"
+              {/* Subtitle / Description */}
+              <Form.Item label="Subtitle / Tagline (Optional)" name="subtitle" style={{ marginBottom: 14 }}>
+                <Input
+                  placeholder="e.g. Valid on all day passes & weekly workouts"
+                  maxLength={200}
+                  style={{ borderRadius: 8 }}
+                  onChange={(e) => setFormSubtitle(e.target.value)}
+                />
+              </Form.Item>
+
+              {/* Promotional Badge */}
+              <Form.Item
+                label="Promotional Badge Tag"
+                name="badgeText"
+                style={{ marginBottom: 8 }}
+                extra="Quick tags click to auto-fill:"
               >
-                <Button icon={<UploadOutlined />} style={{ borderRadius: 8 }}>
-                  Choose Image File
-                </Button>
-              </Upload>
-
-              {previewImage ? (
-                <div
-                  style={{
-                    position: 'relative',
-                    width: '100%',
-                    height: 180,
-                    borderRadius: 12,
-                    overflow: 'hidden',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#0f172a',
-                  }}
-                >
-                  <img
-                    src={previewImage}
-                    alt="Preview"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: 8,
-                      right: 8,
-                      backgroundColor: 'rgba(0,0,0,0.7)',
-                      color: '#ffffff',
-                      borderRadius: 6,
-                      padding: '4px 8px',
-                      fontSize: 11,
-                      fontWeight: 600,
+                <Input
+                  placeholder="e.g. 30% OFF PASS"
+                  maxLength={50}
+                  style={{ borderRadius: 8 }}
+                  onChange={(e) => setFormBadge(e.target.value)}
+                />
+              </Form.Item>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                {QUICK_BADGES.map((b) => (
+                  <Tag
+                    key={b}
+                    style={{ cursor: 'pointer', borderRadius: 4, fontSize: 11 }}
+                    onClick={() => {
+                      form.setFieldsValue({ badgeText: b });
+                      setFormBadge(b);
                     }}
                   >
-                    Size: ~{imageSizeKb} KB
+                    + {b}
+                  </Tag>
+                ))}
+              </div>
+
+              {/* Priority & Status Switches */}
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    label="Priority Flag"
+                    name="isPriority"
+                    valuePropName="checked"
+                    extra="Floats to top of mobile app"
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Switch
+                      checkedChildren="PRIORITY"
+                      unCheckedChildren="NORMAL"
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    label="Active Status"
+                    name="isActive"
+                    valuePropName="checked"
+                    extra="Live in user mobile carousel"
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Switch checkedChildren="ACTIVE" unCheckedChildren="HIDDEN" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Col>
+
+            {/* Right Column: Image Upload & Live 16:9 Banner Preview */}
+            <Col xs={24} lg={11} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <Form.Item
+                  label="Banner Graphic Image (WebP Auto-Compression)"
+                  required={!editingBanner}
+                  extra="Recommended 16:9 ratio (800x450 or 1200x675). Auto-compressed to WebP."
+                  style={{ marginBottom: 14 }}
+                >
+                  <Upload
+                    beforeUpload={handleImageSelect}
+                    showUploadList={false}
+                    accept="image/*"
+                  >
+                    <Button icon={<UploadOutlined />} style={{ borderRadius: 8, width: '100%' }}>
+                      {previewImage ? 'Replace Image File' : 'Choose Image File'}
+                    </Button>
+                  </Upload>
+                </Form.Item>
+
+                {/* Live Mobile Card Preview */}
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#94a3b8' : '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Live App Carousel Preview
+                  </div>
+                  <div
+                    style={{
+                      position: 'relative',
+                      width: '100%',
+                      aspectRatio: '16 / 9',
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      backgroundColor: isDarkMode ? '#0f172a' : '#1e293b',
+                      border: `1px solid ${isDarkMode ? '#334155' : '#cbd5e1'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      padding: 14,
+                      boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+                    }}
+                  >
+                    {previewImage ? (
+                      <img
+                        src={previewImage}
+                        alt="Preview"
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#94a3b8',
+                          gap: 8,
+                        }}
+                      >
+                        <PictureOutlined style={{ fontSize: 36, opacity: 0.6 }} />
+                        <span style={{ fontSize: 12, fontWeight: 500 }}>No image selected yet</span>
+                      </div>
+                    )}
+
+                    {/* Gradient Overlay for Text Readability */}
+                    {previewImage && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.45) 100%)',
+                        }}
+                      />
+                    )}
+
+                    {/* Top Badges */}
+                    <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Tag color="purple" style={{ fontWeight: 800, fontSize: 11, borderRadius: 4, margin: 0, border: 'none', backgroundColor: '#6366f1', color: '#fff' }}>
+                        {formBadge || 'FEATURED DEAL'}
+                      </Tag>
+                      {previewImage && imageSizeKb > 0 && (
+                        <span
+                          style={{
+                            backgroundColor: 'rgba(0,0,0,0.7)',
+                            color: '#ffffff',
+                            borderRadius: 4,
+                            padding: '2px 6px',
+                            fontSize: 10,
+                            fontWeight: 600,
+                          }}
+                        >
+                          ~{imageSizeKb} KB WebP
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Bottom Headline & Subtitle */}
+                    <div style={{ position: 'relative', zIndex: 2 }}>
+                      <div style={{ color: '#ffffff', fontWeight: 800, fontSize: 15, textShadow: '0 1px 3px rgba(0,0,0,0.9)', lineHeight: 1.25 }}>
+                        {formTitle || 'Banner Headline Appears Here'}
+                      </div>
+                      <div style={{ color: '#e2e8f0', fontSize: 11, marginTop: 4, textShadow: '0 1px 2px rgba(0,0,0,0.9)', lineHeight: 1.3 }}>
+                        {formSubtitle || 'Subtitle or promotional terms appear here'}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              ) : null}
-            </div>
-          </Form.Item>
+              </div>
 
-          {/* Form Actions */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-            <Button onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={submitting}
-              style={{
-                backgroundColor: '#6366f1',
-                borderColor: '#6366f1',
-                fontWeight: 600,
-                borderRadius: 8,
-              }}
-            >
-              {editingBanner ? 'Save Changes' : 'Create & Compress Banner'}
-            </Button>
-          </div>
+              {/* Form Action Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 20, paddingTop: 12, borderTop: isDarkMode ? '1px solid #1e293b' : '1px solid #f1f5f9' }}>
+                <Button onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={submitting}
+                  style={{
+                    backgroundColor: '#6366f1',
+                    borderColor: '#6366f1',
+                    fontWeight: 600,
+                    borderRadius: 8,
+                  }}
+                >
+                  {editingBanner ? 'Save Changes' : 'Create & Compress Banner'}
+                </Button>
+              </div>
+            </Col>
+          </Row>
         </Form>
       </Modal>
     </div>

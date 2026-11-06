@@ -1,6 +1,11 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateDistanceKm } from '../src/controllers/banner.controller.js';
+import {
+  scoreBannerRelevance,
+  tokenizeAndNormalize,
+  getDidYouMeanSuggestion,
+} from '../src/utils/fuzzySearchEngine.js';
 
 describe('Banner Geo Distance & Sorting Unit Tests', () => {
   test('1. calculateDistanceKm computes accurate distance between Mangadu and Porur (~5.5 km)', () => {
@@ -35,5 +40,38 @@ describe('Banner Geo Distance & Sorting Unit Tests', () => {
     assert.equal(result[0].name, 'Anna Nagar Priority Ad');
     assert.equal(result[1].name, 'Mangadu Ad');
     assert.equal(result[2].name, 'Porur Ad');
+  });
+
+  test('5. scoreBannerRelevance scores exact and typo matches across banner fields', () => {
+    const banner = {
+      title: 'Zumba & Cardio Fest',
+      subtitle: 'Join high-energy dance batches in Porur',
+      badgeText: 'FLAT 40% OFF',
+      gymName: 'Pulse Fitness & Zumba Lounge',
+      gymArea: 'Porur',
+      gymSlug: 'pulse-fitness-zumba-lounge',
+    };
+
+    // Typo matching: "fitnes" -> "fitness", "porr" -> "porur"
+    const tokens = tokenizeAndNormalize('fitnes porr');
+    const score = scoreBannerRelevance(banner, tokens);
+    assert.ok(score > 0, `Expected score > 0 for typo match, got ${score}`);
+
+    // Irrelevant query
+    const irrelevantTokens = tokenizeAndNormalize('completelyunrelated');
+    assert.equal(scoreBannerRelevance(banner, irrelevantTokens), 0);
+  });
+
+  test('6. Banner numbered pagination calculation enforces bounds', () => {
+    const total = 45;
+    const limit = 10;
+    const page = 2;
+    const skip = (page - 1) * limit;
+    const pages = Math.ceil(total / limit);
+    const hasMore = skip + limit < total;
+
+    assert.equal(skip, 10);
+    assert.equal(pages, 5);
+    assert.equal(hasMore, true);
   });
 });
