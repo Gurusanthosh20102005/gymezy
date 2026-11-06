@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Clipboard from 'expo-clipboard';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
@@ -138,14 +137,6 @@ export const MyMembershipsScreen = ({ navigation }) => {
   ).length;
   const cancelledCount = memberships.filter((m) => m.status === 'Cancelled').length;
 
-  const copyToClipboard = async (text, label) => {
-    await Clipboard.setStringAsync(text);
-    showToast({
-      message: `${label} copied to clipboard`,
-      isSuccess: true,
-    });
-  };
-
   const openUpgradeFlow = () => {
     navigation.navigate('HomeTabs');
   };
@@ -181,7 +172,6 @@ export const MyMembershipsScreen = ({ navigation }) => {
           style={styles.promoBanner}
         >
           <View style={{ flex: 1 }}>
-            <Text style={styles.promoSub}>Upgrade Your Fitness Journey</Text>
             <Text style={styles.promoTitle}>Upgrade Membership</Text>
             <Text style={styles.promoDesc}>Unlock more benefits and achieve your goals</Text>
 
@@ -367,22 +357,10 @@ export const MyMembershipsScreen = ({ navigation }) => {
                   </View>
                 </View>
 
-                {/* Membership ID Row */}
+                {/* Membership ID Row (Static info display) */}
                 <View style={styles.idRow}>
                   <Text style={[styles.idLabel, { color: colors.subtitle }]}>Membership ID</Text>
-                  <TouchableOpacity
-                    onPress={() => copyToClipboard(mbr.membershipId || mbr.id, 'Membership ID')}
-                    style={styles.copyRow}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.idVal, { color: primaryNavy }]}>{mbr.membershipId || mbr.id}</Text>
-                    <MaterialIcons
-                      name="content-copy"
-                      size={13}
-                      color={primaryNavy}
-                      style={{ marginLeft: 4 }}
-                    />
-                  </TouchableOpacity>
+                  <Text style={[styles.idVal, { color: primaryNavy }]}>{mbr.membershipId || mbr.id}</Text>
                 </View>
 
                 {/* Validity Dual Box */}

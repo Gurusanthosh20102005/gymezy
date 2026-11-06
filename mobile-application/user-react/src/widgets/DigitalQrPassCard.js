@@ -163,6 +163,7 @@ export const DigitalQrPassCard = ({
   isCustomDates = false,
   isTodayValid = true,
   nextSessionDateFormatted = null,
+  hideHeaderTitleRow = false,
 }) => {
   const { isDark, colors } = useTheme();
   const { showToast } = useToast();
@@ -218,80 +219,83 @@ export const DigitalQrPassCard = ({
       ]}
     >
       {/* 1. Pass Header */}
-      <View style={styles.headerSection}>
-        <View style={styles.titleRow}>
-          <View
-            style={[
-              styles.iconBadge,
-              {
-                backgroundColor: showLogo
-                  ? (isDark ? '#1E293B' : '#F1F5F9')
-                  : (isDark ? 'rgba(147, 197, 253, 0.12)' : 'rgba(0, 56, 130, 0.12)'),
-                borderColor: showLogo
-                  ? colors.border
-                  : (isDark ? 'rgba(147, 197, 253, 0.2)' : 'rgba(0, 56, 130, 0.2)'),
-                padding: showLogo ? 0 : 10,
-                overflow: 'hidden',
-                width: 46,
-                height: 46,
-              },
-            ]}
-          >
-            {showLogo ? (
-              <Image
-                source={{ uri: gymImageUrl }}
-                style={styles.gymLogoImg}
-                resizeMode="cover"
-                onError={() => setLogoFailed(true)}
-              />
-            ) : (
-              <MaterialIcons name={iconName} size={24} color={effectiveAccent} />
-            )}
-          </View>
-
-          <View style={styles.titleTextContainer}>
-            <Text style={[styles.gymNameText, { color: colors.text }]} numberOfLines={1}>
-              {gymName}
-            </Text>
-            <Text style={[styles.subtitleText, { color: effectiveAccent }]}>
-              {subtitle}
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.statusBadge,
-              {
-                backgroundColor: statusTheme.bg,
-                borderColor: statusTheme.border,
-              },
-            ]}
-          >
+      <View style={[styles.headerSection, hideHeaderTitleRow && { paddingBottom: 12 }]}>
+        {!hideHeaderTitleRow && (
+          <View style={styles.titleRow}>
             <View
               style={[
-                styles.statusDot,
+                styles.iconBadge,
                 {
-                  backgroundColor: statusTheme.text,
-                },
-              ]}
-            />
-            <Text
-              style={[
-                styles.statusText,
-                {
-                  color: statusTheme.text,
+                  backgroundColor: showLogo
+                    ? (isDark ? '#1E293B' : '#F1F5F9')
+                    : (isDark ? 'rgba(147, 197, 253, 0.12)' : 'rgba(0, 56, 130, 0.12)'),
+                  borderColor: showLogo
+                    ? colors.border
+                    : (isDark ? 'rgba(147, 197, 253, 0.2)' : 'rgba(0, 56, 130, 0.2)'),
+                  padding: showLogo ? 0 : 10,
+                  overflow: 'hidden',
+                  width: 46,
+                  height: 46,
                 },
               ]}
             >
-              {normStatus}
-            </Text>
+              {showLogo ? (
+                <Image
+                  source={{ uri: gymImageUrl }}
+                  style={styles.gymLogoImg}
+                  resizeMode="cover"
+                  onError={() => setLogoFailed(true)}
+                />
+              ) : (
+                <MaterialIcons name={iconName} size={24} color={effectiveAccent} />
+              )}
+            </View>
+
+            <View style={styles.titleTextContainer}>
+              <Text style={[styles.gymNameText, { color: colors.text }]} numberOfLines={1}>
+                {gymName}
+              </Text>
+              <Text style={[styles.subtitleText, { color: effectiveAccent }]}>
+                {subtitle}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor: statusTheme.bg,
+                  borderColor: statusTheme.border,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.statusDot,
+                  {
+                    backgroundColor: statusTheme.text,
+                  },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.statusText,
+                  {
+                    color: statusTheme.text,
+                  },
+                ]}
+              >
+                {normStatus}
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Date Strip */}
         <View
           style={[
             styles.dateStrip,
+            hideHeaderTitleRow && { marginTop: 0 },
             {
               backgroundColor: isDark ? '#262626' : '#F8FAFC',
               borderColor: colors.border,

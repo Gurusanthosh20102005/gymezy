@@ -444,7 +444,7 @@ export const HomeScreen = ({ navigation }) => {
     selectedWorkout,
   ]);
 
-  // Server-Side Infinite Scroll: Load Next Page
+  // Server-Side Pagination: Load Next Page on "View More" click
   const loadMoreGyms = async () => {
     if (isLoadingMoreGyms || isLoadingGyms || !hasMoreGyms) return;
 
@@ -486,13 +486,8 @@ export const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const handleHomeScroll = (event) => {
-    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
-    const paddingToBottom = 400;
-    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
-    if (isCloseToBottom && hasMoreGyms && !isLoadingMoreGyms && !isLoadingGyms) {
-      loadMoreGyms();
-    }
+  const handleHomeScroll = () => {
+    // Auto-loading disabled in favor of manual "View More Gyms" button
   };
 
   const handleDetectLocation = async (showFeedback = true) => {
@@ -1392,13 +1387,37 @@ export const HomeScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Infinite Scroll Footer: Loading indicator & End of list message */}
-        {isLoadingMoreGyms && (
-          <View style={styles.loadingMoreContainer}>
-            <ActivityIndicator size="small" color={AppColors.primaryColor} />
-            <Text style={[styles.loadingMoreText, { color: colors.subtitle }]}>
-              Loading more gyms near {userLocation.name}...
-            </Text>
+        {/* Pagination Footer: Manual "View More Gyms" button & End of list message */}
+        {hasMoreGyms && !isLoadingGyms && (
+          <View style={styles.viewMoreContainer}>
+            <TouchableOpacity
+              style={[
+                styles.viewMoreBtn,
+                {
+                  backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                  borderColor: isDark ? '#334155' : '#CBD5E1',
+                },
+              ]}
+              onPress={loadMoreGyms}
+              disabled={isLoadingMoreGyms}
+              activeOpacity={0.8}
+            >
+              {isLoadingMoreGyms ? (
+                <>
+                  <ActivityIndicator size="small" color={AppColors.primaryColor} />
+                  <Text style={[styles.viewMoreText, { color: colors.text, marginLeft: 8 }]}>
+                    Loading More Gyms...
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.viewMoreText, { color: colors.text, marginRight: 6 }]}>
+                    View More Gyms
+                  </Text>
+                  <MaterialIcons name="expand-more" size={20} color={colors.text} />
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         )}
 
@@ -2962,6 +2981,34 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 13.5,
     fontWeight: '600',
+  },
+  viewMoreContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 24,
+    borderWidth: 1.2,
+    minHeight: 46,
+    width: '100%',
+    maxWidth: 260,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  viewMoreText: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   loadingMoreContainer: {
     flexDirection: 'row',

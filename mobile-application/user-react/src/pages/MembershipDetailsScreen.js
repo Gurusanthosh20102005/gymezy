@@ -41,7 +41,20 @@ const SmoothGradientStar = ({
   const inactiveFill = isDark ? 'rgba(71, 85, 105, 0.15)' : 'rgba(203, 213, 225, 0.25)';
 
   return (
-    <View style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }, style]}>
+    <View
+      style={[
+        {
+          width: size,
+          height: size,
+          minWidth: size,
+          minHeight: size,
+          flexShrink: 0,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        style,
+      ]}
+    >
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Defs>
           <SvgLinearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
@@ -991,7 +1004,10 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                 Rate Us
               </Text>
               {hasPersonalTrainer && (
-                <Text style={[styles.softRateSubLabel, { color: colors.subtitle }]}>
+                <Text
+                  style={[styles.softRateSubLabel, { color: colors.subtitle }]}
+                  numberOfLines={1}
+                >
                   • Gym & Trainer
                 </Text>
               )}
@@ -1009,7 +1025,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                   activeOpacity={0.7}
                 >
                   <SmoothGradientStar
-                    size={24}
+                    size={22}
                     filled={star <= gymRating}
                     id={`soft-bar-${star}`}
                     isDark={isDark}
@@ -1036,6 +1052,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
             isInReview={Boolean(pendingSwitchRequest)}
             iconName="workspace-premium"
             accentColor={primaryNavy}
+            hideHeaderTitleRow={true}
           />
         </View>
 
@@ -2416,7 +2433,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                                 activeOpacity={0.7}
                               >
                                 <SmoothGradientStar
-                                  size={38}
+                                  size={34}
                                   filled={star <= gymRating}
                                   id={`modal-gym-${star}`}
                                   isDark={isDark}
@@ -2475,7 +2492,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                                 activeOpacity={0.7}
                               >
                                 <SmoothGradientStar
-                                  size={38}
+                                  size={34}
                                   filled={star <= trainerRating}
                                   id={`modal-tr-${star}`}
                                   isDark={isDark}
@@ -3164,6 +3181,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    flexShrink: 1,
+    marginRight: 8,
   },
   softRateLabel: {
     fontSize: 14,
@@ -3174,13 +3193,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginLeft: 6,
+    flexShrink: 1,
   },
   softStarsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
+    gap: 4,
   },
   softStarBtn: {
-    padding: 3,
+    padding: 2,
+    flexShrink: 0,
   },
 
   /* Rating Modal & Tabs */
@@ -3235,11 +3258,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
+    flexWrap: 'nowrap',
+    gap: 6,
   },
   modalStarBtn: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 4,
+    flexShrink: 0,
   },
   starBadgeLabel: {
     fontSize: 16,
