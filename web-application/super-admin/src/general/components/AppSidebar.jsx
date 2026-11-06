@@ -65,8 +65,8 @@ export const AppSidebar = ({
   const totalGyms = gymCounts?.total ?? (gyms.length > 0 ? gyms.length : (stats.registeredGyms?.total || stats.totalGyms || 0));
   const pendingCount = gymCounts?.pending ?? (gyms.length > 0
     ? gyms.filter(
-        (g) => g.approvalStatus === 'Pending Approval' || g.status === 'Pending' || g.approvalStatus === 'Pending'
-      ).length
+      (g) => g.approvalStatus === 'Pending Approval' || g.status === 'Pending' || g.approvalStatus === 'Pending'
+    ).length
     : (stats.pendingApprovalsCount || (Array.isArray(stats.pendingApprovals) ? stats.pendingApprovals.length : 0)));
   const approvedCount = gymCounts?.approved ?? (gyms.length > 0
     ? gyms.filter((g) => g.approvalStatus === 'Approved' || g.status === 'Active').length
@@ -109,7 +109,7 @@ export const AppSidebar = ({
           key: '/admin/gyms?tab=pending',
           label: (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 2 }}>
-              <span>Onboarding Requests</span>
+              <span>Requests</span>
               {pendingCount > 0 && (
                 <span
                   style={{
@@ -247,7 +247,7 @@ export const AppSidebar = ({
       location.pathname === '/admin/memberships' ||
       location.pathname === '/admin/membership'
     ) {
-      const search = location.search || '?tab=all';
+      const search = location.search || '?tab=active';
       return `/admin/memberships${search}`;
     }
     if (location.pathname === '/admin/bookings') {

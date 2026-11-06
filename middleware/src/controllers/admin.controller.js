@@ -339,13 +339,24 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
  * Super Admin Customers & Users List with Server-Side Pagination, Search, Filter & Aggregated Metrics
  */
 export const getAdminCustomers = asyncHandler(async (req, res) => {
+  const isFetchAll = req.query.export === 'true' || req.query.limit === 'all' || req.query.limit === '0' || parseInt(req.query.limit, 10) === 0;
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
-  const skip = (page - 1) * limit;
-  const { search, status, role } = req.query;
+  const limit = isFetchAll ? 0 : Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
+  const skip = limit > 0 ? (page - 1) * limit : 0;
+  const { search, status, role, startDate, endDate } = req.query;
 
   // Build filter
   const filter = {};
+
+  if (startDate && endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+      s.setHours(0, 0, 0, 0);
+      e.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: s, $lte: e };
+    }
+  }
 
   // Role filter: default to CUSTOMER or allow role param (e.g. all or specific role)
   if (role && role !== 'all') {
@@ -697,12 +708,23 @@ export const toggleCustomerStatus = asyncHandler(async (req, res) => {
  * Super Admin Live Bookings Fleet (Session Bookings & Group Classes) with Server-Side Pagination & Filters
  */
 export const getAdminBookings = asyncHandler(async (req, res) => {
+  const isFetchAll = req.query.export === 'true' || req.query.limit === 'all' || req.query.limit === '0' || parseInt(req.query.limit, 10) === 0;
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
-  const skip = (page - 1) * limit;
+  const limit = isFetchAll ? 0 : Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+  const skip = limit > 0 ? (page - 1) * limit : 0;
 
-  const { type, status, gymId, search } = req.query;
+  const { type, status, gymId, search, startDate, endDate } = req.query;
   const query = {};
+
+  if (startDate && endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+      s.setHours(0, 0, 0, 0);
+      e.setHours(23, 59, 59, 999);
+      query.createdAt = { $gte: s, $lte: e };
+    }
+  }
 
   // Filter by Booking Type: SESSION (SECTION / GYM_SESSION) vs GROUP_CLASS
   if (type) {
@@ -889,14 +911,29 @@ export async function fetchTransactionsFleet({
   search = '',
   paymentMode = 'all',
   status = 'all',
+  startDate = null,
+  endDate = null,
+  exportAll = false,
 }) {
+  const isFetchAll = exportAll || limit === 'all' || limit === '0' || limit === 0 || parseInt(limit, 10) === 0;
   const safePage = Math.max(1, parseInt(page, 10) || 1);
-  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
-  const skip = (safePage - 1) * safeLimit;
+  const safeLimit = isFetchAll ? 0 : Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+  const skip = safeLimit > 0 ? (safePage - 1) * safeLimit : 0;
 
   // Build query for Bookings and Memberships
   const bookingQuery = {};
   const membershipQuery = {};
+
+  if (startDate && endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+      s.setHours(0, 0, 0, 0);
+      e.setHours(23, 59, 59, 999);
+      bookingQuery.createdAt = { $gte: s, $lte: e };
+      membershipQuery.createdAt = { $gte: s, $lte: e };
+    }
+  }
 
   // Scope to gymId if provided
   let gymObjectId = null;
@@ -1137,8 +1174,8 @@ export async function fetchTransactionsFleet({
   );
 
   const totalRecords = combined.length;
-  const paginatedTransactions = combined.slice(skip, skip + safeLimit);
-  const totalPages = Math.ceil(totalRecords / safeLimit) || 1;
+  const paginatedTransactions = isFetchAll ? combined : combined.slice(skip, skip + safeLimit);
+  const totalPages = isFetchAll ? 1 : Math.ceil(totalRecords / (safeLimit || 1)) || 1;
 
   // Compute stats
   const bStat = bookingStats[0] || { totalCount: 0, completedCount: 0, pendingCount: 0, failedCount: 0, totalAmount: 0 };
@@ -1165,18 +1202,18 @@ export async function fetchTransactionsFleet({
     transactions: paginatedTransactions,
     stats,
     pagination: {
-      page: safePage,
-      limit: safeLimit,
+      page: isFetchAll ? 1 : safePage,
+      limit: isFetchAll ? totalRecords : safeLimit,
       totalRecords,
       totalPages,
-      hasNextPage: safePage < totalPages,
-      hasPrevPage: safePage > 1,
+      hasNextPage: isFetchAll ? false : safePage < totalPages,
+      hasPrevPage: isFetchAll ? false : safePage > 1,
     },
   };
 }
 
 export const getAdminTransactions = asyncHandler(async (req, res) => {
-  const { page, limit, search, paymentMode, status, gymId } = req.query;
+  const { page, limit, search, paymentMode, status, gymId, startDate, endDate, export: exportFlag } = req.query;
 
   const result = await fetchTransactionsFleet({
     gymId,
@@ -1185,6 +1222,9 @@ export const getAdminTransactions = asyncHandler(async (req, res) => {
     search,
     paymentMode,
     status,
+    startDate,
+    endDate,
+    exportAll: exportFlag === 'true' || limit === '0' || limit === 'all',
   });
 
   return res.status(200).json(
@@ -1261,9 +1301,10 @@ export const getAdminPartnerSubscriptions = asyncHandler(async (req, res) => {
     }
   }
 
+  const isFetchAll = req.query.export === 'true' || limit === 'all' || limit === '0' || Number.parseInt(limit, 10) === 0;
   const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 10));
-  const skip = (pageNum - 1) * limitNum;
+  const limitNum = isFetchAll ? 0 : Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 10));
+  const skip = limitNum > 0 ? (pageNum - 1) * limitNum : 0;
 
   // Global KPIs evaluated in parallel
   const [
@@ -1386,7 +1427,7 @@ export const getAdminPartnerSubscriptions = asyncHandler(async (req, res) => {
     });
 
     totalCount = scored.length;
-    paginatedPartners = scored.slice(skip, skip + limitNum);
+    paginatedPartners = isFetchAll ? scored : scored.slice(skip, skip + limitNum);
   } else {
     const [count, rawGyms] = await Promise.all([
       Gym.countDocuments(query),
@@ -1476,11 +1517,12 @@ export const updateAdminPartnerSubscription = asyncHandler(async (req, res) => {
  * Super Admin Live Customer Reports Fleet with Database Aggregation, Fuzzy Search & KPI Metrics
  */
 export const getAdminCustomerReports = asyncHandler(async (req, res) => {
+  const isFetchAll = req.query.export === 'true' || req.query.limit === 'all' || req.query.limit === '0' || parseInt(req.query.limit, 10) === 0;
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
-  const skip = (page - 1) * limit;
+  const limit = isFetchAll ? 0 : Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
+  const skip = limit > 0 ? (page - 1) * limit : 0;
 
-  const { search, status, customerType, bookingType } = req.query;
+  const { search, status, customerType, bookingType, startDate, endDate } = req.query;
 
   // Global KPI Metrics computed across live database collections
   const [
@@ -1525,6 +1567,15 @@ export const getAdminCustomerReports = asyncHandler(async (req, res) => {
   const userFilter = { role: USER_ROLES.CUSTOMER };
   if (status && status !== 'all' && status !== 'All') {
     userFilter.isActive = status.toLowerCase() === 'active';
+  }
+  if (startDate && endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+      s.setHours(0, 0, 0, 0);
+      e.setHours(23, 59, 59, 999);
+      userFilter.createdAt = { $gte: s, $lte: e };
+    }
   }
 
   const allCustomers = await User.find(userFilter)
@@ -1684,8 +1735,8 @@ export const getAdminCustomerReports = asyncHandler(async (req, res) => {
   }
 
   const totalRecords = rows.length;
-  const paginatedCustomers = rows.slice(skip, skip + limit);
-  const totalPages = Math.ceil(totalRecords / limit) || 1;
+  const paginatedCustomers = isFetchAll ? rows : rows.slice(skip, skip + limit);
+  const totalPages = isFetchAll ? 1 : Math.ceil(totalRecords / (limit || 1)) || 1;
 
   return res.status(200).json(
     ApiResponse.success(
@@ -1693,12 +1744,12 @@ export const getAdminCustomerReports = asyncHandler(async (req, res) => {
         customers: paginatedCustomers,
         stats,
         pagination: {
-          page,
-          limit,
+          page: isFetchAll ? 1 : page,
+          limit: isFetchAll ? totalRecords : limit,
           totalRecords,
           totalPages,
-          hasNextPage: page < totalPages,
-          hasPrevPage: page > 1,
+          hasNextPage: isFetchAll ? false : page < totalPages,
+          hasPrevPage: isFetchAll ? false : page > 1,
         },
         didYouMean: didYouMean || null,
       },

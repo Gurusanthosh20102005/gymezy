@@ -53,6 +53,7 @@ import {
   SaveOutlined,
   ArrowRightOutlined,
   ArrowLeftOutlined,
+  StarFilled,
   CheckOutlined,
   FilePdfOutlined,
   FileImageOutlined,
@@ -67,6 +68,8 @@ import {
 import confetti from 'canvas-confetti';
 import { useTheme } from '../../theme/ThemeContext';
 import { apiClient } from '../../services/apiClient';
+import { useDebounce } from '../../hooks/useDebounce';
+import { getDidYouMeanSuggestion } from '../../utils/fuzzySearchEngine';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -84,6 +87,14 @@ const getGymInitials = (name) => {
 };
 
 export const INITIAL_EMPLOYEES = [];
+
+export const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 /**
  * Automatically determine system access type from role (Automatic RBAC)
@@ -266,10 +277,11 @@ export const EmployeeManagement = ({
   const [isSubmittingTemp, setIsSubmittingTemp] = useState(false);
   const [isAttachingDoc, setIsAttachingDoc] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(8);
+  const [pageSize, setPageSize] = useState(10);
   const [totalServerEmployees, setTotalServerEmployees] = useState(0);
 
   const [namePhoneSearch, setNamePhoneSearch] = useState('');
+  const debouncedNamePhoneSearch = useDebounce(namePhoneSearch, 350);
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [attendanceFilter, setAttendanceFilter] = useState('ALL');
@@ -277,6 +289,15 @@ export const EmployeeManagement = ({
   const [selectedDateRange, setSelectedDateRange] = useState(`${todayFormatted} - ${oneYearLaterFormatted}`);
   const [isDifferentDays, setIsDifferentDays] = useState(false);
   const [dayWiseHours, setDayWiseHours] = useState({});
+
+  const didYouMean = useMemo(() => {
+    return getDidYouMeanSuggestion(debouncedNamePhoneSearch);
+  }, [debouncedNamePhoneSearch]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedNamePhoneSearch, roleFilter, statusFilter, staffTypeFilter]);
 
   // Fetch live employees from server with pagination & filters
   const loadEmployees = async (page = currentPage, limit = pageSize) => {
@@ -288,7 +309,7 @@ export const EmployeeManagement = ({
       };
       if (gymId) params.gymId = gymId;
       if (gymPartnerId) params.gymPartnerId = gymPartnerId;
-      if (namePhoneSearch) params.search = namePhoneSearch;
+      if (debouncedNamePhoneSearch?.trim()) params.search = debouncedNamePhoneSearch.trim();
       if (roleFilter && roleFilter !== 'ALL') params.role = roleFilter;
       if (statusFilter && statusFilter !== 'ALL') params.status = statusFilter;
       if (staffTypeFilter && staffTypeFilter !== 'ALL') params.type = staffTypeFilter;
@@ -309,7 +330,7 @@ export const EmployeeManagement = ({
 
       if (normalized.length > 0) {
         setEmployeesList(normalized);
-      } else if (mappedGymStaff.length > 0 && !namePhoneSearch && roleFilter === 'ALL' && statusFilter === 'ALL' && staffTypeFilter === 'ALL') {
+      } else if (mappedGymStaff.length > 0 && !debouncedNamePhoneSearch && roleFilter === 'ALL' && statusFilter === 'ALL' && staffTypeFilter === 'ALL') {
         setEmployeesList(mappedGymStaff);
         setTotalServerEmployees(mappedGymStaff.length);
       } else {
@@ -329,7 +350,7 @@ export const EmployeeManagement = ({
 
   useEffect(() => {
     loadEmployees(currentPage, pageSize);
-  }, [gymId, gymPartnerId, currentPage, pageSize, namePhoneSearch, roleFilter, statusFilter, staffTypeFilter]);
+  }, [gymId, gymPartnerId, currentPage, pageSize, debouncedNamePhoneSearch, roleFilter, statusFilter, staffTypeFilter]);
 
   const currentMonthName = useMemo(() => {
     return new Date().toLocaleDateString('en-GB', { month: 'long' });
@@ -994,14 +1015,40 @@ export const EmployeeManagement = ({
     {
       title: 'Employee Name',
       key: 'employeeName',
-      render: (_, record) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar src={record.avatar} size={38} style={{ flexShrink: 0 }} />
-          <div style={{ fontWeight: 650, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13 }}>
-            {record.name}
+      render: (_, record) => {
+        const hasPic = hasValidProfilePic(record.avatar);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Avatar
+              src={hasPic ? record.avatar : undefined}
+              icon={!hasPic ? <UserOutlined style={{ fontSize: 18 }} /> : undefined}
+              size={38}
+              style={{
+                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            />
+            <div>
+              <div style={{ fontWeight: 650, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13 }}>
+                {record.name}
+              </div>
+              {record.role === 'Trainer' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, fontSize: 11, color: '#f59e0b' }}>
+                  <StarFilled style={{ fontSize: 10 }} />
+                  <strong>{Number(record.rating || 4.9).toFixed(1)}</strong>
+                  <span style={{ color: isDarkMode ? '#888888' : '#64748b' }}>
+                    ({record.reviewsCount || 0} reviews)
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: 'Role',
@@ -1833,14 +1880,58 @@ export const EmployeeManagement = ({
             </div>
           </div>
         }
-        style={{
-          backgroundColor: 'var(--bg-surface-elevated)',
-          borderColor: 'var(--border-color)',
-          borderRadius: 'var(--radius-base)',
-          boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
-        }}
-        styles={{ body: { padding: '16px 20px' } }}
       >
+        {/* Typo-Tolerant "Did You Mean" Suggestion Banner */}
+        {didYouMean &&
+          debouncedNamePhoneSearch &&
+          didYouMean.toLowerCase() !== debouncedNamePhoneSearch.toLowerCase().trim() && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '12px 18px',
+                borderRadius: 'var(--radius-base)',
+                backgroundColor: isDarkMode ? '#1e293b' : '#eff6ff',
+                border: `1px solid ${isDarkMode ? '#3b82f6' : '#bfdbfe'}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: isDarkMode ? '#93c5fd' : '#1e40af' }}>
+                <SearchOutlined style={{ color: '#3b82f6' }} />
+                <span>
+                  Did you mean:{' '}
+                  <strong
+                    onClick={() => {
+                      setNamePhoneSearch(didYouMean);
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      color: '#2563eb',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    {didYouMean}
+                  </strong>
+                  ?
+                </span>
+              </div>
+              <Button
+                size="small"
+                type="primary"
+                ghost
+                onClick={() => {
+                  setNamePhoneSearch(didYouMean);
+                }}
+                style={{ fontWeight: 700, fontSize: 12, borderRadius: 6 }}
+              >
+                Search for &ldquo;{didYouMean}&rdquo;
+              </Button>
+            </div>
+          )}
+
         <Table
           loading={isLoadingEmployees}
           pagination={false}
@@ -1863,33 +1954,10 @@ export const EmployeeManagement = ({
             borderTop: `1px solid ${isDarkMode ? '#1e1e1e' : '#f1f5f9'}`,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
-              {totalServerEmployees === 0
-                ? 'Showing 0 employees'
-                : `Showing ${Math.min((currentPage - 1) * pageSize + 1, totalServerEmployees)} to ${Math.min(currentPage * pageSize, totalServerEmployees)} of ${totalServerEmployees} employee${totalServerEmployees === 1 ? '' : 's'}`}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, color: isDarkMode ? '#8c8c8c' : '#64748b' }}>Show</span>
-              <Select
-                value={pageSize}
-                onChange={(newSize) => {
-                  setPageSize(newSize);
-                  setCurrentPage(1);
-                }}
-                options={[
-                  { value: 5, label: '5 / page' },
-                  { value: 8, label: '8 / page' },
-                  { value: 10, label: '10 / page' },
-                  { value: 20, label: '20 / page' },
-                  { value: 50, label: '50 / page' },
-                  { value: 100, label: '100 / page' },
-                ]}
-                size="small"
-                style={{ width: 115 }}
-              />
-            </div>
+          <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
+            {totalServerEmployees === 0
+              ? 'Showing 0 employees'
+              : `Showing ${totalServerEmployees > 0 ? (currentPage - 1) * pageSize + 1 : 0} to ${Math.min(currentPage * pageSize, totalServerEmployees)} of ${totalServerEmployees} employee${totalServerEmployees === 1 ? '' : 's'}`}
           </div>
 
           <Pagination
@@ -1898,11 +1966,14 @@ export const EmployeeManagement = ({
               setCurrentPage(p);
               if (ps && ps !== pageSize) {
                 setPageSize(ps);
+                setCurrentPage(1);
               }
             }}
             total={totalServerEmployees}
             pageSize={pageSize}
-            showSizeChanger={false}
+            pageSizeOptions={['10', '20', '50', '100']}
+            showSizeChanger
+            showQuickJumper
           />
         </div>
       </Card>
@@ -1973,12 +2044,18 @@ export const EmployeeManagement = ({
                   title="Click to change employee photo"
                 >
                   <Avatar
-                    src={editPhoto || selectedEmployee.avatar}
+                    src={hasValidProfilePic(editPhoto || selectedEmployee.avatar) ? (editPhoto || selectedEmployee.avatar) : undefined}
+                    icon={!hasValidProfilePic(editPhoto || selectedEmployee.avatar) ? <UserOutlined style={{ fontSize: 28 }} /> : undefined}
                     size={64}
-                    style={{ border: '2px solid #722ed1' }}
-                  >
-                    {getGymInitials(selectedEmployee.name)}
-                  </Avatar>
+                    style={{
+                      border: '2px solid #722ed1',
+                      backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                      color: '#6366f1',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  />
                   <div
                     style={{
                       position: 'absolute',
@@ -4408,7 +4485,20 @@ export const EmployeeManagement = ({
                 marginBottom: 18,
               }}
             >
-              <Avatar src={addedEmployeeData.avatar} size={60} style={{ border: '2px solid #722ed1', flexShrink: 0 }} />
+              <Avatar
+                src={hasValidProfilePic(addedEmployeeData.avatar) ? addedEmployeeData.avatar : undefined}
+                icon={!hasValidProfilePic(addedEmployeeData.avatar) ? <UserOutlined style={{ fontSize: 26 }} /> : undefined}
+                size={60}
+                style={{
+                  border: '2px solid #722ed1',
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              />
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
                   {addedEmployeeData.name}

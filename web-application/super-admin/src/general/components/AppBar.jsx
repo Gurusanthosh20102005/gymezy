@@ -9,10 +9,19 @@ import {
   DownOutlined,
   HomeOutlined,
   ReloadOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { useAuth } from '../../hooks';
 import { useRefresh } from '../../context/RefreshContext';
+
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 const { Header } = Layout;
 
@@ -44,6 +53,11 @@ export const AppBar = ({
   const { isRefreshing, triggerRefresh } = useRefresh();
 
   const currentUser = userProp || authUser || null;
+  const [avatarLoadFailed, setAvatarLoadFailed] = React.useState(false);
+
+  const userAvatar = currentUser?.profilePicture || currentUser?.avatar;
+  const hasPic = hasValidProfilePic(userAvatar);
+  const showImage = hasPic && !avatarLoadFailed;
 
   const currentTitle = ROUTE_NAMES[location.pathname] || 'Dashboard';
 
@@ -123,13 +137,6 @@ export const AppBar = ({
 
   const displayName = currentUser?.fullName || currentUser?.name || 'Super Admin';
   const roleLabel = currentUser?.role ? currentUser.role.replace('_', ' ') : 'Master Admin';
-
-  const userInitials = React.useMemo(() => {
-    if (!displayName) return 'SA';
-    const parts = displayName.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }, [displayName]);
 
   return (
     <Header
@@ -221,17 +228,23 @@ export const AppBar = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
             <Badge dot status="success" offset={[-2, 32]}>
               <Avatar
-                src={currentUser?.avatar || undefined}
-                style={{
-                  backgroundColor: '#003882',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  border: '2px solid rgba(0, 56, 130, 0.15)',
+                src={showImage ? userAvatar : undefined}
+                icon={!showImage ? <UserOutlined style={{ fontSize: 18 }} /> : undefined}
+                onError={() => {
+                  setAvatarLoadFailed(true);
+                  return false;
                 }}
                 size={36}
-              >
-                {userInitials}
-              </Avatar>
+                style={{
+                  backgroundColor: showImage ? 'transparent' : (isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe'),
+                  color: showImage ? 'inherit' : (isDarkMode ? '#818cf8' : '#4338ca'),
+                  fontWeight: 700,
+                  border: isDarkMode ? '2px solid rgba(129, 140, 248, 0.3)' : '2px solid rgba(67, 56, 202, 0.2)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              />
             </Badge>
             <div
               className="hide-mobile"

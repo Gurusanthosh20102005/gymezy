@@ -38,6 +38,8 @@ import {
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { customerService } from '../services/customerService';
+import { ExportModal } from '../general/components/ExportModal';
+import { downloadCSV, getDefaultExportFileName } from '../utils/exportHelper';
 
 const { Option } = Select;
 
@@ -168,32 +170,72 @@ export const CustomersManagement = () => {
     }
   };
 
-  // Export Customer List as CSV
-  const handleExportCSV = () => {
-    if (customers.length === 0) {
-      message.warning('No customer records available to export.');
-      return;
+  // Server-Side Export Modal & Execution
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleOpenExportModal = () => {
+    setIsExportModalOpen(true);
+  };
+
+  const executeExport = async ({ fileName, scope, dateRange }) => {
+    setIsExporting(true);
+    try {
+      const params = {
+        export: true,
+        limit: 0,
+        page: 1,
+      };
+
+      if (scope === 'filtered') {
+        if (searchQuery.trim()) params.search = searchQuery.trim();
+        if (statusFilter !== 'all') params.status = statusFilter;
+        if (roleFilter !== 'all') params.role = roleFilter;
+      } else if (scope === 'custom' && dateRange) {
+        params.startDate = dateRange[0].toISOString();
+        params.endDate = dateRange[1].toISOString();
+      }
+
+      const res = await customerService.getCustomers(params);
+      const list = res.customers || [];
+      if (list.length === 0) {
+        message.warning('No customer records found matching the requested scope.');
+        return;
+      }
+
+      const headers = [
+        'Customer ID',
+        'Full Name',
+        'Phone Number',
+        'Email Address',
+        'Role',
+        'Status',
+        'Joined Date',
+        'Total Bookings',
+        'Total Revenue (INR)',
+      ];
+
+      const rows = list.map((c) => [
+        c.customerId || '',
+        c.name || c.fullName || '',
+        c.phone || '',
+        c.email || '',
+        c.role || 'CUSTOMER',
+        c.status || (c.isActive ? 'Active' : 'Inactive'),
+        c.joinDate || (c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-GB') : '—'),
+        c.totalBookings || c.metrics?.totalBookings || 0,
+        c.totalRevenue || c.metrics?.totalRevenue || 0,
+      ]);
+
+      downloadCSV(fileName, headers, rows);
+      message.success(`Successfully exported ${list.length} customer records to ${fileName}.csv`);
+      setIsExportModalOpen(false);
+    } catch (err) {
+      console.error('Export failed:', err);
+      message.error(err.message || 'Failed to export customer records');
+    } finally {
+      setIsExporting(false);
     }
-    const headers = ['Customer ID', 'Full Name', 'Phone', 'Email', 'Role', 'Status', 'Total Bookings', 'Total Revenue'];
-    const rows = customers.map((c) => [
-      c.customerId || '',
-      `"${c.name || c.fullName || ''}"`,
-      c.phone || '',
-      c.email || '',
-      c.role || 'CUSTOMER',
-      c.status || 'Active',
-      c.totalBookings || 0,
-      c.totalRevenue || 0,
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `customers_export_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    message.success('Customers exported successfully!');
   };
 
   // Table Columns for Customer List
@@ -208,26 +250,19 @@ export const CustomersManagement = () => {
           onClick={() => handleViewCustomer(record)}
           style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
         >
-          {hasValidProfilePic(record.avatar) ? (
-            <Avatar
-              src={record.avatar}
-              size={36}
-              style={{ flexShrink: 0 }}
-            />
-          ) : (
-            <Avatar
-              icon={<UserOutlined style={{ fontSize: 18 }} />}
-              size={36}
-              style={{
-                backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
-                color: '#6366f1',
-                flexShrink: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            />
-          )}
+          <Avatar
+            src={hasValidProfilePic(record.avatar) ? record.avatar : undefined}
+            icon={<UserOutlined style={{ fontSize: 18 }} />}
+            size={36}
+            style={{
+              backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+              color: '#6366f1',
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          />
           <div>
             <div
               style={{
@@ -651,31 +686,20 @@ export const CustomersManagement = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 20 }}>
             {/* Left: Avatar + Details */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-              {hasValidProfilePic(selectedCustomer.avatar) ? (
-                <Avatar
-                  size={80}
-                  src={selectedCustomer.avatar}
-                  style={{
-                    backgroundColor: '#e0e7ff',
-                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.15)',
-                    flexShrink: 0,
-                  }}
-                />
-              ) : (
-                <Avatar
-                  size={80}
-                  icon={<UserOutlined style={{ fontSize: 38 }} />}
-                  style={{
-                    backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
-                    color: '#4f46e5',
-                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.15)',
-                    flexShrink: 0,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                />
-              )}
+              <Avatar
+                size={80}
+                src={hasValidProfilePic(selectedCustomer.avatar) ? selectedCustomer.avatar : undefined}
+                icon={<UserOutlined style={{ fontSize: 38 }} />}
+                style={{
+                  backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+                  color: '#4f46e5',
+                  boxShadow: '0 4px 12px rgba(99, 102, 241, 0.15)',
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              />
 
               <div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a', marginBottom: 6 }}>
@@ -1278,7 +1302,7 @@ export const CustomersManagement = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Button
               icon={<DownloadOutlined />}
-              onClick={handleExportCSV}
+              onClick={handleOpenExportModal}
               style={{
                 borderRadius: 'var(--radius-base)',
                 fontWeight: 600,
@@ -1400,6 +1424,17 @@ export const CustomersManagement = () => {
           </div>
         )}
       </Modal>
+
+      {/* Universal Server-Side Export Dialog */}
+      <ExportModal
+        open={isExportModalOpen}
+        onCancel={() => setIsExportModalOpen(false)}
+        title="Export Customer Fleet"
+        defaultFileName={getDefaultExportFileName('Customers')}
+        totalAvailable={totalRecords}
+        onExport={executeExport}
+        loading={isExporting}
+      />
     </div>
   );
 };

@@ -38,7 +38,10 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { bookingService } from '../services/bookingService';
+import { gymService } from '../services/gymService';
 import { apiClient } from '../services/apiClient';
+import { ExportModal } from '../general/components/ExportModal';
+import { downloadCSV, getDefaultExportFileName } from '../utils/exportHelper';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -98,13 +101,13 @@ export const BookingsManagement = () => {
     }
   }, [urlType]);
 
-  // Load gyms list once
+  // Load gyms list once using dedicated SSOT gymService
   useEffect(() => {
     const fetchGyms = async () => {
       setGymsLoading(true);
       try {
-        const res = await apiClient.get('/gyms/options', { params: { limit: 50 } });
-        const list = res.data?.data?.gyms || [];
+        const payload = await gymService.getGymOptions({ limit: 0 });
+        const list = payload?.gyms || [];
         setGymsList(list);
       } catch (err) {
         console.warn('Failed to load gym options:', err);
@@ -170,50 +173,83 @@ export const BookingsManagement = () => {
     setIsDetailsModalOpen(true);
   };
 
-  const handleExportCSV = () => {
-    if (bookings.length === 0) {
-      message.warning('No booking records to export');
-      return;
+  // Server-Side Export Modal & Execution
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleOpenExportModal = () => {
+    setIsExportModalOpen(true);
+  };
+
+  const executeExport = async ({ fileName, scope, dateRange }) => {
+    setIsExporting(true);
+    try {
+      const params = {
+        export: true,
+        limit: 0,
+        page: 1,
+      };
+
+      if (scope === 'filtered') {
+        if (bookingTypeFilter !== 'ALL') params.type = bookingTypeFilter;
+        if (statusFilter !== 'ALL') params.status = statusFilter;
+        if (gymFilter !== 'ALL') params.gymId = gymFilter;
+        if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      } else if (scope === 'custom' && dateRange) {
+        params.startDate = dateRange[0].toISOString();
+        params.endDate = dateRange[1].toISOString();
+      }
+
+      const res = await bookingService.getBookings(params);
+      const list = res.bookings || [];
+      if (list.length === 0) {
+        message.warning('No booking records found matching the requested scope.');
+        return;
+      }
+
+      const headers = [
+        'Booking ID',
+        'Booking Type',
+        'Session / Class Title',
+        'Customer Name',
+        'Customer Phone',
+        'Customer Email',
+        'Gym Partner',
+        'Gym City',
+        'Date',
+        'Time Slot',
+        'Status',
+        'Amount (INR)',
+        'Payment Method',
+        'Created At',
+      ];
+
+      const rows = list.map((b) => [
+        b.bookingId || '',
+        b.bookingType === 'GROUP_CLASS' ? 'Group Class' : 'Session Booking',
+        b.title || '',
+        b.user?.name || b.userId?.fullName || '',
+        b.user?.phone || b.userId?.phone || '',
+        b.user?.email || b.userId?.email || '',
+        b.gym?.name || b.gymId?.name || '',
+        b.gym?.city || b.gymId?.city || '',
+        b.startDate ? new Date(b.startDate).toLocaleDateString('en-GB') : '',
+        b.timeSlot || 'General Session',
+        b.status || '',
+        b.pricing?.totalAmount || 0,
+        b.payment?.method || 'UPI',
+        b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-GB') : '—',
+      ]);
+
+      downloadCSV(fileName, headers, rows);
+      message.success(`Successfully exported ${list.length} booking records to ${fileName}.csv`);
+      setIsExportModalOpen(false);
+    } catch (err) {
+      console.error('Export bookings failed:', err);
+      message.error(err.message || 'Failed to export booking records');
+    } finally {
+      setIsExporting(false);
     }
-    const headers = [
-      'Booking ID',
-      'Booking Type',
-      'Session / Class Title',
-      'Customer Name',
-      'Customer Phone',
-      'Customer Email',
-      'Gym Partner',
-      'Gym City',
-      'Date',
-      'Time Slot',
-      'Status',
-      'Amount',
-      'Payment Method',
-    ];
-    const rows = bookings.map((b) => [
-      b.bookingId || '',
-      b.bookingType === 'GROUP_CLASS' ? 'Group Class' : 'Session Booking',
-      b.title || '',
-      b.user?.name || '',
-      b.user?.phone || '',
-      b.user?.email || '',
-      b.gym?.name || '',
-      b.gym?.city || '',
-      b.startDate ? new Date(b.startDate).toLocaleDateString('en-GB') : '',
-      b.timeSlot || 'General Session',
-      b.status || '',
-      b.pricing?.totalAmount || 0,
-      b.payment?.method || 'UPI',
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Gymezy_Bookings_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    message.success('Bookings exported to CSV');
   };
 
   // Table Columns
@@ -248,22 +284,19 @@ export const BookingsManagement = () => {
         const u = record.user || {};
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {hasValidProfilePic(u.avatar) ? (
-              <Avatar src={u.avatar} size={36} style={{ flexShrink: 0 }} />
-            ) : (
-              <Avatar
-                icon={<UserOutlined style={{ fontSize: 18 }} />}
-                size={36}
-                style={{
-                  backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
-                  color: '#6366f1',
-                  flexShrink: 0,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              />
-            )}
+            <Avatar
+              src={hasValidProfilePic(u.avatar) ? u.avatar : undefined}
+              icon={<UserOutlined style={{ fontSize: 18 }} />}
+              size={36}
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            />
             <div style={{ minWidth: 0 }}>
               <div
                 style={{
@@ -788,7 +821,7 @@ export const BookingsManagement = () => {
 
           <Button
             icon={<DownloadOutlined />}
-            onClick={handleExportCSV}
+            onClick={handleOpenExportModal}
             style={{
               borderRadius: 'var(--radius-base)',
               fontWeight: 600,
@@ -942,18 +975,18 @@ export const BookingsManagement = () => {
                 Customer Information
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                {hasValidProfilePic(selectedBooking.user?.avatar) ? (
-                  <Avatar src={selectedBooking.user?.avatar} size={48} />
-                ) : (
-                  <Avatar
-                    icon={<UserOutlined style={{ fontSize: 24 }} />}
-                    size={48}
-                    style={{
-                      backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
-                      color: '#4f46e5',
-                    }}
-                  />
-                )}
+                <Avatar
+                  src={hasValidProfilePic(selectedBooking.user?.avatar) ? selectedBooking.user?.avatar : undefined}
+                  icon={<UserOutlined style={{ fontSize: 24 }} />}
+                  size={48}
+                  style={{
+                    backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+                    color: '#4f46e5',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                />
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
                     {selectedBooking.user?.name || 'Customer'}
@@ -1040,6 +1073,17 @@ export const BookingsManagement = () => {
           </div>
         )}
       </Modal>
+
+      {/* Universal Server-Side Export Dialog */}
+      <ExportModal
+        open={isExportModalOpen}
+        onCancel={() => setIsExportModalOpen(false)}
+        title="Export Bookings Fleet"
+        defaultFileName={getDefaultExportFileName('Bookings')}
+        totalAvailable={totalRecords}
+        onExport={executeExport}
+        loading={isExporting}
+      />
     </div>
   );
 };

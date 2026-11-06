@@ -52,6 +52,14 @@ import { apiClient } from '../services/apiClient';
 
 const { Title, Text } = Typography;
 
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
+
 export const QrCheckIn = () => {
   const dispatch = useDispatch();
   const { isDarkMode } = useTheme();
@@ -1079,7 +1087,19 @@ export const QrCheckIn = () => {
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                            <Avatar size={42} src={member.avatar} icon={<UserOutlined />} style={{ flexShrink: 0 }} />
+                            <Avatar
+                              size={42}
+                              src={hasValidProfilePic(member.avatar) ? member.avatar : undefined}
+                              icon={<UserOutlined style={{ fontSize: 20 }} />}
+                              style={{
+                                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                                color: '#6366f1',
+                                flexShrink: 0,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            />
                             <div style={{ minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                 <span style={{ fontWeight: 700, fontSize: 14, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
@@ -1230,7 +1250,19 @@ export const QrCheckIn = () => {
                     border: `1px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
                   }}
                 >
-                  <Avatar size={54} src={lastVerified.avatar} icon={<UserOutlined />} style={{ flexShrink: 0 }} />
+                  <Avatar
+                    size={54}
+                    src={hasValidProfilePic(lastVerified.avatar) ? lastVerified.avatar : undefined}
+                    icon={<UserOutlined style={{ fontSize: 26 }} />}
+                    style={{
+                      backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                      color: '#6366f1',
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 700, fontSize: 16, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
@@ -1371,7 +1403,19 @@ export const QrCheckIn = () => {
               key: 'member',
               render: (_, record) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Avatar size={30} src={record.avatar} icon={<UserOutlined />} />
+                  <Avatar
+                    size={30}
+                    src={hasValidProfilePic(record.avatar) ? record.avatar : undefined}
+                    icon={<UserOutlined style={{ fontSize: 15 }} />}
+                    style={{
+                      backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                      color: '#6366f1',
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  />
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 13, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
                       {record.memberName}

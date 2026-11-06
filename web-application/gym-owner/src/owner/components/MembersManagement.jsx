@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../../services/apiClient';
+import { useDebounce } from '../../hooks/useDebounce';
+import { getDidYouMeanSuggestion } from '../../utils/fuzzySearchEngine';
 import {
   Card,
   Table,
@@ -76,6 +78,14 @@ const { Option } = Select;
 export const INITIAL_MEMBERS = [];
 export const INITIAL_CANCELLATION_REQUESTS = [];
 
+export const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
+
 // Canvas Confetti Popper Trigger
 export const triggerConfettiPopper = () => {
   try {
@@ -143,7 +153,7 @@ export const MembersManagement = ({
   const [searchParams, setSearchParams] = useSearchParams();
   const urlTab = searchParams.get('tab');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 8;
+  const [pageSize, setPageSize] = useState(10);
   const [activeTab, setActiveTab] = useState(
     urlTab && ['members', 'switches', 'cancellations'].includes(urlTab) ? urlTab : 'members'
   );
@@ -164,10 +174,19 @@ export const MembersManagement = ({
   };
 
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 350);
   const [planFilter, setPlanFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState('ALL');
   const [selectedDateRange, setSelectedDateRange] = useState('All Dates');
+
+  const didYouMean = useMemo(() => {
+    return getDidYouMeanSuggestion(debouncedSearchQuery);
+  }, [debouncedSearchQuery]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchQuery, planFilter, statusFilter, sourceFilter]);
 
   // Plan Switch Requests State & Fetcher
   const [switchRequests, setSwitchRequests] = useState([]);
@@ -178,15 +197,30 @@ export const MembersManagement = ({
   const [switchRejectionReason, setSwitchRejectionReason] = useState('');
   const [switchReqToReject, setSwitchReqToReject] = useState(null);
   const [switchSearch, setSwitchSearch] = useState('');
+  const debouncedSwitchSearch = useDebounce(switchSearch, 350);
   const [switchStatusFilter, setSwitchStatusFilter] = useState('ALL');
+  const [switchCurrentPage, setSwitchCurrentPage] = useState(1);
+  const [switchPageSize, setSwitchPageSize] = useState(10);
+  const switchDidYouMean = useMemo(() => getDidYouMeanSuggestion(debouncedSwitchSearch), [debouncedSwitchSearch]);
+
+  useEffect(() => {
+    setSwitchCurrentPage(1);
+  }, [debouncedSwitchSearch, switchStatusFilter]);
 
   // Cancellation Requests State
   const [cancellationRequests, setCancellationRequests] = useState(INITIAL_CANCELLATION_REQUESTS);
   const [cancelSearch, setCancelSearch] = useState('');
+  const debouncedCancelSearch = useDebounce(cancelSearch, 350);
   const [cancelStatusFilter, setCancelStatusFilter] = useState('ALL');
   const [selectedCancelRequest, setSelectedCancelRequest] = useState(null);
   const [isCancelDetailsModalOpen, setIsCancelDetailsModalOpen] = useState(false);
   const [cancelCurrentPage, setCancelCurrentPage] = useState(1);
+  const [cancelPageSize, setCancelPageSize] = useState(10);
+  const cancelDidYouMean = useMemo(() => getDidYouMeanSuggestion(debouncedCancelSearch), [debouncedCancelSearch]);
+
+  useEffect(() => {
+    setCancelCurrentPage(1);
+  }, [debouncedCancelSearch, cancelStatusFilter]);
 
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -402,7 +436,7 @@ export const MembersManagement = ({
   const fetchGymMemberships = async (
     page = currentPage,
     limit = pageSize,
-    search = searchQuery,
+    search = debouncedSearchQuery,
     status = statusFilter,
     tier = planFilter,
     source = sourceFilter
@@ -473,8 +507,8 @@ export const MembersManagement = ({
   };
 
   useEffect(() => {
-    void fetchGymMemberships(currentPage, pageSize, searchQuery, statusFilter, planFilter, sourceFilter);
-  }, [gymId, currentPage, pageSize, searchQuery, statusFilter, planFilter, sourceFilter]);
+    void fetchGymMemberships(currentPage, pageSize, debouncedSearchQuery, statusFilter, planFilter, sourceFilter);
+  }, [gymId, currentPage, pageSize, debouncedSearchQuery, statusFilter, planFilter, sourceFilter]);
 
   const fetchGymSwitchRequests = async () => {
     if (!gymId) return;
@@ -942,28 +976,43 @@ export const MembersManagement = ({
       key: 'memberName',
       width: 170,
       ellipsis: true,
-      render: (_, record) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <Avatar src={record.avatar} size={32} style={{ flexShrink: 0 }} />
-          <Tooltip title={record.name}>
-            <span
+      render: (_, record) => {
+        const hasPic = hasValidProfilePic(record.avatar);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <Avatar
+              src={hasPic ? record.avatar : undefined}
+              icon={!hasPic ? <UserOutlined style={{ fontSize: 16 }} /> : undefined}
+              size={32}
               style={{
-                fontWeight: 650,
-                color: isDarkMode ? '#ffffff' : '#0f172a',
-                fontSize: 13,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                display: 'block',
-                flex: 1,
-                minWidth: 0,
+                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
-            >
-              {record.name}
-            </span>
-          </Tooltip>
-        </div>
-      ),
+            />
+            <Tooltip title={record.name}>
+              <span
+                style={{
+                  fontWeight: 650,
+                  color: isDarkMode ? '#ffffff' : '#0f172a',
+                  fontSize: 13,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: 'block',
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {record.name}
+              </span>
+            </Tooltip>
+          </div>
+        );
+      },
     },
     {
       title: 'Phone Number',
@@ -1257,21 +1306,48 @@ export const MembersManagement = ({
   ];
 
   // Filter Cancellation Requests
-  const filteredCancelRequests = cancellationRequests.filter((item) => {
-    const q = cancelSearch.trim().toLowerCase();
-    const matchQuery =
-      !q ||
-      item.memberName.toLowerCase().includes(q) ||
-      item.phone.toLowerCase().includes(q) ||
-      item.requestId.toLowerCase().includes(q) ||
-      item.memberId.toLowerCase().includes(q) ||
-      (item.reason && item.reason.toLowerCase().includes(q));
+  const filteredCancelRequests = useMemo(() => {
+    return cancellationRequests.filter((item) => {
+      const q = debouncedCancelSearch.trim().toLowerCase();
+      const matchQuery =
+        !q ||
+        (item.memberName || '').toLowerCase().includes(q) ||
+        (item.phone || '').toLowerCase().includes(q) ||
+        (item.requestId || '').toLowerCase().includes(q) ||
+        (item.memberId || '').toLowerCase().includes(q) ||
+        (item.reason && item.reason.toLowerCase().includes(q));
 
-    const matchStatus =
-      cancelStatusFilter === 'ALL' || item.status === cancelStatusFilter;
+      const matchStatus =
+        cancelStatusFilter === 'ALL' || item.status === cancelStatusFilter || item.adminStatus === cancelStatusFilter;
 
-    return matchQuery && matchStatus;
-  });
+      return matchQuery && matchStatus;
+    });
+  }, [cancellationRequests, debouncedCancelSearch, cancelStatusFilter]);
+
+  const paginatedCancelRequests = useMemo(() => {
+    const start = (cancelCurrentPage - 1) * cancelPageSize;
+    return filteredCancelRequests.slice(start, start + cancelPageSize);
+  }, [filteredCancelRequests, cancelCurrentPage, cancelPageSize]);
+
+  // Filter Switch Requests
+  const filteredSwitchRequests = useMemo(() => {
+    return switchRequests.filter((item) => {
+      const userObj = item.userId || {};
+      const matchSearch =
+        !debouncedSwitchSearch ||
+        (userObj.fullName || '').toLowerCase().includes(debouncedSwitchSearch.toLowerCase()) ||
+        (userObj.phone || '').includes(debouncedSwitchSearch) ||
+        (item.requestId || '').toLowerCase().includes(debouncedSwitchSearch.toLowerCase());
+      const matchStatus =
+        switchStatusFilter === 'ALL' || item.status === switchStatusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [switchRequests, debouncedSwitchSearch, switchStatusFilter]);
+
+  const paginatedSwitchRequests = useMemo(() => {
+    const start = (switchCurrentPage - 1) * switchPageSize;
+    return filteredSwitchRequests.slice(start, start + switchPageSize);
+  }, [filteredSwitchRequests, switchCurrentPage, switchPageSize]);
 
   const clearCancelFilters = () => {
     setCancelSearch('');
@@ -1315,9 +1391,23 @@ export const MembersManagement = ({
       key: 'member',
       width: 180,
       ellipsis: true,
-      render: (_, record) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <Avatar src={record.avatar} size={32} style={{ flexShrink: 0 }} />
+      render: (_, record) => {
+        const hasPic = hasValidProfilePic(record.avatar);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <Avatar
+              src={hasPic ? record.avatar : undefined}
+              icon={!hasPic ? <UserOutlined style={{ fontSize: 16 }} /> : undefined}
+              size={32}
+              style={{
+                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            />
           <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
             <Tooltip title={record.memberName}>
               <div
@@ -1350,7 +1440,8 @@ export const MembersManagement = ({
             </Tooltip>
           </div>
         </div>
-      ),
+      );
+    },
     },
     {
       title: 'Phone Number',
@@ -1712,12 +1803,22 @@ export const MembersManagement = ({
       ellipsis: true,
       render: (_, record) => {
         const userObj = record.userId || {};
+        const memberAvatar = userObj.profilePicture || userObj.avatar;
+        const hasPic = hasValidProfilePic(memberAvatar);
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <Avatar
-              src={userObj.profilePicture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop'}
+              src={hasPic ? memberAvatar : undefined}
+              icon={!hasPic ? <UserOutlined style={{ fontSize: 16 }} /> : undefined}
               size={32}
-              style={{ flexShrink: 0 }}
+              style={{
+                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             />
             <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
               <Tooltip title={userObj.fullName || 'Member'}>
@@ -2238,6 +2339,57 @@ export const MembersManagement = ({
             </Col>
           </Row>
 
+          {/* Typo-Tolerant "Did You Mean" Suggestion Banner */}
+          {didYouMean &&
+            debouncedSearchQuery &&
+            didYouMean.toLowerCase() !== debouncedSearchQuery.toLowerCase().trim() && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: '12px 18px',
+                  borderRadius: 'var(--radius-base)',
+                  backgroundColor: isDarkMode ? '#1e293b' : '#eff6ff',
+                  border: `1px solid ${isDarkMode ? '#3b82f6' : '#bfdbfe'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: isDarkMode ? '#93c5fd' : '#1e40af' }}>
+                  <SearchOutlined style={{ color: '#3b82f6' }} />
+                  <span>
+                    Did you mean:{' '}
+                    <strong
+                      onClick={() => {
+                        setSearchQuery(didYouMean);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        color: '#2563eb',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      {didYouMean}
+                    </strong>
+                    ?
+                  </span>
+                </div>
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  onClick={() => {
+                    setSearchQuery(didYouMean);
+                  }}
+                  style={{ fontWeight: 700, fontSize: 12, borderRadius: 6 }}
+                >
+                  Search for &ldquo;{didYouMean}&rdquo;
+                </Button>
+              </div>
+            )}
+
           {/* MEMBERS TABLE CARD */}
           <Card
             style={{
@@ -2277,10 +2429,18 @@ export const MembersManagement = ({
               </div>
               <Pagination
                 current={currentPage}
-                onChange={(page) => setCurrentPage(page)}
+                onChange={(page, newPageSize) => {
+                  setCurrentPage(page);
+                  if (newPageSize && newPageSize !== pageSize) {
+                    setPageSize(newPageSize);
+                    setCurrentPage(1);
+                  }
+                }}
                 total={totalMembersCount}
                 pageSize={pageSize}
-                showSizeChanger={false}
+                pageSizeOptions={['10', '20', '50', '100']}
+                showSizeChanger
+                showQuickJumper
               />
             </div>
           </Card>
@@ -2457,6 +2617,57 @@ export const MembersManagement = ({
             </Row>
           </Card>
 
+          {/* Typo-Tolerant "Did You Mean" Suggestion Banner for Switches */}
+          {switchDidYouMean &&
+            debouncedSwitchSearch &&
+            switchDidYouMean.toLowerCase() !== debouncedSwitchSearch.toLowerCase().trim() && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: '12px 18px',
+                  borderRadius: 'var(--radius-base)',
+                  backgroundColor: isDarkMode ? '#1e293b' : '#eff6ff',
+                  border: `1px solid ${isDarkMode ? '#3b82f6' : '#bfdbfe'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: isDarkMode ? '#93c5fd' : '#1e40af' }}>
+                  <SearchOutlined style={{ color: '#3b82f6' }} />
+                  <span>
+                    Did you mean:{' '}
+                    <strong
+                      onClick={() => {
+                        setSwitchSearch(switchDidYouMean);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        color: '#2563eb',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      {switchDidYouMean}
+                    </strong>
+                    ?
+                  </span>
+                </div>
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  onClick={() => {
+                    setSwitchSearch(switchDidYouMean);
+                  }}
+                  style={{ fontWeight: 700, fontSize: 12, borderRadius: 6 }}
+                >
+                  Search for &ldquo;{switchDidYouMean}&rdquo;
+                </Button>
+              </div>
+            )}
+
           {/* PLAN SWITCH REQUESTS TABLE */}
           <Card
             style={{
@@ -2469,23 +2680,47 @@ export const MembersManagement = ({
           >
             <Table
               loading={isSwitchLoading}
-              pagination={{ pageSize: 8, showSizeChanger: false }}
+              pagination={false}
               size="middle"
               scroll={{ x: 1300 }}
-              dataSource={switchRequests.filter((item) => {
-                const userObj = item.userId || {};
-                const matchSearch =
-                  !switchSearch ||
-                  (userObj.fullName || '').toLowerCase().includes(switchSearch.toLowerCase()) ||
-                  (userObj.phone || '').includes(switchSearch) ||
-                  (item.requestId || '').toLowerCase().includes(switchSearch.toLowerCase());
-                const matchStatus =
-                  switchStatusFilter === 'ALL' || item.status === switchStatusFilter;
-                return matchSearch && matchStatus;
-              })}
+              dataSource={paginatedSwitchRequests}
               columns={switchColumns}
               rowKey={(r) => r._id || r.requestId}
             />
+
+            {/* Custom Table Footer with Pagination */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 16,
+                marginTop: 20,
+                paddingTop: 16,
+                borderTop: `1px solid ${isDarkMode ? '#1e1e1e' : '#f1f5f9'}`,
+              }}
+            >
+              <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
+                Showing {filteredSwitchRequests.length > 0 ? (switchCurrentPage - 1) * switchPageSize + 1 : 0} to{' '}
+                {Math.min(switchCurrentPage * switchPageSize, filteredSwitchRequests.length)} of {filteredSwitchRequests.length} switch requests
+              </div>
+              <Pagination
+                current={switchCurrentPage}
+                onChange={(page, newPageSize) => {
+                  setSwitchCurrentPage(page);
+                  if (newPageSize && newPageSize !== switchPageSize) {
+                    setSwitchPageSize(newPageSize);
+                    setSwitchCurrentPage(1);
+                  }
+                }}
+                total={filteredSwitchRequests.length}
+                pageSize={switchPageSize}
+                pageSizeOptions={['10', '20', '50', '100']}
+                showSizeChanger
+                showQuickJumper
+              />
+            </div>
           </Card>
         </>
       )}
@@ -2749,6 +2984,57 @@ export const MembersManagement = ({
             </Row>
           </Card>
 
+          {/* Typo-Tolerant "Did You Mean" Suggestion Banner for Cancellations */}
+          {cancelDidYouMean &&
+            debouncedCancelSearch &&
+            cancelDidYouMean.toLowerCase() !== debouncedCancelSearch.toLowerCase().trim() && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: '12px 18px',
+                  borderRadius: 'var(--radius-base)',
+                  backgroundColor: isDarkMode ? '#1e293b' : '#eff6ff',
+                  border: `1px solid ${isDarkMode ? '#3b82f6' : '#bfdbfe'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: isDarkMode ? '#93c5fd' : '#1e40af' }}>
+                  <SearchOutlined style={{ color: '#3b82f6' }} />
+                  <span>
+                    Did you mean:{' '}
+                    <strong
+                      onClick={() => {
+                        setCancelSearch(cancelDidYouMean);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        color: '#2563eb',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      {cancelDidYouMean}
+                    </strong>
+                    ?
+                  </span>
+                </div>
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  onClick={() => {
+                    setCancelSearch(cancelDidYouMean);
+                  }}
+                  style={{ fontWeight: 700, fontSize: 12, borderRadius: 6 }}
+                >
+                  Search for &ldquo;{cancelDidYouMean}&rdquo;
+                </Button>
+              </div>
+            )}
+
           {/* CANCELLATION REQUESTS TABLE CARD */}
           <Card
             title={
@@ -2769,7 +3055,7 @@ export const MembersManagement = ({
               pagination={false}
               size="middle"
               scroll={{ x: 1300 }}
-              dataSource={filteredCancelRequests}
+              dataSource={paginatedCancelRequests}
               columns={cancellationColumns}
               locale={{
                 emptyText: (
@@ -2795,14 +3081,23 @@ export const MembersManagement = ({
               }}
             >
               <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b' }}>
-                Showing 1 to {filteredCancelRequests.length} of {cancellationRequests.length} cancellation requests
+                Showing {filteredCancelRequests.length > 0 ? (cancelCurrentPage - 1) * cancelPageSize + 1 : 0} to{' '}
+                {Math.min(cancelCurrentPage * cancelPageSize, filteredCancelRequests.length)} of {filteredCancelRequests.length} cancellation requests
               </div>
               <Pagination
                 current={cancelCurrentPage}
-                onChange={setCancelCurrentPage}
-                total={cancellationRequests.length}
-                pageSize={10}
-                showSizeChanger={false}
+                onChange={(page, newPageSize) => {
+                  setCancelCurrentPage(page);
+                  if (newPageSize && newPageSize !== cancelPageSize) {
+                    setCancelPageSize(newPageSize);
+                    setCancelCurrentPage(1);
+                  }
+                }}
+                total={filteredCancelRequests.length}
+                pageSize={cancelPageSize}
+                pageSizeOptions={['10', '20', '50', '100']}
+                showSizeChanger
+                showQuickJumper
               />
             </div>
           </Card>
@@ -2829,11 +3124,17 @@ export const MembersManagement = ({
             {/* Header profile info */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, marginTop: 6 }}>
               <Avatar
-                src={selectedCancelRequest.avatar}
+                src={hasValidProfilePic(selectedCancelRequest.avatar) ? selectedCancelRequest.avatar : undefined}
+                icon={!hasValidProfilePic(selectedCancelRequest.avatar) ? <UserOutlined style={{ fontSize: 28 }} /> : undefined}
                 size={64}
                 style={{
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
                   border: `2px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
                   flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               />
               <div>
@@ -3043,11 +3344,17 @@ export const MembersManagement = ({
             {/* User Profile Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, marginTop: 6 }}>
               <Avatar
-                src={selectedSwitchReq.userId?.avatar || selectedSwitchReq.userId?.profilePicture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop'}
+                src={hasValidProfilePic(selectedSwitchReq.userId?.avatar || selectedSwitchReq.userId?.profilePicture) ? (selectedSwitchReq.userId?.avatar || selectedSwitchReq.userId?.profilePicture) : undefined}
+                icon={!hasValidProfilePic(selectedSwitchReq.userId?.avatar || selectedSwitchReq.userId?.profilePicture) ? <UserOutlined style={{ fontSize: 28 }} /> : undefined}
                 size={64}
                 style={{
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
                   border: `2px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
                   flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               />
               <div>
@@ -3272,11 +3579,17 @@ export const MembersManagement = ({
             {/* Customer Profile Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, marginTop: 6 }}>
               <Avatar
-                src={selectedMember.avatar}
+                src={hasValidProfilePic(selectedMember.avatar) ? selectedMember.avatar : undefined}
+                icon={!hasValidProfilePic(selectedMember.avatar) ? <UserOutlined style={{ fontSize: 32 }} /> : undefined}
                 size={68}
                 style={{
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
                   border: `2px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
                   flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               />
               <div>

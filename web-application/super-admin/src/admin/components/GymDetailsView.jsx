@@ -25,6 +25,9 @@ import {
   InputNumber,
   Checkbox,
   Radio,
+  Segmented,
+  Progress,
+  Empty,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -36,7 +39,6 @@ import {
   DollarOutlined,
   PictureOutlined,
   CheckCircleOutlined,
-  ExportOutlined,
   FileTextOutlined,
   SaveOutlined,
   UserOutlined,
@@ -47,12 +49,22 @@ import {
   CloseOutlined,
   CloseCircleOutlined,
   ClockCircleOutlined,
-  HistoryOutlined,
-  DiffOutlined,
   TeamOutlined,
   InfoCircleOutlined,
   ExclamationCircleOutlined,
   EyeOutlined,
+  FireOutlined,
+  ThunderboltOutlined,
+  IdcardOutlined,
+  StarFilled,
+  StarOutlined,
+  BankOutlined,
+  GlobalOutlined,
+  SafetyCertificateOutlined,
+  CheckCircleFilled,
+  InstagramOutlined,
+  WhatsAppOutlined,
+  LinkOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { apiClient } from '../../services/apiClient';
@@ -61,6 +73,14 @@ import { fetchGyms } from '../../redux/slices/gymSlice';
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 const { TextArea } = Input;
+
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 const getGymLogoSrc = (gym) => {
   if (!gym) return '';
@@ -115,6 +135,144 @@ const getGymInitials = (name) => {
   if (words.length === 0) return 'GY';
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[1][0]).toUpperCase();
+};
+
+const DEFAULT_RULES = [
+  'Carry clean indoor training shoes',
+  'Mandatory personal gym towel on workout benches',
+  'Re-rack dumbbells and plates after set completion',
+  'No outside food or beverages allowed on gym floor',
+];
+
+const DEFAULT_SAFETY = [
+  'Daily multi-session equipment sanitization',
+  'Certified First Aid & CPR staff available on floor',
+  '24/7 CCTV surveillance coverage',
+  'Automated External Defibrillator (AED) on premises',
+];
+
+const DEFAULT_WORKOUTS = [
+  'HIIT (High Intensity)',
+  'Yoga & Mobility',
+  'Zumba & Dance',
+  'Boxing & Kickboxing',
+  'CrossFit',
+  'Powerlifting',
+  'Bodybuilding',
+  'Calisthenics',
+  'MMA & Martial Arts',
+  'Aerobics',
+  'Pilates',
+  'Cardio Fitness',
+];
+
+const DEFAULT_AMENITIES = [
+  'Towel Service',
+  'Protein Shake Bar',
+  'Juice & Smoothie Bar',
+  'Personal Locker Rental',
+  'InBody BMI Scanner',
+  'Nutritionist Desk',
+  'Lounge / Rest Area',
+  'Free Sanitizer Stations',
+  'Locker Key Padlocks',
+];
+
+const DEFAULT_SESSION_CATEGORIES = [
+  'Gym Access',
+  'Group Classes',
+  'Yoga Classes',
+  'Zumba Sessions',
+  'HIIT',
+  'CrossFit',
+  'Pilates',
+  'Kickboxing',
+  'Dance Fitness',
+];
+
+const DAYS_OF_WEEK = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+const getDayByDaySchedule = (gym) => {
+  const oh = gym?.openingHours || {};
+  const scheduleArray = Array.isArray(oh.schedule) && oh.schedule.length > 0 ? oh.schedule : null;
+
+  return DAYS_OF_WEEK.map((dayName) => {
+    if (scheduleArray) {
+      const found = scheduleArray.find((s) => s.day?.toLowerCase() === dayName.toLowerCase());
+      if (found) {
+        if (!found.isOpen || found.mode === 'CLOSED') {
+          return { day: dayName, isOpen: false, text: 'Closed', mode: 'CLOSED' };
+        }
+        if (found.mode === 'SPLIT_SHIFT') {
+          const mOpen = found.morningShift?.openTime || oh.morningOpen || '05:30 AM';
+          const mClose = found.morningShift?.closeTime || oh.morningClose || '11:30 AM';
+          const eOpen = found.eveningShift?.openTime || oh.eveningOpen || '04:30 PM';
+          const eClose = found.eveningShift?.closeTime || oh.eveningClose || '10:30 PM';
+          return {
+            day: dayName,
+            isOpen: true,
+            text: `${mOpen} – ${mClose} & ${eOpen} – ${eClose}`,
+            mode: 'SPLIT_SHIFT',
+            morning: `${mOpen} – ${mClose}`,
+            evening: `${eOpen} – ${eClose}`,
+          };
+        }
+        if (found.mode === '24_HOURS') {
+          return { day: dayName, isOpen: true, text: '24 Hours Open', mode: '24_HOURS' };
+        }
+        return {
+          day: dayName,
+          isOpen: true,
+          text: `${found.openTime || oh.weekdayOpen || '05:30 AM'} – ${found.closeTime || oh.weekdayClose || '10:30 PM'}`,
+          mode: 'REGULAR',
+        };
+      }
+    }
+
+    const isWeekend = dayName === 'Saturday' || dayName === 'Sunday';
+    const isSunday = dayName === 'Sunday';
+
+    if (oh.mode === '24_HOURS' || oh.is24Hours) {
+      return { day: dayName, isOpen: true, text: '24 Hours Open', mode: '24_HOURS' };
+    }
+
+    if (oh.mode === 'SPLIT_SHIFT' || oh.isSplitShift) {
+      const mOpen = oh.morningOpen || '05:30 AM';
+      const mClose = oh.morningClose || (isSunday ? '01:00 PM' : '11:30 AM');
+      const eOpen = oh.eveningOpen || '04:30 PM';
+      const eClose = oh.eveningClose || (isSunday ? '08:00 PM' : '10:30 PM');
+      return {
+        day: dayName,
+        isOpen: true,
+        text: `${mOpen} – ${mClose} & ${eOpen} – ${eClose}`,
+        mode: 'SPLIT_SHIFT',
+        morning: `${mOpen} – ${mClose}`,
+        evening: `${eOpen} – ${eClose}`,
+      };
+    }
+
+    const openTime = isWeekend ? (oh.weekendOpen || '06:00 AM') : (oh.weekdayOpen || '05:30 AM');
+    const closeTime = isSunday
+      ? (oh.weekendClose || '08:00 PM')
+      : isWeekend
+      ? (oh.weekendClose || '09:00 PM')
+      : (oh.weekdayClose || '10:30 PM');
+
+    return {
+      day: dayName,
+      isOpen: true,
+      text: `${openTime} – ${closeTime}`,
+      mode: 'REGULAR',
+    };
+  });
 };
 
 // Default fallback bookings matching gym
@@ -211,94 +369,144 @@ export const GymDetailsView = ({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Employee Management & Approval State
-  const [employees, setEmployees] = useState([]);
-  const [loadingEmployees, setLoadingEmployees] = useState(false);
-  const [employeeSearch, setEmployeeSearch] = useState('');
-  const [employeeStatusFilter, setEmployeeStatusFilter] = useState('All');
+  // Live Activity: Bookings, Memberships, Created Sections, and Reviews
+  const [realBookings, setRealBookings] = useState([]);
+  const [realMemberships, setRealMemberships] = useState([]);
+  const [createdSections, setCreatedSections] = useState([]);
+  const [gymReviewsData, setGymReviewsData] = useState(null);
+  const [isLoadingGymData, setIsLoadingGymData] = useState(false);
+  const [bookingTypeFilter, setBookingTypeFilter] = useState('ALL'); // 'ALL' | 'MEMBERSHIP' | 'GYM_SESSION' | 'GROUP_CLASS'
+  const [selectedSectionForModal, setSelectedSectionForModal] = useState(null);
+  const [isSectionModalOpen, setIsSectionModalOpen] = useState(false);
 
-  // Modals for employee audit & diff
-  const [selectedEmpForDiff, setSelectedEmpForDiff] = useState(null);
-  const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
-
-  const [selectedEmpForDetails, setSelectedEmpForDetails] = useState(null);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-
-  const [selectedEmpForHistory, setSelectedEmpForHistory] = useState(null);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-
-  const [selectedEmpForReject, setSelectedEmpForReject] = useState(null);
-  const [isEmpRejectModalOpen, setIsEmpRejectModalOpen] = useState(false);
-  const [empRejectRemarks, setEmpRejectRemarks] = useState('');
-  const [actionLoadingId, setActionLoadingId] = useState(null);
-
-  // Load Employees API
-  const loadGymEmployees = async () => {
+  const loadGymActivity = async () => {
     const gymId = gym?._id || gym?.id || gym?.mongoId;
     if (!gymId) return;
-    setLoadingEmployees(true);
+    setIsLoadingGymData(true);
     try {
-      const res = await apiClient.get('/employees', {
-        params: {
-          gymId,
-          gymPartnerId: gym?.partnerId,
-        },
-      });
-      if (res.data?.success) {
-        const rawData = res.data?.data;
-        const empList = Array.isArray(rawData) ? rawData : rawData?.employees || [];
-        setEmployees(empList);
-      }
+      const [bRes, mRes, sRes, rRes] = await Promise.all([
+        apiClient.get(`/bookings/gym/${gymId}?isFetchAll=true`).catch(() => ({ data: { data: [] } })),
+        apiClient.get(`/memberships/gym/${gymId}?isFetchAll=true`).catch(() => ({ data: { data: { memberships: [] } } })),
+        apiClient.get(`/sections?gymId=${gymId}`).catch(() => ({ data: { data: [] } })),
+        apiClient.get(`/gyms/${gymId}/reviews`).catch(() => ({ data: { data: null } })),
+      ]);
+
+      const bList = Array.isArray(bRes.data?.data) ? bRes.data.data : [];
+      const mList = Array.isArray(mRes.data?.data?.memberships)
+        ? mRes.data.data.memberships
+        : Array.isArray(mRes.data?.data)
+        ? mRes.data.data
+        : [];
+      const sList = Array.isArray(sRes.data?.data) ? sRes.data.data : [];
+      const rData = rRes.data?.data || null;
+
+      setRealBookings(bList);
+      setRealMemberships(mList);
+      setCreatedSections(sList);
+      setGymReviewsData(rData);
     } catch (err) {
-      console.error('Failed to load gym employees:', err);
+      console.error('Failed to load gym activity:', err);
     } finally {
-      setLoadingEmployees(false);
+      setIsLoadingGymData(false);
     }
   };
 
   useEffect(() => {
-    loadGymEmployees();
-  }, [gym?.id, gym?._id]);
+    loadGymActivity();
+  }, [gym?._id, gym?.id]);
 
-  // Filtered gym-specific bookings
-  const gymBookings = useMemo(() => {
-    return SAMPLE_BOOKINGS.filter((b) => {
-      const matchSearch =
-        b.customerName.toLowerCase().includes(bookingSearch.toLowerCase()) ||
-        b.bookingId.toLowerCase().includes(bookingSearch.toLowerCase()) ||
-        b.customerPhone.includes(bookingSearch);
-      const matchStatus = bookingStatusFilter === 'All' || b.status === bookingStatusFilter;
-      return matchSearch && matchStatus;
+  // Unified list of Bookings & Memberships
+  const unifiedBookings = useMemo(() => {
+    const list = [];
+
+    // 1. Process Bookings (Sessions & Group Classes)
+    realBookings.forEach((b) => {
+      const isGroupClass = b.bookingType === 'GROUP_CLASS' || b.category === 'section' || b.category === 'group_class';
+      const customer = b.userId || {};
+      const passTypeLabel = isGroupClass
+        ? (b.title || 'Group Class Booking')
+        : (b.title || (b.sessionsCount > 1 ? `${b.sessionsCount}-Session Pass` : 'Single Session Pass'));
+
+      list.push({
+        key: `b-${b._id || b.bookingId}`,
+        bookingId: b.bookingId || `BK-${String(b._id).slice(-6).toUpperCase()}`,
+        category: isGroupClass ? 'GROUP_CLASS' : 'GYM_SESSION',
+        customerName: customer.fullName || customer.name || b.walkInDetails?.name || 'Customer',
+        customerPhone: customer.phone || b.walkInDetails?.phone || '—',
+        customerAvatar: customer.avatar || customer.profilePicture || '',
+        type: passTypeLabel,
+        slotTime: b.timeSlot || (b.startTime && b.endTime ? `${b.startTime} - ${b.endTime}` : 'General Slot'),
+        bookingDate: b.createdAt
+          ? new Date(b.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '—',
+        amount: b.pricing?.totalAmount ?? b.amount ?? 0,
+        paymentMode: b.payment?.method || 'UPI',
+        status: b.status || 'Active',
+        raw: b,
+      });
     });
-  }, [bookingSearch, bookingStatusFilter]);
 
-  const safeEmployees = useMemo(() => {
-    return Array.isArray(employees) ? employees : [];
-  }, [employees]);
-
-  const filteredEmployees = useMemo(() => {
-    return safeEmployees.filter((emp) => {
-      const searchLower = (employeeSearch || '').toLowerCase();
-      const matchSearch =
-        !employeeSearch ||
-        emp.name?.toLowerCase().includes(searchLower) ||
-        emp.employeeId?.toLowerCase().includes(searchLower) ||
-        emp.role?.toLowerCase().includes(searchLower) ||
-        emp.phone?.includes(employeeSearch) ||
-        emp.email?.toLowerCase().includes(searchLower);
-
-      const matchStatus =
-        employeeStatusFilter === 'All' ||
-        emp.approvalStatus === employeeStatusFilter ||
-        emp.status === employeeStatusFilter;
-
-      return matchSearch && matchStatus;
+    // 2. Process Memberships
+    realMemberships.forEach((m) => {
+      const customer = m.userId || {};
+      list.push({
+        key: `m-${m._id || m.membershipId}`,
+        bookingId: m.membershipId || `MEM-${String(m._id).slice(-6).toUpperCase()}`,
+        category: 'MEMBERSHIP',
+        customerName: customer.fullName || customer.name || m.walkInDetails?.name || 'Member',
+        customerPhone: customer.phone || m.walkInDetails?.phone || '—',
+        customerAvatar: customer.avatar || customer.profilePicture || '',
+        type: `${m.membershipTier || 'Monthly'} Membership`,
+        slotTime: m.hasTrainer && m.trainerSlot ? `PT Slot: ${m.trainerSlot}` : 'All Day Facility Access',
+        bookingDate: m.createdAt
+          ? new Date(m.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '—',
+        amount: m.pricing?.totalAmount ?? m.amount ?? 0,
+        paymentMode: m.payment?.method || 'UPI',
+        status: m.status || 'Active',
+        raw: m,
+      });
     });
-  }, [safeEmployees, employeeSearch, employeeStatusFilter]);
 
-  const pendingEmployeesCount = useMemo(() => {
-    return safeEmployees.filter((e) => e.approvalStatus === 'Pending Approval').length;
-  }, [safeEmployees]);
+    // Fallback to SAMPLE_BOOKINGS if DB has 0 records
+    if (list.length === 0 && SAMPLE_BOOKINGS.length > 0) {
+      return SAMPLE_BOOKINGS.map((sb) => ({
+        ...sb,
+        customerAvatar: '',
+        category: sb.type.includes('Membership') ? 'MEMBERSHIP' : (sb.type.includes('Class') ? 'GROUP_CLASS' : 'GYM_SESSION'),
+      }));
+    }
+
+    return list;
+  }, [realBookings, realMemberships]);
+
+  const bookingCounts = useMemo(() => {
+    const total = unifiedBookings.length;
+    const memberships = unifiedBookings.filter((b) => b.category === 'MEMBERSHIP').length;
+    const sessions = unifiedBookings.filter((b) => b.category === 'GYM_SESSION').length;
+    const groupClasses = unifiedBookings.filter((b) => b.category === 'GROUP_CLASS').length;
+    return { total, memberships, sessions, groupClasses };
+  }, [unifiedBookings]);
+
+  const filteredBookings = useMemo(() => {
+    return unifiedBookings.filter((b) => {
+      if (bookingTypeFilter !== 'ALL' && b.category !== bookingTypeFilter) {
+        return false;
+      }
+      if (bookingStatusFilter !== 'All' && b.status !== bookingStatusFilter) {
+        return false;
+      }
+      if (bookingSearch) {
+        const q = bookingSearch.toLowerCase();
+        const matchName = b.customerName?.toLowerCase().includes(q);
+        const matchPhone = b.customerPhone?.includes(q);
+        const matchId = b.bookingId?.toLowerCase().includes(q);
+        const matchType = b.type?.toLowerCase().includes(q);
+        if (!matchName && !matchPhone && !matchId && !matchType) return false;
+      }
+      return true;
+    });
+  }, [unifiedBookings, bookingTypeFilter, bookingStatusFilter, bookingSearch]);
 
   const handleOpenEditModal = () => {
     if (!gym) return;
@@ -390,55 +598,6 @@ export const GymDetailsView = ({
       message.error(err?.response?.data?.message || err.message || 'Error updating gym details.');
     } finally {
       setSavingEdit(false);
-    }
-  };
-
-  const handleApproveEmployee = async (employee) => {
-    const empId = employee._id || employee.id;
-    setActionLoadingId(empId);
-    try {
-      const res = await apiClient.patch(`/employees/${empId}/approval`, {
-        decision: 'Approved',
-        reviewedBy: 'Super Admin',
-      });
-      if (res.data?.success) {
-        message.success(`Employee "${employee.name}" approved successfully!`);
-        if (isDiffModalOpen) setIsDiffModalOpen(false);
-        loadGymEmployees();
-      } else {
-        message.error(res.data?.message || 'Failed to approve employee.');
-      }
-    } catch (err) {
-      message.error(err?.response?.data?.message || 'Error approving employee.');
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  const handleRejectEmployeeSubmit = async () => {
-    if (!selectedEmpForReject) return;
-    const empId = selectedEmpForReject._id || selectedEmpForReject.id;
-    setActionLoadingId(empId);
-    try {
-      const res = await apiClient.patch(`/employees/${empId}/approval`, {
-        decision: 'Rejected',
-        adminRemarks: empRejectRemarks,
-        reviewedBy: 'Super Admin',
-      });
-      if (res.data?.success) {
-        message.success(`Employee "${selectedEmpForReject.name}" marked as Rejected.`);
-        setIsEmpRejectModalOpen(false);
-        if (isDiffModalOpen) setIsDiffModalOpen(false);
-        setEmpRejectRemarks('');
-        setSelectedEmpForReject(null);
-        loadGymEmployees();
-      } else {
-        message.error(res.data?.message || 'Failed to reject employee.');
-      }
-    } catch (err) {
-      message.error(err?.response?.data?.message || 'Error rejecting employee.');
-    } finally {
-      setActionLoadingId(null);
     }
   };
 
@@ -577,14 +736,6 @@ export const GymDetailsView = ({
           >
             Edit Gym
           </Button>
-
-          <Button
-            icon={<ExportOutlined />}
-            onClick={() => message.info(`Opening preview for ${gym.name}`)}
-            style={{ borderRadius: 'var(--radius-base)', fontWeight: 600 }}
-          >
-            Customer View
-          </Button>
         </div>
       </div>
 
@@ -662,10 +813,23 @@ export const GymDetailsView = ({
               </Tag>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <Rate disabled defaultValue={4.9} style={{ fontSize: 15 }} />
-              <strong style={{ fontSize: 13, color: isDarkMode ? '#f1f5f9' : '#0f172a' }}>4.9</strong>
-              <span style={{ fontSize: 12, color: '#64748b' }}>(128 customer reviews)</span>
+            <div
+              style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, cursor: 'pointer' }}
+              onClick={() => setActiveTab('reviews')}
+              title="Click to view all reviews and ratings"
+            >
+              <Rate
+                disabled
+                allowHalf
+                value={Number(gymReviewsData?.rating ?? gym.rating ?? 0)}
+                style={{ fontSize: 15 }}
+              />
+              <strong style={{ fontSize: 13, color: isDarkMode ? '#f1f5f9' : '#0f172a' }}>
+                {Number(gymReviewsData?.rating ?? gym.rating ?? 0).toFixed(1)}
+              </strong>
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                ({gymReviewsData?.reviewsCount ?? gym.reviewsCount ?? (Array.isArray(gym.ratings) ? gym.ratings.length : 0)} customer reviews)
+              </span>
             </div>
 
             <div style={{ color: isDarkMode ? '#94a3b8' : '#64748b', fontSize: 13, marginBottom: 6 }}>
@@ -730,7 +894,7 @@ export const GymDetailsView = ({
             <div style={{ padding: '12px 16px', borderRadius: 10, backgroundColor: isDarkMode ? '#0f172a' : '#f8fafc', border: `1px solid ${isDarkMode ? '#1e293b' : '#e2e8f0'}` }}>
               <Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>TOTAL BOOKINGS</Text>
               <div style={{ fontSize: 20, fontWeight: 900, color: '#9333ea', marginTop: 4 }}>
-                {gym.totalBookings ?? gym.bookingsCount ?? 0}
+                {unifiedBookings.length || gym.totalBookings || gym.bookingsCount || 0}
               </div>
             </div>
           </Col>
@@ -774,161 +938,523 @@ export const GymDetailsView = ({
                 <ShopOutlined /> Overview
               </span>
             ),
-            children: (
-              <Row gutter={[20, 20]}>
-                {/* Left Column: Facility & Business Overview */}
-                <Col xs={24} lg={14}>
-                  <Card
-                    title="Facility & Business Profile"
-                    style={{
-                      borderRadius: 14,
-                      backgroundColor: 'var(--bg-surface-elevated)',
-                      borderColor: 'var(--border-color)',
-                      marginBottom: 20,
-                    }}
-                  >
-                    <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
-                      <Descriptions.Item label="Gym Name">{gym.name}</Descriptions.Item>
-                      <Descriptions.Item label="Partner Code">{gym.partnerId || '-'}</Descriptions.Item>
-                      <Descriptions.Item label="Gym Type">{gym.gymType || 'Unisex Fitness Center'}</Descriptions.Item>
-                      <Descriptions.Item label="Gender Policy">{gym.genderAllowed || 'Unisex'}</Descriptions.Item>
-                      <Descriptions.Item label="Owner Name">{gym.ownerName || gym.fullName || '—'}</Descriptions.Item>
-                      <Descriptions.Item label="Contact Phone">{gym.phone || '—'}</Descriptions.Item>
-                      <Descriptions.Item label="Official Email">{gym.email || '—'}</Descriptions.Item>
-                      <Descriptions.Item label="Registered On">{gym.registeredOn || gym.createdAt ? new Date(gym.createdAt).toLocaleDateString() : 'Active Partner'}</Descriptions.Item>
-                      <Descriptions.Item label="Operating Hours" span={2}>
-                        <Space align="center" wrap>
-                          <Tag color={gym.openingHours?.mode === '24_HOURS' ? 'green' : (gym.openingHours?.mode === 'SPLIT_SHIFT' ? 'purple' : 'blue')}>
-                            {gym.openingHours?.mode === '24_HOURS' ? '24/7 Facility' : (gym.openingHours?.mode === 'SPLIT_SHIFT' ? 'Split Shift' : 'Regular Single Shift')}
-                          </Tag>
-                          <span style={{ fontWeight: 600 }}>
-                            {gym.openingHours?.displayText || `${gym.openingHours?.weekdayOpen || '05:30 AM'} - ${gym.openingHours?.weekdayClose || '10:30 PM'}`}
-                          </span>
-                        </Space>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="Full Street Address" span={2}>
-                        {locationStr}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="About Facility" span={2}>
-                        {gym.about || gym.description || 'Premium fitness facility offering specialized workout sections, modern strength gear, cardio equipment, and certified personal coaching.'}
-                      </Descriptions.Item>
-                    </Descriptions>
-                  </Card>
+            children: (() => {
+              const weekSchedule = getDayByDaySchedule(gym);
+              const gymWorkoutsList = Array.isArray(gym.workouts) && gym.workouts.length > 0 ? gym.workouts : DEFAULT_WORKOUTS;
+              const gymAmenitiesList = Array.isArray(gym.amenities) && gym.amenities.length > 0
+                ? gym.amenities
+                : Array.isArray(gym.facilities) && gym.facilities.length > 0
+                ? gym.facilities.map((f) => (typeof f === 'string' ? f : f?.name || String(f))).filter(Boolean)
+                : DEFAULT_AMENITIES;
+              const gymRulesList = Array.isArray(gym.rules) && gym.rules.length > 0 ? gym.rules : DEFAULT_RULES;
+              const gymSafetyList = Array.isArray(gym.safetyMeasures) && gym.safetyMeasures.length > 0 ? gym.safetyMeasures : DEFAULT_SAFETY;
+              const sessionCategories = Array.isArray(gym.enabledSessionCategories) && gym.enabledSessionCategories.length > 0
+                ? gym.enabledSessionCategories
+                : DEFAULT_SESSION_CATEGORIES;
+              const sessionPrice = Number(gym.singleSessionPrice ?? gym.pricingPlans?.singleSession ?? (gym.customPricingPlans && gym.customPricingPlans.length > 0 ? gym.customPricingPlans[0].price : 199));
+              const bank = gym.bankDetails || {};
+              const social = gym.socialLinks || {};
 
-                  <Card
-                    title="Supported Workouts & Amenities"
-                    style={{
-                      borderRadius: 14,
-                      backgroundColor: 'var(--bg-surface-elevated)',
-                      borderColor: 'var(--border-color)',
-                    }}
-                  >
-                    <div style={{ marginBottom: 16 }}>
-                      <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                        Workout Disciplines:
-                      </Text>
-                      {Array.isArray(gym.workouts) && gym.workouts.length > 0 ? (
-                        <Space wrap size={[8, 8]}>
-                          {gym.workouts.map((w, i) => (
-                            <Tag key={i} color="blue" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6 }}>
-                              {w}
+              return (
+                <Row gutter={[20, 20]}>
+                  {/* Left Column: Facility, Workouts, Amenities, Rules, Safety, Session Pricing */}
+                  <Col xs={24} lg={14}>
+                    {/* 1. Facility & Business Profile */}
+                    <Card
+                      title="Facility & Business Profile"
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: 'var(--bg-surface-elevated)',
+                        borderColor: 'var(--border-color)',
+                        marginBottom: 20,
+                      }}
+                    >
+                      <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
+                        <Descriptions.Item label="Gym Name">{gym.name}</Descriptions.Item>
+                        <Descriptions.Item label="Partner Code">{gym.partnerId || '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Gym Type">{gym.gymType || 'Unisex Fitness Center'}</Descriptions.Item>
+                        <Descriptions.Item label="Gender Policy">{gym.genderAllowed || 'Unisex'}</Descriptions.Item>
+                        <Descriptions.Item label="Owner Name">{gym.ownerName || gym.fullName || '—'}</Descriptions.Item>
+                        <Descriptions.Item label="Contact Phone">{gym.phone || '—'}</Descriptions.Item>
+                        <Descriptions.Item label="Official Email">{gym.email || '—'}</Descriptions.Item>
+                        <Descriptions.Item label="Registered On">
+                          {gym.registeredOn || gym.createdAt ? new Date(gym.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Active Partner'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Operating Model" span={2}>
+                          <Space align="center" wrap>
+                            <Tag color={gym.openingHours?.mode === '24_HOURS' ? 'green' : (gym.openingHours?.mode === 'SPLIT_SHIFT' ? 'purple' : 'blue')}>
+                              {gym.openingHours?.mode === '24_HOURS' ? '24/7 Facility' : (gym.openingHours?.mode === 'SPLIT_SHIFT' ? 'Split Shift' : 'Regular Single Shift')}
                             </Tag>
-                          ))}
-                        </Space>
-                      ) : (
-                        <Text type="secondary" style={{ fontSize: 13 }}>
-                          General Fitness & Gym Floor
-                        </Text>
-                      )}
-                    </div>
+                            <span style={{ fontWeight: 600 }}>
+                              {gym.openingHours?.displayText || `${gym.openingHours?.weekdayOpen || '05:30 AM'} - ${gym.openingHours?.weekdayClose || '10:30 PM'}`}
+                            </span>
+                          </Space>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Full Street Address" span={2}>
+                          {locationStr}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="About Facility" span={2}>
+                          {gym.about || gym.description || 'Premium fitness facility offering specialized workout sections, modern strength gear, cardio equipment, and certified personal coaching.'}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
 
-                    <div>
-                      <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                        Available Amenities:
-                      </Text>
-                      {Array.isArray(gym.amenities) && gym.amenities.length > 0 ? (
-                        <Space wrap size={[8, 8]}>
-                          {gym.amenities.map((a, i) => (
-                            <Tag key={i} color="green" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6 }}>
-                              <CheckCircleOutlined style={{ marginRight: 4 }} /> {a}
-                            </Tag>
-                          ))}
-                        </Space>
-                      ) : Array.isArray(gym.facilities) && gym.facilities.length > 0 ? (
-                        <Space wrap size={[8, 8]}>
-                          {gym.facilities.map((f, i) => (
-                            <Tag key={i} color="green" style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6 }}>
-                              <CheckCircleOutlined style={{ marginRight: 4 }} /> {typeof f === 'string' ? f : f.name}
-                            </Tag>
-                          ))}
-                        </Space>
-                      ) : (
-                        <Text type="secondary" style={{ fontSize: 13 }}>
-                          Standard Fitness Equipment & Lockers
-                        </Text>
-                      )}
-                    </div>
-                  </Card>
-                </Col>
-
-                {/* Right Column: Legal, Bank & Operating Schedule */}
-                <Col xs={24} lg={10}>
-                  <Card
-                    title="Tax, Bank & Settlement"
-                    style={{
-                      borderRadius: 14,
-                      backgroundColor: 'var(--bg-surface-elevated)',
-                      borderColor: 'var(--border-color)',
-                      marginBottom: 20,
-                    }}
-                  >
-                    <Descriptions column={1} bordered size="small">
-                      <Descriptions.Item label="GST Number">{gym.gstNumber || '33AAAAA0000A1Z5 (Registered)'}</Descriptions.Item>
-                      <Descriptions.Item label="Bank Name">{gym.bankName || 'HDFC Bank Ltd'}</Descriptions.Item>
-                      <Descriptions.Item label="Account Holder">{gym.accountHolderName || gym.name || 'Gym Enterprise'}</Descriptions.Item>
-                      <Descriptions.Item label="Account Number">{gym.accountNumber ? `•••• •••• ${String(gym.accountNumber).slice(-4)}` : '•••• •••• 8842'}</Descriptions.Item>
-                      <Descriptions.Item label="IFSC Code">{gym.ifscCode || 'HDFC0001234'}</Descriptions.Item>
-                      <Descriptions.Item label="Payout Cycle">Daily Automated (T+1 Settlement)</Descriptions.Item>
-                    </Descriptions>
-                  </Card>
-
-                  <Card
-                    title="Operating Hours Summary"
-                    style={{
-                      borderRadius: 14,
-                      backgroundColor: 'var(--bg-surface-elevated)',
-                      borderColor: 'var(--border-color)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {[
-                        { day: 'Monday – Friday', hours: '05:30 AM – 10:30 PM', status: 'Open' },
-                        { day: 'Saturday', hours: '06:00 AM – 10:00 PM', status: 'Open' },
-                        { day: 'Sunday', hours: '06:00 AM – 09:00 PM', status: 'Open' },
-                      ].map((item, idx) => (
-                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
-                          <span style={{ fontWeight: 600 }}>{item.day}</span>
-                          <span style={{ fontFamily: 'monospace', color: '#2563eb', fontWeight: 700 }}>{item.hours}</span>
+                    {/* 2. Workout Disciplines Offered */}
+                    <Card
+                      title={
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <FireOutlined style={{ color: '#ec4899' }} />
+                          <span>Workout Disciplines Offered ({gymWorkoutsList.length})</span>
                         </div>
-                      ))}
-                    </div>
-                  </Card>
-                </Col>
-              </Row>
-            ),
+                      }
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: 'var(--bg-surface-elevated)',
+                        borderColor: 'var(--border-color)',
+                        marginBottom: 20,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+                        All workout disciplines, training regimes, and athletic programs offered on the floor.
+                      </div>
+                      <Space wrap size={[8, 8]}>
+                        {gymWorkoutsList.map((w, i) => (
+                          <Tag
+                            key={i}
+                            color="blue"
+                            style={{
+                              fontSize: 13,
+                              padding: '5px 12px',
+                              borderRadius: 16,
+                              fontWeight: 600,
+                              backgroundColor: isDarkMode ? '#1e293b' : '#eff6ff',
+                              borderColor: isDarkMode ? '#3b82f6' : '#bfdbfe',
+                              color: isDarkMode ? '#93c5fd' : '#1d4ed8',
+                            }}
+                          >
+                            {w}
+                          </Tag>
+                        ))}
+                      </Space>
+                    </Card>
+
+                    {/* 3. Amenities & Member Perks */}
+                    <Card
+                      title={
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <StarFilled style={{ color: '#f59e0b' }} />
+                          <span>Amenities & Member Perks ({gymAmenitiesList.length})</span>
+                        </div>
+                      }
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: 'var(--bg-surface-elevated)',
+                        borderColor: 'var(--border-color)',
+                        marginBottom: 20,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
+                        Complimentary and value-added amenities available for registered members and day-pass visitors.
+                      </div>
+                      <Space wrap size={[8, 8]}>
+                        {gymAmenitiesList.map((a, i) => (
+                          <Tag
+                            key={i}
+                            style={{
+                              fontSize: 13,
+                              padding: '5px 12px',
+                              borderRadius: 16,
+                              fontWeight: 600,
+                              backgroundColor: isDarkMode ? '#143026' : '#f0fdf4',
+                              borderColor: isDarkMode ? '#15803d' : '#bbf7d0',
+                              color: isDarkMode ? '#86efac' : '#15803d',
+                            }}
+                          >
+                            <CheckCircleFilled style={{ marginRight: 6, color: '#10b981' }} />
+                            {a}
+                          </Tag>
+                        ))}
+                      </Space>
+                    </Card>
+
+                    {/* 4. Gym Rules & Safety Measures (Side by side) */}
+                    <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+                      <Col xs={24} md={12}>
+                        <Card
+                          title={
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <FileTextOutlined style={{ color: '#6366f1' }} />
+                              <span style={{ fontSize: 14 }}>Gym Rules & Member Guidelines</span>
+                            </div>
+                          }
+                          style={{
+                            borderRadius: 14,
+                            backgroundColor: 'var(--bg-surface-elevated)',
+                            borderColor: 'var(--border-color)',
+                            height: '100%',
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {gymRulesList.map((rule, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'flex-start',
+                                  gap: 8,
+                                  padding: '8px 12px',
+                                  borderRadius: 8,
+                                  backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc',
+                                  border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
+                                }}
+                              >
+                                <CheckOutlined style={{ color: '#6366f1', fontSize: 12, marginTop: 3, flexShrink: 0 }} />
+                                <span style={{ fontSize: 12.5, color: isDarkMode ? '#e2e8f0' : '#334155', lineHeight: 1.4 }}>
+                                  {rule}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      </Col>
+
+                      <Col xs={24} md={12}>
+                        <Card
+                          title={
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <SafetyCertificateOutlined style={{ color: '#10b981' }} />
+                              <span style={{ fontSize: 14 }}>Safety Measures & Protocols</span>
+                            </div>
+                          }
+                          style={{
+                            borderRadius: 14,
+                            backgroundColor: 'var(--bg-surface-elevated)',
+                            borderColor: 'var(--border-color)',
+                            height: '100%',
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {gymSafetyList.map((measure, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'flex-start',
+                                  gap: 8,
+                                  padding: '8px 12px',
+                                  borderRadius: 8,
+                                  backgroundColor: isDarkMode ? '#1e293b' : '#f0fdf4',
+                                  border: `1px solid ${isDarkMode ? '#334155' : '#bbf7d0'}`,
+                                }}
+                              >
+                                <CheckCircleFilled style={{ color: '#10b981', fontSize: 12, marginTop: 3, flexShrink: 0 }} />
+                                <span style={{ fontSize: 12.5, color: isDarkMode ? '#e2e8f0' : '#166534', lineHeight: 1.4 }}>
+                                  {measure}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      </Col>
+                    </Row>
+
+                    {/* 5. Per-Session / Day Pass Pricing */}
+                    <Card
+                      title={
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <DollarOutlined style={{ color: '#16a34a' }} />
+                            <span>Per-Session / Day Pass Pricing</span>
+                          </div>
+                          <Tag color="success" style={{ fontWeight: 700, borderRadius: 6 }}>
+                            Day Pass Booking Enabled
+                          </Tag>
+                        </div>
+                      }
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: 'var(--bg-surface-elevated)',
+                        borderColor: 'var(--border-color)',
+                        marginBottom: 20,
+                      }}
+                    >
+                      <Row gutter={[16, 16]} align="middle">
+                        <Col xs={24} sm={10}>
+                          <div
+                            style={{
+                              padding: '16px 20px',
+                              borderRadius: 10,
+                              backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc',
+                              border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
+                              textAlign: 'center',
+                            }}
+                          >
+                            <Text type="secondary" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>
+                              Single Session Pass Base Rate
+                            </Text>
+                            <div style={{ fontSize: 28, fontWeight: 900, color: '#16a34a', marginTop: 4 }}>
+                              ₹{sessionPrice.toLocaleString('en-IN')}
+                              <span style={{ fontSize: 13, color: '#64748b', fontWeight: 500 }}> / visit</span>
+                            </div>
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                              Includes full gym floor & locker access
+                            </div>
+                          </div>
+                        </Col>
+                        <Col xs={24} sm={14}>
+                          <Text strong style={{ fontSize: 12.5, display: 'block', marginBottom: 8 }}>
+                            Active Day Pass Booking Categories:
+                          </Text>
+                          <Space wrap size={[6, 6]}>
+                            {sessionCategories.map((cat, idx) => (
+                              <Tag key={idx} color="cyan" style={{ borderRadius: 6, fontWeight: 600, fontSize: 12, padding: '3px 8px' }}>
+                                ✓ {cat}
+                              </Tag>
+                            ))}
+                          </Space>
+                        </Col>
+                      </Row>
+                    </Card>
+                  </Col>
+
+                  {/* Right Column: Day-by-Day Hours, Bank Details & Direct Settlements, Social Media & Digital Brand Presence */}
+                  <Col xs={24} lg={10}>
+                    {/* 6. Day-by-Day Working Hours */}
+                    <Card
+                      title={
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <ClockCircleOutlined style={{ color: '#2563eb' }} />
+                            <span>Day-by-Day Working Hours</span>
+                          </div>
+                          <Tag color={gym.openingHours?.mode === '24_HOURS' ? 'green' : (gym.openingHours?.mode === 'SPLIT_SHIFT' ? 'purple' : 'blue')}>
+                            {gym.openingHours?.mode === '24_HOURS' ? '24/7 Facility' : (gym.openingHours?.mode === 'SPLIT_SHIFT' ? 'Split Shifts' : 'Regular Hours')}
+                          </Tag>
+                        </div>
+                      }
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: 'var(--bg-surface-elevated)',
+                        borderColor: 'var(--border-color)',
+                        marginBottom: 20,
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {weekSchedule.map((item) => (
+                          <div
+                            key={item.day}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: 13,
+                              padding: '8px 12px',
+                              borderRadius: 8,
+                              backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc',
+                              border: `1px solid ${isDarkMode ? '#334155' : '#f1f5f9'}`,
+                            }}
+                          >
+                            <span style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', width: 95 }}>
+                              {item.day}
+                            </span>
+                            <div style={{ flex: 1, textAlign: 'right', paddingRight: 10 }}>
+                              {item.isOpen ? (
+                                item.mode === 'SPLIT_SHIFT' ? (
+                                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#2563eb', fontWeight: 600 }}>
+                                    <div>M: {item.morning}</div>
+                                    <div>E: {item.evening}</div>
+                                  </div>
+                                ) : (
+                                  <span style={{ fontFamily: 'monospace', color: '#2563eb', fontWeight: 700 }}>
+                                    {item.text}
+                                  </span>
+                                )
+                              ) : (
+                                <span style={{ color: '#ef4444', fontWeight: 600 }}>Closed</span>
+                              )}
+                            </div>
+                            <Tag
+                              color={item.isOpen ? 'success' : 'error'}
+                              style={{ margin: 0, borderRadius: 4, fontWeight: 700, fontSize: 11 }}
+                            >
+                              {item.isOpen ? 'Open' : 'Closed'}
+                            </Tag>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+
+                    {/* 7. Bank Details & Direct Settlements */}
+                    <Card
+                      title={
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <BankOutlined style={{ color: '#0284c7' }} />
+                          <span>Bank Details & Direct Settlements</span>
+                        </div>
+                      }
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: 'var(--bg-surface-elevated)',
+                        borderColor: 'var(--border-color)',
+                        marginBottom: 20,
+                      }}
+                    >
+                      <Descriptions column={1} bordered size="small">
+                        <Descriptions.Item label="Account Holder">
+                          <strong>{bank.accountHolder || gym.accountHolderName || gym.name || 'Gym Enterprise'}</strong>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Bank Name">
+                          {bank.bankName || gym.bankName || 'HDFC Bank Ltd'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Account Number">
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                            {bank.accountNumber || gym.accountNumber ? `•••• •••• ${String(bank.accountNumber || gym.accountNumber).slice(-4)}` : '•••• •••• 8842'}
+                          </span>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="IFSC Code">
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#2563eb' }}>
+                            {bank.ifscCode || gym.ifscCode || 'HDFC0001234'}
+                          </span>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Settlement UPI ID">
+                          <span style={{ fontFamily: 'monospace', color: '#16a34a', fontWeight: 600 }}>
+                            {bank.upiId || gym.upiId || `${(gym.slug || 'gymezy').replace(/-/g, '')}@upi`}
+                          </span>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Account Type">
+                          {bank.accountType || 'Current Account'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Branch Location">
+                          {bank.branch || gym.area || 'Chennai Main Branch'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Settlement Schedule">
+                          <Badge status="processing" text={gym.settlementCycle || 'Daily Automated (T+1 Settlement)'} />
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Platform Commission">
+                          <strong style={{ color: '#0284c7' }}>{gym.commissionRate ?? 10}%</strong> on app bookings
+                        </Descriptions.Item>
+                        <Descriptions.Item label="GST Registration">
+                          <span style={{ fontFamily: 'monospace' }}>
+                            {gym.gstNumber || '33AAAAA0000A1Z5 (Verified)'}
+                          </span>
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
+
+                    {/* 8. Social Media & Digital Brand Presence */}
+                    <Card
+                      title={
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <GlobalOutlined style={{ color: '#8b5cf6' }} />
+                          <span>Social Media & Digital Brand Presence</span>
+                        </div>
+                      }
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: 'var(--bg-surface-elevated)',
+                        borderColor: 'var(--border-color)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {/* Instagram */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <InstagramOutlined style={{ color: '#e1306c', fontSize: 16 }} />
+                            <strong style={{ color: 'var(--text-color)' }}>Instagram</strong>
+                          </span>
+                          <span style={{ color: '#2563eb', fontWeight: 600 }}>
+                            {social.instagramHandle || (social.instagram ? `@${social.instagram.split('/').filter(Boolean).pop()}` : `@${(gym.slug || gym.name || 'gym').toLowerCase().replace(/\s+/g, '_')}`)}
+                          </span>
+                        </div>
+
+                        {/* WhatsApp */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <WhatsAppOutlined style={{ color: '#25d366', fontSize: 16 }} />
+                            <strong style={{ color: 'var(--text-color)' }}>WhatsApp Channel</strong>
+                          </span>
+                          <span style={{ color: isDarkMode ? '#cbd5e1' : '#334155', fontWeight: 600 }}>
+                            {social.whatsapp || gym.phone || '+91 98400 00000'}
+                          </span>
+                        </div>
+
+                        {/* Official Website */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <GlobalOutlined style={{ color: '#0284c7', fontSize: 16 }} />
+                            <strong style={{ color: 'var(--text-color)' }}>Official Website</strong>
+                          </span>
+                          <span style={{ color: '#2563eb', fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {social.website || `https://${(gym.slug || 'gymezy').toLowerCase()}.gymezy.com`}
+                          </span>
+                        </div>
+
+                        {/* Facebook / YouTube */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <LinkOutlined style={{ color: '#6366f1', fontSize: 16 }} />
+                            <strong style={{ color: 'var(--text-color)' }}>Facebook / YouTube</strong>
+                          </span>
+                          <span style={{ color: '#64748b' }}>
+                            {social.facebook || social.youtube ? 'Connected' : 'Listed via GYMEZY'}
+                          </span>
+                        </div>
+
+                        {/* Google Business Rating */}
+                        <div
+                          style={{
+                            marginTop: 4,
+                            padding: '10px 14px',
+                            borderRadius: 8,
+                            backgroundColor: isDarkMode ? '#1e293b' : '#f0fdf4',
+                            border: `1px solid ${isDarkMode ? '#334155' : '#bbf7d0'}`,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', textTransform: 'uppercase' }}>
+                              Google Business Verified
+                            </div>
+                            <div style={{ fontSize: 12, color: isDarkMode ? '#e2e8f0' : '#334155', marginTop: 2 }}>
+                              Maps profile linked for local discovery
+                            </div>
+                          </div>
+                          <Tag color="orange" style={{ fontWeight: 800, borderRadius: 6, fontSize: 12, padding: '2px 8px' }}>
+                            ★ {social.googleRating || (gym.rating ? gym.rating.toFixed(1) : '4.9')} / 5.0
+                          </Tag>
+                        </div>
+                      </div>
+                    </Card>
+                  </Col>
+                </Row>
+              );
+            })(),
           },
           {
             key: 'bookings',
             label: (
               <span>
-                <CalendarOutlined /> Bookings ({gymBookings.length})
+                <CalendarOutlined /> Bookings ({unifiedBookings.length})
               </span>
             ),
             children: (
               <Card
                 title={
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                    <span>Customer Bookings for {gym.name}</span>
+                    <div>
+                      <span style={{ fontSize: 16, fontWeight: 700 }}>Customer Bookings for {gym.name}</span>
+                      <Button
+                        size="small"
+                        type="link"
+                        icon={<FireOutlined style={{ color: '#ea580c' }} />}
+                        onClick={() => setActiveTab('classes')}
+                        style={{ marginLeft: 8, fontWeight: 600, color: '#ea580c' }}
+                      >
+                        View Created Group Classes ({createdSections.length}) ➔
+                      </Button>
+                    </div>
                     <Space wrap>
                       <Input
                         placeholder="Search Customer or Booking ID..."
@@ -936,6 +1462,7 @@ export const GymDetailsView = ({
                         value={bookingSearch}
                         onChange={(e) => setBookingSearch(e.target.value)}
                         style={{ width: 250, borderRadius: 'var(--radius-base)' }}
+                        allowClear
                       />
                       <Select
                         value={bookingStatusFilter}
@@ -956,43 +1483,159 @@ export const GymDetailsView = ({
                   borderColor: 'var(--border-color)',
                 }}
               >
+                {/* Category Filter: All, Memberships, Sessions, Group Classes */}
+                <div style={{ marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
+                  <Segmented
+                    value={bookingTypeFilter}
+                    onChange={setBookingTypeFilter}
+                    size="middle"
+                    options={[
+                      {
+                        label: (
+                          <span style={{ padding: '4px 8px', fontWeight: 600 }}>
+                            All Bookings{' '}
+                            <Badge
+                              count={bookingCounts.total}
+                              overflowCount={999}
+                              style={{
+                                backgroundColor: bookingTypeFilter === 'ALL' ? '#4f46e5' : '#94a3b8',
+                                marginLeft: 6,
+                              }}
+                            />
+                          </span>
+                        ),
+                        value: 'ALL',
+                      },
+                      {
+                        label: (
+                          <span style={{ padding: '4px 8px', fontWeight: 600 }}>
+                            <IdcardOutlined style={{ marginRight: 6, color: '#9333ea' }} />
+                            Memberships{' '}
+                            <Badge
+                              count={bookingCounts.memberships}
+                              overflowCount={999}
+                              style={{
+                                backgroundColor: bookingTypeFilter === 'MEMBERSHIP' ? '#9333ea' : '#94a3b8',
+                                marginLeft: 6,
+                              }}
+                            />
+                          </span>
+                        ),
+                        value: 'MEMBERSHIP',
+                      },
+                      {
+                        label: (
+                          <span style={{ padding: '4px 8px', fontWeight: 600 }}>
+                            <ClockCircleOutlined style={{ marginRight: 6, color: '#2563eb' }} />
+                            Single Sessions{' '}
+                            <Badge
+                              count={bookingCounts.sessions}
+                              overflowCount={999}
+                              style={{
+                                backgroundColor: bookingTypeFilter === 'GYM_SESSION' ? '#2563eb' : '#94a3b8',
+                                marginLeft: 6,
+                              }}
+                            />
+                          </span>
+                        ),
+                        value: 'GYM_SESSION',
+                      },
+                      {
+                        label: (
+                          <span style={{ padding: '4px 8px', fontWeight: 600 }}>
+                            <FireOutlined style={{ marginRight: 6, color: '#ea580c' }} />
+                            Group Classes{' '}
+                            <Badge
+                              count={bookingCounts.groupClasses}
+                              overflowCount={999}
+                              style={{
+                                backgroundColor: bookingTypeFilter === 'GROUP_CLASS' ? '#ea580c' : '#94a3b8',
+                                marginLeft: 6,
+                              }}
+                            />
+                          </span>
+                        ),
+                        value: 'GROUP_CLASS',
+                      },
+                    ]}
+                  />
+                </div>
+
                 <Table
-                  dataSource={gymBookings}
-                  pagination={{ pageSize: 8 }}
-                  rowKey="bookingId"
+                  dataSource={filteredBookings}
+                  loading={isLoadingGymData}
+                  pagination={{ pageSize: 8, showTotal: (total) => `Total ${total} bookings` }}
+                  rowKey="key"
                   columns={[
                     {
                       title: 'Booking ID',
                       dataIndex: 'bookingId',
                       key: 'bookingId',
-                      render: (text) => <strong style={{ color: 'var(--color-primary)' }}>{text}</strong>,
+                      render: (text) => <strong style={{ color: 'var(--color-primary)', fontFamily: 'monospace' }}>{text}</strong>,
                     },
                     {
                       title: 'Customer',
                       key: 'customer',
                       render: (_, record) => (
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{record.customerName}</div>
-                          <div style={{ fontSize: 12, color: '#64748b' }}>{record.customerPhone}</div>
-                        </div>
+                        <Space orientation="horizontal" size={10}>
+                          <Avatar
+                            size={36}
+                            src={hasValidProfilePic(record.customerAvatar) ? record.customerAvatar : undefined}
+                            icon={<UserOutlined />}
+                            style={{ backgroundColor: '#e0e7ff', color: '#4f46e5', flexShrink: 0 }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 700, color: 'var(--text-color)' }}>{record.customerName}</div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>{record.customerPhone}</div>
+                          </div>
+                        </Space>
                       ),
                     },
                     {
                       title: 'Pass Type',
-                      dataIndex: 'type',
                       key: 'type',
-                      render: (text) => <Tag color="blue">{text}</Tag>,
+                      render: (_, record) => {
+                        let catTag = null;
+                        if (record.category === 'MEMBERSHIP') {
+                          catTag = (
+                            <Tag color="purple" style={{ borderRadius: 6, fontWeight: 600, fontSize: 11 }}>
+                              <IdcardOutlined style={{ marginRight: 4 }} /> Membership
+                            </Tag>
+                          );
+                        } else if (record.category === 'GROUP_CLASS') {
+                          catTag = (
+                            <Tag color="volcano" style={{ borderRadius: 6, fontWeight: 600, fontSize: 11 }}>
+                              <FireOutlined style={{ marginRight: 4 }} /> Group Class
+                            </Tag>
+                          );
+                        } else {
+                          catTag = (
+                            <Tag color="blue" style={{ borderRadius: 6, fontWeight: 600, fontSize: 11 }}>
+                              <ClockCircleOutlined style={{ marginRight: 4 }} /> Session
+                            </Tag>
+                          );
+                        }
+                        return (
+                          <div>
+                            <div>{catTag}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-color)', marginTop: 2 }}>
+                              {record.type}
+                            </div>
+                          </div>
+                        );
+                      },
                     },
                     {
                       title: 'Slot Time',
                       dataIndex: 'slotTime',
                       key: 'slotTime',
-                      render: (text) => <span style={{ fontFamily: 'monospace' }}>{text}</span>,
+                      render: (text) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{text}</span>,
                     },
                     {
                       title: 'Date',
                       dataIndex: 'bookingDate',
                       key: 'bookingDate',
+                      render: (text) => <span style={{ fontSize: 13 }}>{text}</span>,
                     },
                     {
                       title: 'Amount Paid',
@@ -1000,8 +1643,8 @@ export const GymDetailsView = ({
                       key: 'amount',
                       render: (amount, record) => (
                         <div>
-                          <strong style={{ color: '#16a34a' }}>₹{amount}</strong>
-                          <div style={{ fontSize: 11, color: '#64748b' }}>{record.paymentMode}</div>
+                          <strong style={{ color: '#16a34a', fontSize: 13 }}>₹{Number(amount || 0).toLocaleString('en-IN')}</strong>
+                          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>{record.paymentMode}</div>
                         </div>
                       ),
                     },
@@ -1010,10 +1653,268 @@ export const GymDetailsView = ({
                       dataIndex: 'status',
                       key: 'status',
                       render: (status) => {
-                        const color =
-                          status === 'Completed' ? 'success' : status === 'Active' ? 'processing' : 'error';
-                        return <Badge status={color} text={status} />;
+                        const s = String(status).toLowerCase();
+                        const badgeStatus = (s === 'completed' || s === 'active') ? 'success' : s === 'cancelled' ? 'error' : 'processing';
+                        return <Badge status={badgeStatus} text={status} />;
                       },
+                    },
+                  ]}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'classes',
+            label: (
+              <span>
+                <FireOutlined /> Group Classes ({createdSections.length})
+              </span>
+            ),
+            children: (
+              <Card
+                title={
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <span style={{ fontSize: 16, fontWeight: 700 }}>Created Group Classes & Batches for {gym.name}</span>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                        All workout sessions, batches, and group fitness classes configured for this gym.
+                      </div>
+                    </div>
+                    <Button
+                      type="default"
+                      icon={<CalendarOutlined />}
+                      onClick={() => {
+                        setBookingTypeFilter('GROUP_CLASS');
+                        setActiveTab('bookings');
+                      }}
+                    >
+                      View Group Class Bookings ({bookingCounts.groupClasses}) ➔
+                    </Button>
+                  </div>
+                }
+                style={{
+                  borderRadius: 14,
+                  backgroundColor: 'var(--bg-surface-elevated)',
+                  borderColor: 'var(--border-color)',
+                }}
+              >
+                {/* Stats Summary Cards */}
+                <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+                  <Col xs={12} sm={6}>
+                    <div style={{ padding: '12px 16px', borderRadius: 10, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}` }}>
+                      <Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>TOTAL CLASSES</Text>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#ea580c', marginTop: 4 }}>
+                        {createdSections.length}
+                      </div>
+                    </div>
+                  </Col>
+                  <Col xs={12} sm={6}>
+                    <div style={{ padding: '12px 16px', borderRadius: 10, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}` }}>
+                      <Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>ACTIVE BATCHES</Text>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#16a34a', marginTop: 4 }}>
+                        {createdSections.filter((s) => s.isActive !== false).length}
+                      </div>
+                    </div>
+                  </Col>
+                  <Col xs={12} sm={6}>
+                    <div style={{ padding: '12px 16px', borderRadius: 10, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}` }}>
+                      <Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>TOTAL ENROLLMENTS</Text>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#2563eb', marginTop: 4 }}>
+                        {createdSections.reduce((sum, s) => sum + (s.enrolledCount || 0), 0)}
+                      </div>
+                    </div>
+                  </Col>
+                  <Col xs={12} sm={6}>
+                    <div style={{ padding: '12px 16px', borderRadius: 10, backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc', border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}` }}>
+                      <Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>TOTAL CAPACITY</Text>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#9333ea', marginTop: 4 }}>
+                        {createdSections.reduce((sum, s) => sum + (s.maxCapacity || 0), 0)} Seats
+                      </div>
+                    </div>
+                  </Col>
+                </Row>
+
+                <Table
+                  dataSource={createdSections}
+                  loading={isLoadingGymData}
+                  rowKey={(record) => record._id || record.id || record.title}
+                  pagination={{ pageSize: 6 }}
+                  columns={[
+                    {
+                      title: 'Class Name & Category',
+                      key: 'title',
+                      render: (_, record) => {
+                        const cat = (record.category || 'general').toLowerCase();
+                        let tagColor = 'blue';
+                        if (cat.includes('yoga')) tagColor = 'purple';
+                        else if (cat.includes('hiit')) tagColor = 'volcano';
+                        else if (cat.includes('zumba')) tagColor = 'magenta';
+                        else if (cat.includes('crossfit')) tagColor = 'orange';
+                        else if (cat.includes('boxing')) tagColor = 'red';
+
+                        return (
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-color)' }}>
+                              {record.title || record.name || 'Untitled Class'}
+                            </div>
+                            <Space size={4} style={{ marginTop: 4 }}>
+                              <Tag color={tagColor} style={{ borderRadius: 6, textTransform: 'capitalize', fontWeight: 600 }}>
+                                {record.category || 'Group Class'}
+                              </Tag>
+                              {record.durationDays ? (
+                                <Tag style={{ borderRadius: 6 }}>{record.durationDays} Days Plan</Tag>
+                              ) : null}
+                            </Space>
+                          </div>
+                        );
+                      },
+                    },
+                    {
+                      title: 'Trainer',
+                      key: 'trainer',
+                      render: (_, record) => {
+                        const trainerName =
+                          typeof record.trainerId === 'object' && record.trainerId?.name
+                            ? record.trainerId.name
+                            : record.trainerName || 'Assigned Instructor';
+                        const trainerPhone =
+                          typeof record.trainerId === 'object' && record.trainerId?.phone
+                            ? record.trainerId.phone
+                            : record.trainerPhone || '';
+                        const specialization =
+                          typeof record.trainerId === 'object' && record.trainerId?.specialization
+                            ? record.trainerId.specialization
+                            : '';
+                        const trainerRating = Number(
+                          typeof record.trainerId === 'object' && record.trainerId?.rating
+                            ? record.trainerId.rating
+                            : record.trainerRating || 0
+                        );
+                        const trainerReviews = Number(
+                          typeof record.trainerId === 'object' && record.trainerId?.reviewsCount
+                            ? record.trainerId.reviewsCount
+                            : record.trainerReviewsCount || 0
+                        );
+
+                        return (
+                          <Space orientation="horizontal" size={10}>
+                            <Avatar
+                              size={34}
+                              icon={<UserOutlined />}
+                              style={{ backgroundColor: '#fef3c7', color: '#d97706', flexShrink: 0 }}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13 }}>{trainerName}</div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>
+                                {specialization || trainerPhone || 'Lead Coach'}
+                              </div>
+                              {trainerRating > 0 && (
+                                <div style={{ fontSize: 11, color: '#d97706', display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                                  <StarFilled style={{ fontSize: 10, color: '#f59e0b' }} />
+                                  <strong>{trainerRating.toFixed(1)}</strong>
+                                  {trainerReviews > 0 ? <span style={{ color: '#64748b' }}>({trainerReviews})</span> : null}
+                                </div>
+                              )}
+                            </div>
+                          </Space>
+                        );
+                      },
+                    },
+                    {
+                      title: 'Schedule & Timing',
+                      key: 'schedule',
+                      render: (_, record) => {
+                        const days = Array.isArray(record.activeDays) && record.activeDays.length > 0
+                          ? record.activeDays
+                          : ['Mon', 'Wed', 'Fri'];
+                        const timeSlot = record.startTime && record.endTime
+                          ? `${record.startTime} - ${record.endTime}`
+                          : record.timeSlot || 'Batch Time TBA';
+
+                        return (
+                          <div>
+                            <div style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 12, color: 'var(--text-color)' }}>
+                              <ClockCircleOutlined style={{ marginRight: 4, color: '#2563eb' }} />
+                              {timeSlot}
+                            </div>
+                            <div style={{ marginTop: 4, display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                              {days.slice(0, 4).map((d) => (
+                                <Tag key={d} style={{ fontSize: 10, margin: 0, padding: '0 4px', borderRadius: 4 }}>
+                                  {String(d).slice(0, 3)}
+                                </Tag>
+                              ))}
+                              {days.length > 4 ? (
+                                <Tag key="more" style={{ fontSize: 10, margin: 0, padding: '0 4px', borderRadius: 4 }}>
+                                  +{days.length - 4}
+                                </Tag>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      },
+                    },
+                    {
+                      title: 'Capacity & Enrolled',
+                      key: 'capacity',
+                      width: 180,
+                      render: (_, record) => {
+                        const enrolled = Number(record.enrolledCount || 0);
+                        const capacity = Number(record.maxCapacity || 20);
+                        const percent = Math.min(100, Math.round((enrolled / capacity) * 100));
+                        return (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
+                              <span style={{ fontWeight: 600 }}>{enrolled} Enrolled</span>
+                              <span style={{ color: '#64748b' }}>Max {capacity}</span>
+                            </div>
+                            <Progress
+                              percent={percent}
+                              size="small"
+                              status={percent >= 90 ? 'exception' : 'active'}
+                              strokeColor={percent >= 90 ? '#ef4444' : percent >= 60 ? '#f59e0b' : '#10b981'}
+                            />
+                          </div>
+                        );
+                      },
+                    },
+                    {
+                      title: 'Price / Fee',
+                      dataIndex: 'cost',
+                      key: 'cost',
+                      render: (cost) => (
+                        <strong style={{ color: '#16a34a', fontSize: 14 }}>
+                          ₹{Number(cost || 0).toLocaleString('en-IN')}
+                        </strong>
+                      ),
+                    },
+                    {
+                      title: 'Status',
+                      key: 'status',
+                      render: (_, record) => {
+                        const active = record.isActive !== false;
+                        return (
+                          <Tag color={active ? 'success' : 'default'} style={{ borderRadius: 6, fontWeight: 600 }}>
+                            {active ? 'Active' : 'Inactive'}
+                          </Tag>
+                        );
+                      },
+                    },
+                    {
+                      title: 'Actions',
+                      key: 'actions',
+                      render: (_, record) => (
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<EyeOutlined />}
+                          onClick={() => {
+                            setSelectedSectionForModal(record);
+                            setIsSectionModalOpen(true);
+                          }}
+                        >
+                          Details
+                        </Button>
+                      ),
                     },
                   ]}
                 />
@@ -1174,6 +2075,236 @@ export const GymDetailsView = ({
             ),
           },
           {
+            key: 'reviews',
+            label: (() => {
+              const count = gymReviewsData?.reviewsCount ?? gym.reviewsCount ?? (Array.isArray(gym.ratings) ? gym.ratings.length : 0);
+              return (
+                <span>
+                  <StarFilled style={{ color: '#f59e0b' }} /> Reviews & Ratings ({count})
+                </span>
+              );
+            })(),
+            children: (() => {
+              const reviewsList = Array.isArray(gymReviewsData?.reviews)
+                ? gymReviewsData.reviews
+                : Array.isArray(gym.ratings)
+                ? gym.ratings
+                : [];
+              const rawHist = Array.isArray(gymReviewsData?.histograms) ? gymReviewsData.histograms : [];
+              const histograms = rawHist.length > 0 ? rawHist : [5, 4, 3, 2, 1].map((s) => ({ stars: s, count: 0, ratio: 0, percent: '0%' }));
+              const avgScore = Number(gymReviewsData?.rating ?? gym.rating ?? 0);
+              const totalReviews = gymReviewsData?.reviewsCount ?? gym.reviewsCount ?? reviewsList.length;
+
+              // Distinct trainers list from createdSections
+              const trainersMap = new Map();
+              createdSections.forEach((sec) => {
+                const tObj = typeof sec.trainerId === 'object' && sec.trainerId ? sec.trainerId : null;
+                const tName = tObj?.name || sec.trainerName;
+                if (tName && !trainersMap.has(tName)) {
+                  trainersMap.set(tName, {
+                    id: tObj?._id || sec._id,
+                    name: tName,
+                    specialty: tObj?.specialization || tObj?.specialty || 'Fitness Trainer',
+                    phone: tObj?.phone || sec.trainerPhone || '',
+                    rating: Number(tObj?.rating || sec.trainerRating || 0),
+                    reviewsCount: Number(tObj?.reviewsCount || sec.trainerReviewsCount || 0),
+                    avatar: tObj?.avatar || '',
+                  });
+                }
+              });
+              const gymTrainers = Array.from(trainersMap.values());
+
+              return (
+                <Space direction="vertical" size={20} style={{ width: '100%' }}>
+                  {/* 1. Rating Overview & Histogram */}
+                  <Row gutter={[20, 20]}>
+                    <Col xs={24} md={10}>
+                      <Card
+                        style={{
+                          borderRadius: 14,
+                          backgroundColor: 'var(--bg-surface-elevated)',
+                          borderColor: 'var(--border-color)',
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          textAlign: 'center',
+                          padding: '24px 16px',
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          Overall Facility Rating
+                        </div>
+                        <div style={{ fontSize: 54, fontWeight: 900, color: '#f59e0b', lineHeight: 1.2, marginTop: 8 }}>
+                          {avgScore.toFixed(1)}
+                        </div>
+                        <Rate disabled allowHalf value={avgScore} style={{ fontSize: 24, marginTop: 4 }} />
+                        <div style={{ fontSize: 13, color: '#64748b', marginTop: 10 }}>
+                          Based on <strong>{totalReviews}</strong> verified member rating{totalReviews === 1 ? '' : 's'}
+                        </div>
+                      </Card>
+                    </Col>
+
+                    <Col xs={24} md={14}>
+                      <Card
+                        title="Rating Breakdown (Star Distribution)"
+                        style={{
+                          borderRadius: 14,
+                          backgroundColor: 'var(--bg-surface-elevated)',
+                          borderColor: 'var(--border-color)',
+                          height: '100%',
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {histograms.map((h) => (
+                            <div key={h.stars} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <span style={{ width: 60, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                {h.stars} <StarFilled style={{ color: '#f59e0b', fontSize: 11 }} />
+                              </span>
+                              <div style={{ flex: 1 }}>
+                                <Progress
+                                  percent={Math.round((h.ratio || 0) * 100)}
+                                  strokeColor="#f59e0b"
+                                  showInfo={false}
+                                  size="small"
+                                />
+                              </div>
+                              <span style={{ width: 65, textAlign: 'right', fontSize: 12, color: '#64748b' }}>
+                                {h.count} ({h.percent || '0%'})
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    </Col>
+                  </Row>
+
+                  {/* 2. Trainer Ratings Card */}
+                  {gymTrainers.length > 0 && (
+                    <Card
+                      title={
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <TeamOutlined style={{ color: '#2563eb' }} />
+                          <span>Floor Instructors & Trainer Ratings ({gymTrainers.length})</span>
+                        </div>
+                      }
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: 'var(--bg-surface-elevated)',
+                        borderColor: 'var(--border-color)',
+                      }}
+                    >
+                      <Row gutter={[16, 16]}>
+                        {gymTrainers.map((t) => (
+                          <Col xs={24} sm={12} md={8} key={t.id || t.name}>
+                            <div
+                              style={{
+                                padding: 16,
+                                borderRadius: 10,
+                                backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc',
+                                border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <Avatar
+                                  size={44}
+                                  src={hasValidProfilePic(t.avatar) ? t.avatar : undefined}
+                                  icon={<UserOutlined />}
+                                  style={{ backgroundColor: '#fef3c7', color: '#d97706', flexShrink: 0 }}
+                                />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {t.name}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: '#64748b' }}>{t.specialty}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                                    <Rate disabled allowHalf value={t.rating || 0} style={{ fontSize: 13 }} />
+                                    <strong style={{ fontSize: 12, color: '#f59e0b' }}>
+                                      {t.rating > 0 ? t.rating.toFixed(1) : 'No rating'}
+                                    </strong>
+                                    {t.reviewsCount > 0 && (
+                                      <span style={{ fontSize: 11, color: '#64748b' }}>({t.reviewsCount})</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </Col>
+                        ))}
+                      </Row>
+                    </Card>
+                  )}
+
+                  {/* 3. Member Reviews List */}
+                  <Card
+                    title={
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Customer Testimonials & Reviews ({reviewsList.length})</span>
+                      </div>
+                    }
+                    style={{
+                      borderRadius: 14,
+                      backgroundColor: 'var(--bg-surface-elevated)',
+                      borderColor: 'var(--border-color)',
+                    }}
+                  >
+                    {reviewsList.length === 0 ? (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="No member reviews or feedback submitted yet for this gym."
+                      />
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {reviewsList.map((rev, idx) => (
+                          <div
+                            key={rev._id || rev.id || idx}
+                            style={{
+                              padding: 16,
+                              borderRadius: 10,
+                              backgroundColor: isDarkMode ? '#1e293b' : '#f8fafc',
+                              border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <Avatar
+                                  size={38}
+                                  src={hasValidProfilePic(rev.userImageUrl) ? rev.userImageUrl : undefined}
+                                  icon={<UserOutlined />}
+                                  style={{ backgroundColor: '#e0e7ff', color: '#4f46e5' }}
+                                />
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: 14 }}>
+                                    {rev.userName || rev.fullName || 'Member'}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                                    {rev.userPhone ? `${rev.userPhone} • ` : ''}{rev.date || 'Recent'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <Space wrap>
+                                <Rate disabled value={rev.rating || 5} style={{ fontSize: 13 }} />
+                                <Tag color="blue" style={{ borderRadius: 6, fontWeight: 600, fontSize: 11 }}>
+                                  {rev.bookingType || 'Member'}
+                                </Tag>
+                              </Space>
+                            </div>
+
+                            <p style={{ margin: 0, fontSize: 13, color: isDarkMode ? '#cbd5e1' : '#334155', fontStyle: 'italic', lineHeight: 1.5 }}>
+                              "{rev.comment}"
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                </Space>
+              );
+            })(),
+          },
+          {
             key: 'audit',
             label: (
               <span>
@@ -1220,249 +2351,6 @@ export const GymDetailsView = ({
                   <Descriptions.Item label="Platform Security Policy">Standard Enterprise SLA</Descriptions.Item>
                   <Descriptions.Item label="Last Audit Check">{new Date().toLocaleDateString()}</Descriptions.Item>
                 </Descriptions>
-              </Card>
-            ),
-          },
-          {
-            key: 'employees',
-            label: (
-              <span>
-                <TeamOutlined /> Staff Approvals{' '}
-                {pendingEmployeesCount > 0 && (
-                  <Badge count={pendingEmployeesCount} style={{ backgroundColor: '#f59e0b', marginLeft: 6 }} />
-                )}
-              </span>
-            ),
-            children: (
-              <Card
-                title={
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <TeamOutlined style={{ fontSize: 18, color: '#2563eb' }} />
-                      <span style={{ fontSize: 16, fontWeight: 750 }}>
-                        Staff & Trainer Management — Gym ID: <Tag color="geekblue" style={{ fontSize: 13, fontWeight: 700 }}>{gym.partnerId || gym.gymPartnerId || gym._id || 'GYM'}</Tag>
-                      </span>
-                    </div>
-                    {pendingEmployeesCount > 0 && (
-                      <Tag color="warning" icon={<ClockCircleOutlined />} style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600, borderRadius: 6 }}>
-                        {pendingEmployeesCount} Modification / Add Request(s) Awaiting Super Admin Review
-                      </Tag>
-                    )}
-                  </div>
-                }
-                style={{
-                  borderRadius: 14,
-                  backgroundColor: 'var(--bg-surface-elevated)',
-                  borderColor: 'var(--border-color)',
-                }}
-              >
-                {/* Search & Filter Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <Input
-                      placeholder="Search employee by name, ID, role, phone..."
-                      prefix={<SearchOutlined style={{ color: '#888' }} />}
-                      value={employeeSearch}
-                      onChange={(e) => setEmployeeSearch(e.target.value)}
-                      style={{ width: 280, borderRadius: 8 }}
-                      allowClear
-                    />
-                    <Select
-                      value={employeeStatusFilter}
-                      onChange={setEmployeeStatusFilter}
-                      style={{ width: 180 }}
-                    >
-                      <Option value="All">All Statuses</Option>
-                      <Option value="Pending Approval">Pending Approval</Option>
-                      <Option value="Approved">Approved</Option>
-                      <Option value="Rejected">Rejected</Option>
-                      <Option value="Active">Active Staff</Option>
-                      <Option value="Inactive">Inactive Staff</Option>
-                    </Select>
-                  </div>
-                  <Button
-                    onClick={loadGymEmployees}
-                    loading={loadingEmployees}
-                    style={{ borderRadius: 8, fontWeight: 600 }}
-                  >
-                    Refresh List
-                  </Button>
-                </div>
-
-                {/* Employees Table */}
-                <Table
-                  dataSource={filteredEmployees}
-                  rowKey={(record) => record._id || record.id || record.employeeId || record.key}
-                  loading={loadingEmployees}
-                  pagination={{ pageSize: 8, showSizeChanger: true, pageSizeOptions: ['5', '8', '10', '20', '50'] }}
-                  scroll={{ x: 1250 }}
-                  columns={[
-                    {
-                      title: 'Gym ID',
-                      key: 'gymPartnerId',
-                      width: 100,
-                      render: (_, record) => (
-                        <Tag color="geekblue" style={{ fontWeight: 700, fontSize: 12, borderRadius: 4 }}>
-                          {record.gymPartnerId || gym.partnerId || record.gymId || 'GYM'}
-                        </Tag>
-                      ),
-                    },
-                    {
-                      title: 'Employee ID',
-                      dataIndex: 'employeeId',
-                      key: 'employeeId',
-                      width: 120,
-                      render: (text) => (
-                        <span style={{ fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                          {text || 'EMP-NEW'}
-                        </span>
-                      ),
-                    },
-                    {
-                      title: 'Employee Profile',
-                      key: 'name',
-                      width: 210,
-                      render: (_, record) => (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <Avatar
-                            src={record.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop'}
-                            size={36}
-                            style={{ flexShrink: 0 }}
-                          />
-                          <div>
-                            <div style={{ fontWeight: 650, color: isDarkMode ? '#fff' : '#0f172a', fontSize: 13 }}>
-                              {record.name}
-                            </div>
-                            <div style={{ fontSize: 11, color: isDarkMode ? '#888' : '#64748b' }}>
-                              {record.phone || record.email || '—'}
-                            </div>
-                          </div>
-                        </div>
-                      ),
-                    },
-                    {
-                      title: 'Role & Type',
-                      key: 'role',
-                      width: 130,
-                      render: (_, record) => (
-                        <div>
-                          <Tag color="blue" style={{ fontWeight: 600, borderRadius: 4, marginBottom: 4 }}>
-                            {record.role || 'Staff'}
-                          </Tag>
-                          <div style={{ fontSize: 11, color: isDarkMode ? '#888' : '#64748b' }}>
-                            {record.type || record.accessType || 'Full Time'}
-                          </div>
-                        </div>
-                      ),
-                    },
-                    {
-                      title: 'Action Requested',
-                      key: 'pendingAction',
-                      width: 160,
-                      render: (_, record) => {
-                        if (record.pendingAction === 'ADD') {
-                          return <Tag color="cyan" style={{ fontWeight: 600 }}>New Staff Onboarding</Tag>;
-                        }
-                        if (record.pendingAction === 'EDIT') {
-                          return <Tag color="orange" style={{ fontWeight: 600 }}>Profile Edited</Tag>;
-                        }
-                        if (record.pendingAction === 'DEACTIVATE') {
-                          return <Tag color="red" style={{ fontWeight: 600 }}>Deactivation</Tag>;
-                        }
-                        return <Tag color="default" style={{ fontWeight: 500 }}>Live Active Record</Tag>;
-                      },
-                    },
-                    {
-                      title: 'Approval Status',
-                      dataIndex: 'approvalStatus',
-                      key: 'approvalStatus',
-                      width: 160,
-                      render: (status) => {
-                        const s = status || 'Approved';
-                        if (s === 'Pending Approval') {
-                          return (
-                            <Tag color="warning" icon={<ClockCircleOutlined />} style={{ fontWeight: 700, borderRadius: 6, padding: '2px 8px' }}>
-                              Pending Approval
-                            </Tag>
-                          );
-                        }
-                        if (s === 'Approved') {
-                          return (
-                            <Tag color="success" icon={<CheckCircleOutlined />} style={{ fontWeight: 700, borderRadius: 6, padding: '2px 8px' }}>
-                              Approved
-                            </Tag>
-                          );
-                        }
-                        if (s === 'Rejected') {
-                          return (
-                            <Tag color="error" icon={<CloseCircleOutlined />} style={{ fontWeight: 700, borderRadius: 6, padding: '2px 8px' }}>
-                              Rejected
-                            </Tag>
-                          );
-                        }
-                        return <Tag>{s}</Tag>;
-                      },
-                    },
-                    {
-                      title: 'Audit & Diff',
-                      key: 'diff',
-                      width: 220,
-                      render: (_, record) => (
-                        <Space size={6} wrap={false} style={{ whiteSpace: 'nowrap' }}>
-                          {(record.pendingChanges || record.approvalStatus === 'Pending Approval' || record.auditHistory?.length > 0) && (
-                            <Button
-                              size="small"
-                              type="primary"
-                              ghost
-                              icon={<DiffOutlined />}
-                              onClick={() => {
-                                setSelectedEmpForDiff(record);
-                                setIsDiffModalOpen(true);
-                              }}
-                              style={{ fontWeight: 600, borderRadius: 6, fontSize: 12 }}
-                            >
-                              View Diff
-                            </Button>
-                          )}
-                          {record.auditHistory && record.auditHistory.length > 0 && (
-                            <Button
-                              size="small"
-                              icon={<HistoryOutlined />}
-                              onClick={() => {
-                                setSelectedEmpForHistory(record);
-                                setIsHistoryModalOpen(true);
-                              }}
-                              style={{ borderRadius: 6, fontSize: 12 }}
-                            >
-                              Log ({record.auditHistory.length})
-                            </Button>
-                          )}
-                        </Space>
-                      ),
-                    },
-                    {
-                      title: 'Actions',
-                      key: 'actions',
-                      width: 120,
-                      fixed: 'right',
-                      render: (_, record) => (
-                        <Space size={6} wrap={false} style={{ whiteSpace: 'nowrap' }}>
-                          <Button
-                            size="small"
-                            icon={<EyeOutlined />}
-                            onClick={() => {
-                              setSelectedEmpForDetails(record);
-                              setIsDetailsModalOpen(true);
-                            }}
-                            style={{ borderRadius: 6, fontWeight: 500 }}
-                          >
-                            Full Profile
-                          </Button>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                />
               </Card>
             ),
           },
@@ -1930,359 +2818,107 @@ export const GymDetailsView = ({
         </Form>
       </Modal>
 
-      {/* 4. EMPLOYEE EDIT DIFF & APPROVAL MODAL */}
+      {/* Group Class Details Modal */}
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <DiffOutlined style={{ color: '#2563eb' }} />
-            <span>Employee Change Audit & Approval</span>
+            <FireOutlined style={{ color: '#ea580c' }} />
+            <span>{selectedSectionForModal?.title || 'Group Class Details'}</span>
           </div>
         }
-        open={isDiffModalOpen}
-        onCancel={() => setIsDiffModalOpen(false)}
-        footer={null}
-        width={780}
-        centered
-        destroyOnClose
+        open={isSectionModalOpen}
+        onCancel={() => {
+          setIsSectionModalOpen(false);
+          setSelectedSectionForModal(null);
+        }}
+        footer={[
+          <Button key="close" onClick={() => setIsSectionModalOpen(false)}>
+            Close
+          </Button>,
+          <Button
+            key="viewBookings"
+            type="primary"
+            icon={<CalendarOutlined />}
+            onClick={() => {
+              setIsSectionModalOpen(false);
+              setBookingTypeFilter('GROUP_CLASS');
+              setActiveTab('bookings');
+            }}
+          >
+            Filter Class Bookings
+          </Button>,
+        ]}
+        width={650}
       >
-        {selectedEmpForDiff && (
-          <div style={{ padding: '8px 0' }}>
-            {/* Context Header Card */}
-            <Card
-              size="small"
-              style={{
-                marginBottom: 16,
-                backgroundColor: isDarkMode ? '#1a2234' : '#f0f7ff',
-                borderColor: '#bfdbfe',
-                borderRadius: 8,
-              }}
-            >
-              <Row gutter={[16, 8]}>
-                <Col span={12}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Associated Gym ID:</Text>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1d4ed8' }}>
-                    {selectedEmpForDiff.gymPartnerId || gym.partnerId || selectedEmpForDiff.gymId || 'GYM-UNKNOWN'}
-                  </div>
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Gym Facility Name:</Text>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>
-                    {selectedEmpForDiff.gymName || gym.name}
-                  </div>
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Employee Name & ID:</Text>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>
-                    {selectedEmpForDiff.name} ({selectedEmpForDiff.employeeId})
-                  </div>
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Change Type:</Text>
-                  <div>
-                    {selectedEmpForDiff.pendingAction === 'ADD' ? (
-                      <Tag color="cyan" style={{ fontWeight: 600 }}>New Employee Onboarding</Tag>
-                    ) : selectedEmpForDiff.pendingAction === 'EDIT' ? (
-                      <Tag color="orange" style={{ fontWeight: 600 }}>Profile Modification</Tag>
-                    ) : (
-                      <Tag color="purple" style={{ fontWeight: 600 }}>{selectedEmpForDiff.pendingAction || 'Information Update'}</Tag>
-                    )}
-                  </div>
-                </Col>
-              </Row>
-            </Card>
-
-            {/* Changed Fields Diff Table */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: isDarkMode ? '#fff' : '#0f172a' }}>
-                {selectedEmpForDiff.pendingAction === 'ADD' ? 'Submitted Profile Attributes' : 'Modified Fields (Before vs After Comparison):'}
-              </div>
-
-              {(() => {
-                let diffItems = [];
-                const latestAudit = selectedEmpForDiff.auditHistory?.[selectedEmpForDiff.auditHistory.length - 1];
-
-                if (latestAudit?.editedFields && latestAudit.editedFields.length > 0) {
-                  diffItems = latestAudit.editedFields;
-                } else if (selectedEmpForDiff.pendingChanges) {
-                  const changes = selectedEmpForDiff.pendingChanges instanceof Map
-                    ? Object.fromEntries(selectedEmpForDiff.pendingChanges)
-                    : selectedEmpForDiff.pendingChanges;
-                  diffItems = Object.entries(changes).map(([field, val]) => ({
-                    field,
-                    oldValue: selectedEmpForDiff[field],
-                    newValue: val,
-                  }));
-                }
-
-                if (diffItems.length === 0 && selectedEmpForDiff.pendingAction === 'ADD') {
-                  const fullFields = [
-                    { field: 'Full Name', value: selectedEmpForDiff.name },
-                    { field: 'Role / Designation', value: selectedEmpForDiff.role },
-                    { field: 'Phone Number', value: selectedEmpForDiff.phone },
-                    { field: 'Official Email', value: selectedEmpForDiff.email },
-                    { field: 'Access Level', value: selectedEmpForDiff.accessType },
-                    { field: 'Joining Date', value: selectedEmpForDiff.joinDate },
-                    { field: 'Employment Type', value: selectedEmpForDiff.type || 'Regular' },
-                    { field: 'Previous Experience', value: selectedEmpForDiff.previousExp || 'None' },
-                    { field: 'Emergency Contact', value: selectedEmpForDiff.emergencyContact?.name ? `${selectedEmpForDiff.emergencyContact.name} (${selectedEmpForDiff.emergencyContact.relationship}) - ${selectedEmpForDiff.emergencyContact.phone}` : '—' },
-                  ];
-
-                  return (
-                    <Table
-                      size="small"
-                      bordered
-                      pagination={false}
-                      dataSource={fullFields}
-                      rowKey="field"
-                      columns={[
-                        { title: 'Attribute', dataIndex: 'field', width: '35%', render: (t) => <strong>{t}</strong> },
-                        { title: 'Submitted Value', dataIndex: 'value', render: (val) => <span style={{ color: '#059669', fontWeight: 600 }}>{typeof val === 'object' ? JSON.stringify(val) : String(val)}</span> },
-                      ]}
-                    />
-                  );
-                }
-
-                if (diffItems.length === 0) {
-                  return (
-                    <div style={{ padding: '24px', textAlign: 'center', backgroundColor: isDarkMode ? '#1f1f1f' : '#f8fafc', borderRadius: 8 }}>
-                      <InfoCircleOutlined style={{ fontSize: 24, color: '#3b82f6', marginBottom: 8 }} />
-                      <div style={{ fontSize: 13, color: isDarkMode ? '#aaa' : '#64748b' }}>
-                        No isolated field-level differences found. All current attributes reflect the pending submission.
-                      </div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <Table
-                    size="small"
-                    bordered
-                    pagination={false}
-                    dataSource={diffItems}
-                    rowKey="field"
-                    columns={[
-                      {
-                        title: 'Modified Field',
-                        dataIndex: 'field',
-                        width: '25%',
-                        render: (field) => <strong style={{ textTransform: 'capitalize' }}>{field.replace(/([A-Z])/g, ' $1')}</strong>,
-                      },
-                      {
-                        title: 'Previous Value (Original)',
-                        dataIndex: 'oldValue',
-                        width: '37%',
-                        render: (val) => (
-                          <div style={{ backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fee2e2', padding: '4px 8px', borderRadius: 4, color: isDarkMode ? '#fca5a5' : '#991b1b', fontSize: 12 }}>
-                            {val ? (typeof val === 'object' ? JSON.stringify(val) : String(val)) : <em>(Empty / Not set)</em>}
-                          </div>
-                        ),
-                      },
-                      {
-                        title: 'New Value (Edited Request)',
-                        dataIndex: 'newValue',
-                        width: '38%',
-                        render: (val) => (
-                          <div style={{ backgroundColor: isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#dcfce7', padding: '4px 8px', borderRadius: 4, color: isDarkMode ? '#86efac' : '#166534', fontWeight: 600, fontSize: 12 }}>
-                            {val ? (typeof val === 'object' ? JSON.stringify(val) : String(val)) : <em>(Removed)</em>}
-                          </div>
-                        ),
-                      },
-                    ]}
-                  />
-                );
-              })()}
-            </div>
-
-            {/* Action Bar */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, borderTop: `1px solid ${isDarkMode ? '#333' : '#e2e8f0'}`, paddingTop: 16 }}>
-              <Button type="primary" onClick={() => setIsDiffModalOpen(false)}>Close</Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* 5. EMPLOYEE AUDIT HISTORY LOG MODAL */}
-      <Modal
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <HistoryOutlined style={{ color: '#2563eb' }} />
-            <span>Audit Trail & Historical Changes Log</span>
-          </div>
-        }
-        open={isHistoryModalOpen}
-        onCancel={() => setIsHistoryModalOpen(false)}
-        footer={null}
-        width={750}
-        centered
-        destroyOnClose
-      >
-        {selectedEmpForHistory && (
-          <div style={{ padding: '8px 0' }}>
-            <div style={{ marginBottom: 16 }}>
-              <Text strong style={{ fontSize: 14 }}>
-                {selectedEmpForHistory.name} ({selectedEmpForHistory.employeeId})
-              </Text>
-              <div style={{ fontSize: 12, color: '#888' }}>
-                Gym ID: <strong>{selectedEmpForHistory.gymPartnerId || gym.partnerId || selectedEmpForHistory.gymId || 'GYM'}</strong> — {selectedEmpForHistory.gymName || gym.name}
-              </div>
-            </div>
-
-            {selectedEmpForHistory.auditHistory && selectedEmpForHistory.auditHistory.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {selectedEmpForHistory.auditHistory.slice().reverse().map((audit, idx) => (
-                  <Card
-                    key={idx}
-                    size="small"
-                    style={{
-                      borderRadius: 8,
-                      backgroundColor: isDarkMode ? '#1e1e1e' : '#f8fafc',
-                      borderColor: isDarkMode ? '#333' : '#e2e8f0',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <Tag color={audit.changeType === 'ADD_EMPLOYEE' ? 'blue' : audit.changeType === 'EDIT_EMPLOYEE' ? 'orange' : 'red'} style={{ fontWeight: 600 }}>
-                        {audit.changeType?.replace('_', ' ') || 'CHANGE'}
-                      </Tag>
-                      <span style={{ fontSize: 12, color: '#888' }}>
-                        {audit.timestamp ? new Date(audit.timestamp).toLocaleString() : 'N/A'}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: 12, color: isDarkMode ? '#ccc' : '#475569', marginBottom: 8 }}>
-                      Gym ID: <strong>{audit.gymPartnerId || audit.gymId || 'GYM'}</strong> | Requested By: <strong>{audit.requestedBy || 'Gym Owner'}</strong>
-                      {audit.reviewedBy && (
-                        <span> | Reviewed By: <strong>{audit.reviewedBy}</strong></span>
-                      )}
-                    </div>
-
-                    {audit.editedFields && audit.editedFields.length > 0 && (
-                      <div style={{ marginTop: 6 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#888', marginBottom: 4 }}>Fields Edited:</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {audit.editedFields.map((f, i) => (
-                            <Tag key={i} color="default" style={{ fontSize: 11 }}>
-                              <strong>{f.field}:</strong> {String(f.oldValue ?? '')} ➔ {String(f.newValue ?? '')}
-                            </Tag>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {audit.adminRemarks && (
-                      <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>
-                        <strong>Admin Remarks:</strong> {audit.adminRemarks}
-                      </div>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#888' }}>
-                No past audit records found.
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      {/* 6. EMPLOYEE FULL PROFILE DETAILS MODAL */}
-      <Modal
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <UserOutlined style={{ color: '#2563eb' }} />
-            <span>Staff Profile & Verification Details</span>
-          </div>
-        }
-        open={isDetailsModalOpen}
-        onCancel={() => setIsDetailsModalOpen(false)}
-        footer={null}
-        width={720}
-        centered
-        destroyOnClose
-      >
-        {selectedEmpForDetails && (
-          <div style={{ padding: '8px 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-              <Avatar
-                src={selectedEmpForDetails.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&auto=format&fit=crop'}
-                size={54}
-              />
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 750, color: isDarkMode ? '#fff' : '#0f172a' }}>
-                  {selectedEmpForDetails.name}
-                </div>
-                <div style={{ fontSize: 12, color: '#888' }}>
-                  ID: {selectedEmpForDetails.employeeId} • Role: {selectedEmpForDetails.role}
-                </div>
-              </div>
-            </div>
-
-            <Descriptions column={2} bordered size="small" style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Gym Partner ID">
-                <Tag color="geekblue">{selectedEmpForDetails.gymPartnerId || gym.partnerId || selectedEmpForDetails.gymId || 'GYM'}</Tag>
+        {selectedSectionForModal && (
+          <div style={{ marginTop: 16 }}>
+            <Descriptions bordered column={2} size="small">
+              <Descriptions.Item label="Class Title" span={2}>
+                <strong>{selectedSectionForModal.title}</strong>
               </Descriptions.Item>
-              <Descriptions.Item label="Gym Name">{selectedEmpForDetails.gymName || gym.name}</Descriptions.Item>
-              <Descriptions.Item label="Phone Number">{selectedEmpForDetails.phone || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Official Email">{selectedEmpForDetails.email || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Approval Status">
-                <Tag color={selectedEmpForDetails.approvalStatus === 'Approved' ? 'success' : selectedEmpForDetails.approvalStatus === 'Pending Approval' ? 'warning' : 'error'}>
-                  {selectedEmpForDetails.approvalStatus || 'Approved'}
+              <Descriptions.Item label="Category">
+                <Tag color="volcano" style={{ textTransform: 'capitalize' }}>
+                  {selectedSectionForModal.category || 'General'}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Work Status">{selectedEmpForDetails.status || 'Active'}</Descriptions.Item>
-              <Descriptions.Item label="Join Date">{selectedEmpForDetails.joinDate || '—'}</Descriptions.Item>
-              <Descriptions.Item label="Access Level">{selectedEmpForDetails.accessType || 'Employee'}</Descriptions.Item>
-              <Descriptions.Item label="Previous Experience" span={2}>
-                {selectedEmpForDetails.previousExp ? `${selectedEmpForDetails.previousExp} at ${selectedEmpForDetails.previousCompany || 'Previous Firm'} (${selectedEmpForDetails.previousDesignation || 'Trainer'})` : 'No prior company noted'}
+              <Descriptions.Item label="Status">
+                <Tag color={selectedSectionForModal.isActive !== false ? 'success' : 'default'}>
+                  {selectedSectionForModal.isActive !== false ? 'Active' : 'Inactive'}
+                </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Emergency Contact" span={2}>
-                {selectedEmpForDetails.emergencyContact?.name ? `${selectedEmpForDetails.emergencyContact.name} (${selectedEmpForDetails.emergencyContact.relationship || 'Contact'}) — ${selectedEmpForDetails.emergencyContact.phone}` : 'Not provided'}
+              <Descriptions.Item label="Time Slot">
+                {selectedSectionForModal.startTime && selectedSectionForModal.endTime
+                  ? `${selectedSectionForModal.startTime} - ${selectedSectionForModal.endTime}`
+                  : selectedSectionForModal.timeSlot || '—'}
               </Descriptions.Item>
+              <Descriptions.Item label="Duration">
+                {selectedSectionForModal.durationDays ? `${selectedSectionForModal.durationDays} Days` : 'Weekly Recurring'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Assigned Trainer" span={2}>
+                {typeof selectedSectionForModal.trainerId === 'object' && selectedSectionForModal.trainerId?.name
+                  ? `${selectedSectionForModal.trainerId.name} (${selectedSectionForModal.trainerId.phone || 'No phone'})`
+                  : selectedSectionForModal.trainerName || 'Assigned Floor Trainer'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Active Days" span={2}>
+                <Space wrap>
+                  {(Array.isArray(selectedSectionForModal.activeDays) && selectedSectionForModal.activeDays.length > 0
+                    ? selectedSectionForModal.activeDays
+                    : ['Monday', 'Wednesday', 'Friday']
+                  ).map((d) => (
+                    <Tag key={d} color="blue">{d}</Tag>
+                  ))}
+                </Space>
+              </Descriptions.Item>
+              <Descriptions.Item label="Registration Fee">
+                <strong style={{ color: '#16a34a', fontSize: 16 }}>
+                  ₹{Number(selectedSectionForModal.cost || 0).toLocaleString('en-IN')}
+                </strong>
+              </Descriptions.Item>
+              <Descriptions.Item label="Capacity & Seats">
+                <span>{selectedSectionForModal.enrolledCount || 0} enrolled of {selectedSectionForModal.maxCapacity || 20} max capacity</span>
+              </Descriptions.Item>
+              {selectedSectionForModal.description ? (
+                <Descriptions.Item label="Description" span={2}>
+                  {selectedSectionForModal.description}
+                </Descriptions.Item>
+              ) : null}
+              {Array.isArray(selectedSectionForModal.inclusions) && selectedSectionForModal.inclusions.length > 0 ? (
+                <Descriptions.Item label="Inclusions" span={2}>
+                  <ul style={{ paddingLeft: 18, margin: 0 }}>
+                    {selectedSectionForModal.inclusions.map((inc, idx) => (
+                      <li key={idx}>{inc}</li>
+                    ))}
+                  </ul>
+                </Descriptions.Item>
+              ) : null}
+              {selectedSectionForModal.instructions ? (
+                <Descriptions.Item label="Member Instructions" span={2}>
+                  <div style={{ color: '#64748b' }}>{selectedSectionForModal.instructions}</div>
+                </Descriptions.Item>
+              ) : null}
             </Descriptions>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-              <Button type="primary" onClick={() => setIsDetailsModalOpen(false)}>Close</Button>
-            </div>
           </div>
         )}
-      </Modal>
-
-      {/* 7. EMPLOYEE REJECTION REMARKS MODAL */}
-      <Modal
-        title="Reject Employee Changes / Submission"
-        open={isEmpRejectModalOpen}
-        onCancel={() => {
-          setIsEmpRejectModalOpen(false);
-          setEmpRejectRemarks('');
-        }}
-        footer={null}
-        centered
-        width={480}
-      >
-        <div style={{ padding: '12px 0' }}>
-          <p style={{ fontSize: 13, color: isDarkMode ? '#aaaaaa' : '#64748b', marginBottom: 12 }}>
-            Provide the administrative reason for rejecting the employee submission/changes for <strong>{selectedEmpForReject?.name}</strong>:
-          </p>
-          <TextArea
-            rows={4}
-            value={empRejectRemarks}
-            onChange={(e) => setEmpRejectRemarks(e.target.value)}
-            placeholder="e.g. Incomplete ID verification, invalid phone number, certification mismatch..."
-            style={{ marginBottom: 18 }}
-          />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <Button onClick={() => setIsEmpRejectModalOpen(false)}>Cancel</Button>
-            <Button
-              danger
-              type="primary"
-              loading={actionLoadingId === (selectedEmpForReject?._id || selectedEmpForReject?.id)}
-              onClick={handleRejectEmployeeSubmit}
-              style={{ fontWeight: 600 }}
-            >
-              Confirm Rejection
-            </Button>
-          </div>
-        </div>
       </Modal>
     </div>
   );

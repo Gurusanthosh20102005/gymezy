@@ -41,15 +41,26 @@ import {
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { apiClient } from '../services/apiClient';
+import { gymService } from '../services/gymService';
+import { ExportModal } from '../general/components/ExportModal';
+import { downloadCSV, getDefaultExportFileName } from '../utils/exportHelper';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 const { Text } = Typography;
 
+const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
+
 export const MembershipsManagement = () => {
   const { isDarkMode } = useTheme();
   const [searchParams] = useSearchParams();
-  const urlTab = searchParams.get('tab') || 'all';
+  const urlTab = searchParams.get('tab') || 'active';
 
   // Data & Loading States
   const [memberships, setMemberships] = useState([]);
@@ -79,11 +90,11 @@ export const MembershipsManagement = () => {
   const [tierFilter, setTierFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [activeTab, setActiveTab] = useState(
-    ['all', 'active', 'expiring', 'switched_cancelled'].includes(urlTab) ? urlTab : 'all'
+    ['active', 'expiring', 'switched_cancelled'].includes(urlTab) ? urlTab : 'active'
   );
 
   useEffect(() => {
-    if (urlTab && ['all', 'active', 'expiring', 'switched_cancelled'].includes(urlTab)) {
+    if (urlTab && ['active', 'expiring', 'switched_cancelled'].includes(urlTab)) {
       setActiveTab(urlTab);
     }
   }, [urlTab]);
@@ -96,14 +107,11 @@ export const MembershipsManagement = () => {
   const fetchGymOptions = useCallback(async (pageToFetch = 1, search = '', append = false) => {
     setGymsLoading(true);
     try {
-      const res = await apiClient.get('/gyms/options', {
-        params: {
-          page: pageToFetch,
-          limit: 15,
-          search: search.trim() || undefined,
-        },
+      const payload = await gymService.getGymOptions({
+        page: pageToFetch,
+        limit: 15,
+        search: search.trim() || undefined,
       });
-      const payload = res.data?.data || {};
       const newGyms = payload.gyms || [];
       setGymsList((prev) => (append ? [...prev, ...newGyms] : newGyms));
       setGymPage(payload.page || pageToFetch);
@@ -205,37 +213,80 @@ export const MembershipsManagement = () => {
     }
   };
 
-  const handleExportCSV = () => {
-    if (memberships.length === 0) {
-      message.warning('No records available to export.');
-      return;
+  // Server-Side Export Modal & Execution
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleOpenExportModal = () => {
+    setIsExportModalOpen(true);
+  };
+
+  const executeExport = async ({ fileName, scope, dateRange }) => {
+    setIsExporting(true);
+    try {
+      const params = {
+        export: true,
+        limit: 0,
+        page: 1,
+      };
+
+      if (scope === 'filtered') {
+        if (gymFilter !== 'All') params.gymId = gymFilter;
+        if (statusFilter !== 'All') params.status = statusFilter;
+        if (tierFilter !== 'All') params.tier = tierFilter;
+        if (typeFilter !== 'all') params.type = typeFilter;
+        if (searchQuery.trim()) params.search = searchQuery.trim();
+      } else if (scope === 'custom' && dateRange) {
+        params.startDate = dateRange[0].toISOString();
+        params.endDate = dateRange[1].toISOString();
+      }
+
+      const res = await apiClient.get('/admin/memberships', { params });
+      const list = res.data?.data?.memberships || [];
+      if (list.length === 0) {
+        message.warning('No membership records found matching the requested scope.');
+        return;
+      }
+
+      const headers = [
+        'Membership ID',
+        'Customer Name',
+        'Phone Number',
+        'Email Address',
+        'Gym ID',
+        'Gym Name',
+        'City',
+        'Plan Tier',
+        'Start Date',
+        'Expiry Date',
+        'Status',
+        'Amount (INR)',
+      ];
+
+      const rows = list.map((m) => [
+        m.membershipId || '',
+        m.userId?.fullName || 'Member',
+        m.userId?.phone || '',
+        m.userId?.email || '',
+        m.gymId?.partnerId || '',
+        m.gymId?.name || '',
+        getGymLocationText(m.gymId),
+        m.membershipTier || '',
+        m.startDate ? new Date(m.startDate).toLocaleDateString('en-GB') : '',
+        m.endDate ? new Date(m.endDate).toLocaleDateString('en-GB') : '',
+        m.status || '',
+        m.pricing?.totalAmount || 0,
+      ]);
+
+      downloadCSV(fileName, headers, rows);
+      message.success(`Successfully exported ${list.length} membership records to ${fileName}.csv`);
+      setIsExportModalOpen(false);
+    } catch (err) {
+      console.error('Export memberships failed:', err);
+      message.error(err.message || 'Failed to export membership records');
+    } finally {
+      setIsExporting(false);
     }
-
-    const headers = ['Membership ID', 'Customer Name', 'Phone', 'Email', 'Gym ID', 'Gym Name', 'City', 'Plan Tier', 'Start Date', 'Expiry Date', 'Status', 'Amount'];
-    const rows = memberships.map((m) => [
-      m.membershipId || '',
-      m.userId?.fullName || 'Member',
-      m.userId?.phone || '',
-      m.userId?.email || '',
-      m.gymId?.partnerId || '',
-      m.gymId?.name || '',
-      getGymLocationText(m.gymId),
-      m.membershipTier || '',
-      m.startDate ? new Date(m.startDate).toLocaleDateString('en-GB') : '',
-      m.endDate ? new Date(m.endDate).toLocaleDateString('en-GB') : '',
-      m.status || '',
-      m.pricing?.totalAmount || 0,
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Gymezy_Memberships_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    message.success('Memberships CSV exported successfully.');
   };
 
   const getActionMenu = (record) => ({
@@ -298,28 +349,23 @@ export const MembershipsManagement = () => {
         const u = record.userId || {};
         const avatarUrl = u.avatar || u.profilePicture;
         const name = u.fullName || 'Member';
-        const initials = name
-          .split(' ')
-          .map((n) => n[0])
-          .join('')
-          .slice(0, 2)
-          .toUpperCase();
+        const hasPic = hasValidProfilePic(avatarUrl);
 
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <Avatar
-              src={avatarUrl}
+              src={hasPic ? avatarUrl : undefined}
+              icon={!hasPic ? <UserOutlined style={{ fontSize: 15 }} /> : undefined}
               style={{
-                backgroundColor: isDarkMode ? '#312e81' : '#e0e7ff',
-                color: '#4f46e5',
-                fontWeight: 700,
-                fontSize: 12,
+                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                color: '#6366f1',
                 flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
               size={30}
-            >
-              {!avatarUrl && initials}
-            </Avatar>
+            />
             <Tooltip title={name}>
               <span
                 style={{
@@ -952,7 +998,7 @@ export const MembershipsManagement = () => {
                 setGymFilter('All');
                 setTierFilter('All');
                 setStatusFilter('All');
-                setActiveTab('all');
+                setActiveTab('active');
                 setCurrentPage(1);
                 setGymSearchText('');
                 void fetchGymOptions(1, '', false);
@@ -966,7 +1012,7 @@ export const MembershipsManagement = () => {
           {/* Export on Right */}
           <Button
             icon={<DownloadOutlined />}
-            onClick={handleExportCSV}
+            onClick={handleOpenExportModal}
             style={{
               borderRadius: 'var(--radius-base)',
               fontWeight: 600,
@@ -1055,12 +1101,17 @@ export const MembershipsManagement = () => {
             {/* Header Member Profile */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
               <Avatar
-                src={selectedMembership.userId?.avatar || selectedMembership.userId?.profilePicture}
+                src={hasValidProfilePic(selectedMembership.userId?.avatar || selectedMembership.userId?.profilePicture) ? (selectedMembership.userId?.avatar || selectedMembership.userId?.profilePicture) : undefined}
+                icon={!hasValidProfilePic(selectedMembership.userId?.avatar || selectedMembership.userId?.profilePicture) ? <UserOutlined style={{ fontSize: 28 }} /> : undefined}
                 size={58}
-                style={{ backgroundColor: '#4f46e5', fontSize: 20 }}
-              >
-                {selectedMembership.userId?.fullName?.[0] || 'M'}
-              </Avatar>
+                style={{
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              />
               <div>
                 <div style={{ fontSize: 18, fontWeight: 750, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
                   {selectedMembership.userId?.fullName || 'Gym Member'}
@@ -1155,6 +1206,17 @@ export const MembershipsManagement = () => {
           </div>
         )}
       </Modal>
+
+      {/* Universal Server-Side Export Dialog */}
+      <ExportModal
+        open={isExportModalOpen}
+        onCancel={() => setIsExportModalOpen(false)}
+        title="Export Memberships Fleet"
+        defaultFileName={getDefaultExportFileName('Memberships')}
+        totalAvailable={totalRecords}
+        onExport={executeExport}
+        loading={isExporting}
+      />
     </div>
   );
 };

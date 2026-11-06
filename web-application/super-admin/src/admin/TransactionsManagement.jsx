@@ -34,6 +34,8 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { transactionService } from '../services/transactionService';
+import { ExportModal } from '../general/components/ExportModal';
+import { downloadCSV, getDefaultExportFileName } from '../utils/exportHelper';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -143,50 +145,78 @@ export const TransactionsManagement = () => {
     setIsCancelModalOpen(false);
   };
 
-  // Export CSV Handler
-  const handleExportCSV = () => {
-    if (transactions.length === 0) {
-      message.warning('No transactions available to export');
-      return;
+  // Server-Side Export Modal & Execution
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleOpenExportModal = () => {
+    setIsExportModalOpen(true);
+  };
+
+  const executeExport = async ({ fileName, scope, dateRange }) => {
+    setIsExporting(true);
+    try {
+      const params = {
+        export: true,
+        limit: 0,
+        page: 1,
+      };
+
+      if (scope === 'filtered') {
+        if (paymentModeFilter !== 'all') params.paymentMode = paymentModeFilter;
+        if (statusFilter !== 'all') params.status = statusFilter;
+        if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      } else if (scope === 'custom' && dateRange) {
+        params.startDate = dateRange[0].toISOString();
+        params.endDate = dateRange[1].toISOString();
+      }
+
+      const res = await transactionService.getTransactions(params);
+      const list = res.transactions || [];
+      if (list.length === 0) {
+        message.warning('No transaction records found matching the requested scope.');
+        return;
+      }
+
+      const headers = [
+        'Transaction ID',
+        'Gateway Txn ID',
+        'Customer Name',
+        'Customer Phone',
+        'Customer Email',
+        'Reference ID',
+        'Reference Type',
+        'Gym Name',
+        'Date & Time',
+        'Amount (INR)',
+        'Payment Mode',
+        'Status',
+      ];
+
+      const rows = list.map((t) => [
+        t.transactionId || '',
+        t.gatewayTxnId || '',
+        t.customerName || '',
+        t.customerPhone || '',
+        t.customerEmail || '',
+        t.referenceId || '',
+        t.referenceType || '',
+        t.gymName || '',
+        t.dateTime || '',
+        t.amount || '0',
+        t.paymentMode || '',
+        t.status || '',
+      ]);
+
+      downloadCSV(fileName, headers, rows);
+      message.success(`Successfully exported ${list.length} transaction records to ${fileName}.csv`);
+      setIsExportModalOpen(false);
+    } catch (err) {
+      console.error('Export transactions failed:', err);
+      message.error(err.message || 'Failed to export transaction records');
+    } finally {
+      setIsExporting(false);
     }
-    const headers = [
-      'Transaction ID',
-      'Gateway Txn ID',
-      'Customer Name',
-      'Customer Phone',
-      'Customer Email',
-      'Reference ID',
-      'Reference Type',
-      'Gym Name',
-      'Date & Time',
-      'Amount',
-      'Payment Mode',
-      'Status',
-    ];
-    const rows = transactions.map((t) => [
-      t.transactionId || '',
-      t.gatewayTxnId || '',
-      t.customerName || '',
-      t.customerPhone || '',
-      t.customerEmail || '',
-      t.referenceId || '',
-      t.referenceType || '',
-      t.gymName || '',
-      t.dateTime || '',
-      t.amount || '0',
-      t.paymentMode || '',
-      t.status || '',
-    ]);
-    const csvContent =
-      'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Gymezy_Transactions_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    message.success('Transactions exported to CSV');
   };
 
   // Table Columns
@@ -219,22 +249,19 @@ export const TransactionsManagement = () => {
       width: 200,
       render: (_, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {hasValidProfilePic(record.avatar) ? (
-            <Avatar src={record.avatar} size={34} style={{ flexShrink: 0 }} />
-          ) : (
-            <Avatar
-              icon={<UserOutlined style={{ fontSize: 16 }} />}
-              size={34}
-              style={{
-                backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
-                color: '#6366f1',
-                flexShrink: 0,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            />
-          )}
+          <Avatar
+            src={hasValidProfilePic(record.avatar) ? record.avatar : undefined}
+            icon={<UserOutlined style={{ fontSize: 16 }} />}
+            size={34}
+            style={{
+              backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+              color: '#6366f1',
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          />
           <div style={{ minWidth: 0 }}>
             <div
               onClick={() => handleView(record)}
@@ -683,7 +710,7 @@ export const TransactionsManagement = () => {
 
           <Button
             icon={<DownloadOutlined />}
-            onClick={handleExportCSV}
+            onClick={handleOpenExportModal}
             style={{
               borderRadius: 'var(--radius-base)',
               fontWeight: 600,
@@ -865,18 +892,18 @@ export const TransactionsManagement = () => {
             >
               {/* Customer */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {hasValidProfilePic(selectedTransaction.avatar) ? (
-                  <Avatar src={selectedTransaction.avatar} size={44} />
-                ) : (
-                  <Avatar
-                    icon={<UserOutlined style={{ fontSize: 22 }} />}
-                    size={44}
-                    style={{
-                      backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
-                      color: '#6366f1',
-                    }}
-                  />
-                )}
+                <Avatar
+                  src={hasValidProfilePic(selectedTransaction.avatar) ? selectedTransaction.avatar : undefined}
+                  icon={<UserOutlined style={{ fontSize: 22 }} />}
+                  size={44}
+                  style={{
+                    backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : '#ede9fe',
+                    color: '#6366f1',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                />
                 <div>
                   <div style={{ fontWeight: 800, fontSize: 14, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
                     {selectedTransaction.customerName}
@@ -1060,6 +1087,17 @@ export const TransactionsManagement = () => {
           <strong>{selectedTransaction?.customerName}</strong>?
         </p>
       </Modal>
+
+      {/* Universal Server-Side Export Dialog */}
+      <ExportModal
+        open={isExportModalOpen}
+        onCancel={() => setIsExportModalOpen(false)}
+        title="Export Transactions Fleet"
+        defaultFileName={getDefaultExportFileName('Transactions')}
+        totalAvailable={totalRecords}
+        onExport={executeExport}
+        loading={isExporting}
+      />
     </div>
   );
 };

@@ -40,9 +40,19 @@ import {
 } from '@ant-design/icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { apiClient } from '../../services/apiClient';
+import { useDebounce } from '../../hooks/useDebounce';
+import { getDidYouMeanSuggestion } from '../../utils/fuzzySearchEngine';
 
 const { Text } = Typography;
 const { Option } = Select;
+
+export const hasValidProfilePic = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return false;
+  const trimmed = avatar.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined') return false;
+  if (trimmed.includes('dicebear.com')) return false;
+  return true;
+};
 
 // Section Category Definitions
 export const SECTION_CATEGORIES = [
@@ -89,6 +99,11 @@ export const SectionsManagement = () => {
   // Filters
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 350);
+
+  const didYouMean = React.useMemo(() => {
+    return getDidYouMeanSuggestion(debouncedSearchQuery);
+  }, [debouncedSearchQuery]);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -223,7 +238,19 @@ export const SectionsManagement = () => {
       value: String(t._id || t.id),
       label: (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Avatar size="small" src={t.avatar} icon={<UserOutlined />} />
+          <Avatar
+            size="small"
+            src={hasValidProfilePic(t.avatar) ? t.avatar : undefined}
+            icon={<UserOutlined style={{ fontSize: 13 }} />}
+            style={{
+              backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+              color: '#6366f1',
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          />
           <span style={{ fontWeight: 600 }}>{t.name}</span>
           {t.employeeId ? (
             <span style={{ color: '#94a3b8', fontSize: 12 }}>({t.employeeId})</span>
@@ -368,16 +395,20 @@ export const SectionsManagement = () => {
   };
 
   // Filtered Sections
-  const filteredSections = sections.filter((sec) => {
-    const matchesCategory = activeCategory === 'all' || sec.category === activeCategory;
-    const trainerName =
-      (typeof sec.trainerId === 'object' ? sec.trainerId?.name : '') || '';
-    const matchesSearch =
-      (sec.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      trainerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (sec.category || '').toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const filteredSections = React.useMemo(() => {
+    return sections.filter((sec) => {
+      const matchesCategory = activeCategory === 'all' || sec.category === activeCategory;
+      const trainerName =
+        (typeof sec.trainerId === 'object' ? sec.trainerId?.name : '') || '';
+      const q = (debouncedSearchQuery || '').toLowerCase();
+      const matchesSearch =
+        !q ||
+        (sec.title || '').toLowerCase().includes(q) ||
+        trainerName.toLowerCase().includes(q) ||
+        (sec.category || '').toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [sections, activeCategory, debouncedSearchQuery]);
 
   // Category Color Helper
   const getCategoryColor = (catKey) => {
@@ -425,10 +456,17 @@ export const SectionsManagement = () => {
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Avatar
-              src={avatar}
-              icon={<UserOutlined />}
+              src={hasValidProfilePic(avatar) ? avatar : undefined}
+              icon={<UserOutlined style={{ fontSize: 16 }} />}
               size={32}
-              style={{ backgroundColor: '#003882', flexShrink: 0 }}
+              style={{
+                backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                color: '#6366f1',
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             />
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <Text strong style={{ fontSize: 13, color: isDarkMode ? '#e6edf3' : '#0f172a' }}>
@@ -691,6 +729,57 @@ export const SectionsManagement = () => {
         </div>
       </div>
 
+      {/* Typo-Tolerant "Did You Mean" Suggestion Banner */}
+      {didYouMean &&
+        debouncedSearchQuery &&
+        didYouMean.toLowerCase() !== debouncedSearchQuery.toLowerCase().trim() && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 18px',
+              borderRadius: 'var(--radius-base)',
+              backgroundColor: isDarkMode ? '#1e293b' : '#eff6ff',
+              border: `1px solid ${isDarkMode ? '#3b82f6' : '#bfdbfe'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: isDarkMode ? '#93c5fd' : '#1e40af' }}>
+              <SearchOutlined style={{ color: '#3b82f6' }} />
+              <span>
+                Did you mean:{' '}
+                <strong
+                  onClick={() => {
+                    setSearchQuery(didYouMean);
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    color: '#2563eb',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {didYouMean}
+                </strong>
+                ?
+              </span>
+            </div>
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              onClick={() => {
+                setSearchQuery(didYouMean);
+              }}
+              style={{ fontWeight: 700, fontSize: 12, borderRadius: 6 }}
+            >
+              Search for &ldquo;{didYouMean}&rdquo;
+            </Button>
+          </div>
+        )}
+
       {/* 2. Sections Table */}
       <Card
         style={{
@@ -704,7 +793,14 @@ export const SectionsManagement = () => {
           columns={columns}
           dataSource={filteredSections}
           loading={isLoading}
-          pagination={{ pageSize: 10, showTotal: (total) => `Total ${total} sections` }}
+          pagination={{
+            pageSize: 10,
+            pageSizeOptions: ['10', '20', '50', '100'],
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) =>
+              `Showing ${range[0]} to ${range[1]} of ${total} sections`,
+          }}
           rowKey="_id"
           scroll={{ x: 1500 }}
           locale={{
@@ -1095,9 +1191,19 @@ export const SectionsManagement = () => {
                 const u = record.userId;
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Avatar src={u?.avatar || u?.profilePicture} icon={<UserOutlined />}>
-                      {(u?.fullName || u?.name || 'M').charAt(0).toUpperCase()}
-                    </Avatar>
+                    <Avatar
+                      src={hasValidProfilePic(u?.avatar || u?.profilePicture) ? (u?.avatar || u?.profilePicture) : undefined}
+                      icon={<UserOutlined style={{ fontSize: 16 }} />}
+                      size={32}
+                      style={{
+                        backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                        color: '#6366f1',
+                        flexShrink: 0,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    />
                     <div>
                       <div style={{ fontWeight: 600 }}>{u?.fullName || u?.name || 'Member'}</div>
                       <Text type="secondary" style={{ fontSize: 11 }}>

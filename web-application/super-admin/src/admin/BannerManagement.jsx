@@ -38,6 +38,7 @@ import {
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { bannerService } from '../services/bannerService';
+import { gymService } from '../services/gymService';
 import { apiClient } from '../services/apiClient';
 import { useDebounce } from '../hooks/useDebounce';
 
@@ -85,6 +86,10 @@ export const BannerManagement = () => {
   const [formSubtitle, setFormSubtitle] = useState('');
   const [formBadge, setFormBadge] = useState('FEATURED DEAL');
 
+  // Gym Search State for dynamic dropdown filtering
+  const [gymSearchInput, setGymSearchInput] = useState('');
+  const debouncedGymSearch = useDebounce(gymSearchInput, 300);
+
   // Fetch Banners with Server-Side Typo-Tolerant Search & Pagination
   const fetchBanners = useCallback(
     async (
@@ -126,22 +131,15 @@ export const BannerManagement = () => {
     [currentPage, pageSize, debouncedSearch, priorityFilter, statusFilter]
   );
 
-  // Fetch Gyms for Dropdown
-  const fetchGyms = async () => {
+  // Fetch Gyms for Dropdown using dedicated SSOT gymService
+  const fetchGyms = useCallback(async (searchQuery = '') => {
     try {
       setGymsLoading(true);
-      const res = await apiClient.get('/gyms');
-      const rawData = res.data;
-      let gymList = [];
-      if (Array.isArray(rawData)) {
-        gymList = rawData;
-      } else if (Array.isArray(rawData?.data?.gyms)) {
-        gymList = rawData.data.gyms;
-      } else if (Array.isArray(rawData?.data)) {
-        gymList = rawData.data;
-      } else if (Array.isArray(rawData?.gyms)) {
-        gymList = rawData.gyms;
-      }
+      const res = await gymService.getGymOptions({
+        limit: 0, // Unrestricted/fetch all for full fleet selector
+        search: searchQuery.trim() || undefined,
+      });
+      const gymList = Array.isArray(res?.gyms) ? res.gyms : [];
       setGyms(gymList);
     } catch (err) {
       console.error('Failed to load gyms for banner mapping:', err);
@@ -149,12 +147,19 @@ export const BannerManagement = () => {
     } finally {
       setGymsLoading(false);
     }
-  };
+  }, []);
 
   // Initial load & gym mapping
   useEffect(() => {
     fetchGyms();
-  }, []);
+  }, [fetchGyms]);
+
+  // Dynamic remote search when user types in the gym dropdown
+  useEffect(() => {
+    if (debouncedGymSearch !== '') {
+      fetchGyms(debouncedGymSearch);
+    }
+  }, [debouncedGymSearch, fetchGyms]);
 
   // Re-fetch when pagination, search, or filters change
   useEffect(() => {
@@ -729,14 +734,25 @@ export const BannerManagement = () => {
               >
                 <Select
                   showSearch
+                  allowClear
                   placeholder="Search and select gym..."
                   loading={gymsLoading}
                   optionFilterProp="label"
-                  filterOption={(input, option) =>
-                    String(option?.label || '')
-                      .toLowerCase()
-                      .includes(String(input || '').trim().toLowerCase())
-                  }
+                  onSearch={(val) => setGymSearchInput(val)}
+                  onClear={() => {
+                    setGymSearchInput('');
+                    fetchGyms('');
+                  }}
+                  filterOption={(input, option) => {
+                    if (!input) return true;
+                    const target = String(option?.label || '').toLowerCase();
+                    const query = String(input || '').trim().toLowerCase();
+                    if (target.includes(query)) return true;
+                    // Relaxed matching ignoring spaces/hyphens (e.g. "supermax" matches "Super Max Gym")
+                    const cleanTarget = target.replace(/[^a-z0-9]/g, '');
+                    const cleanQuery = query.replace(/[^a-z0-9]/g, '');
+                    return cleanTarget.includes(cleanQuery);
+                  }}
                   options={(Array.isArray(gyms) ? gyms : []).map((g) => ({
                     value: g._id || g.id,
                     label: `${g.name || 'Gym'} — ${g.area || g.city || 'Chennai'}${g.slug ? ` (/${g.slug})` : ''}`,
