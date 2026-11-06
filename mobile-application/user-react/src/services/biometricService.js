@@ -171,3 +171,4 @@ class BiometricService {
 
 export const biometricService = new BiometricService();
 export default biometricService;
+

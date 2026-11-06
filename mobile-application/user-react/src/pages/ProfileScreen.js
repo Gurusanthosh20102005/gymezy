@@ -66,17 +66,6 @@ const FITNESS_GOALS = [
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop';
 
-const AVATAR_PRESETS = [
-  { id: '1', url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400&auto=format&fit=crop', label: 'Pro Athlete' },
-  { id: '2', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=400&auto=format&fit=crop', label: 'Runner' },
-  { id: '3', url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=400&auto=format&fit=crop', label: 'Yoga & Core' },
-  { id: '4', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=400&auto=format&fit=crop', label: 'Powerlifter' },
-  { id: '5', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=400&auto=format&fit=crop', label: 'CrossFit' },
-  { id: '6', url: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?q=80&w=400&auto=format&fit=crop', label: 'Gym Pro' },
-  { id: '7', url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=400&auto=format&fit=crop', label: 'Trainer Dave' },
-  { id: '8', url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?q=80&w=400&auto=format&fit=crop', label: 'Iron Master' },
-];
-
 const FAQS = [
   {
     q: 'How do I check-in at a gym?',
@@ -220,7 +209,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
           updateUser(freshUser);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       isMounted = false;
     };
@@ -501,7 +490,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
           setMonthlyCheckInsCount(data.summary.thisMonth);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       isMounted = false;
     };
@@ -609,7 +598,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
       const ImagePicker = getSafeImagePicker();
       if (!ImagePicker) {
         showToast({
-          message: 'Device photo library requires app restart (npm run android). Please pick a fitness avatar preset below!',
+          message: 'Device photo library is currently unavailable. Please check app permissions.',
         });
         return;
       }
@@ -643,7 +632,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
       const ImagePicker = getSafeImagePicker();
       if (!ImagePicker) {
         showToast({
-          message: 'Device camera requires app restart (npm run android). Please pick a fitness avatar preset below!',
+          message: 'Device camera is currently unavailable. Please check camera permissions.',
         });
         return;
       }
@@ -670,10 +659,6 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
     } catch (error) {
       showToast({ message: 'Could not open camera: ' + (error.message || 'Error') });
     }
-  };
-
-  const handleSelectPresetAvatar = async (presetUrl) => {
-    await handleSaveAvatar(presetUrl);
   };
 
   const handleRemovePhoto = async () => {
@@ -1405,7 +1390,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
               <View>
                 <Text style={[styles.sheetTitleText, { color: textColor }]}>Profile Photo</Text>
                 <Text style={[styles.sheetSubtitleText, { color: subtitleColor }]}>
-                  Choose a photo or select an avatar preset
+                  Take a photo or upload from your device gallery
                 </Text>
               </View>
               <TouchableOpacity
@@ -1478,60 +1463,6 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                 </TouchableOpacity>
               </View>
 
-              {/* Section: Fitness Avatars Presets */}
-              <View style={styles.presetSectionHeader}>
-                <MaterialIcons name="face" size={18} color={isDark ? '#93C5FD' : '#003882'} style={{ marginRight: 6 }} />
-                <Text style={[styles.presetSectionTitle, { color: textColor }]}>
-                  Or Choose a Fitness Avatar
-                </Text>
-              </View>
-
-              <View style={styles.avatarPresetsGrid}>
-                {AVATAR_PRESETS.map((preset) => {
-                  const isSelected = avatarUrl === preset.url;
-                  return (
-                    <TouchableOpacity
-                      key={preset.id}
-                      activeOpacity={0.8}
-                      onPress={() => handleSelectPresetAvatar(preset.url)}
-                      style={styles.presetItem}
-                    >
-                      <View
-                        style={[
-                          styles.presetAvatarWrapper,
-                          isSelected && {
-                            borderColor: '#003882',
-                            borderWidth: 2.5,
-                            shadowColor: '#003882',
-                            shadowOpacity: 0.35,
-                            shadowRadius: 6,
-                            elevation: 4,
-                          },
-                        ]}
-                      >
-                        <Image source={{ uri: preset.url }} style={styles.presetAvatarImage} resizeMode="cover" />
-                        {isSelected && (
-                          <View style={styles.presetCheckmarkBadge}>
-                            <MaterialIcons name="check" size={12} color="#FFFFFF" />
-                          </View>
-                        )}
-                      </View>
-                      <Text
-                        style={[
-                          styles.presetLabel,
-                          {
-                            color: isSelected ? (isDark ? '#93C5FD' : '#003882') : subtitleColor,
-                            fontWeight: isSelected ? '700' : '500',
-                          },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {preset.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
 
               {/* Custom Image URL Option */}
               <View style={styles.customUrlSection}>
@@ -1635,7 +1566,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                 </View>
                 <View style={styles.editProfileAvatarInfo}>
                   <Text style={[styles.editProfileAvatarTitle, { color: textColor }]}>Profile Picture</Text>
-                  <Text style={[styles.editProfileAvatarSub, { color: subtitleColor }]}>PNG, JPG or Fitness Preset</Text>
+                  <Text style={[styles.editProfileAvatarSub, { color: subtitleColor }]}>PNG, JPG or Image URL</Text>
                 </View>
                 <TouchableOpacity
                   activeOpacity={0.8}
@@ -1720,8 +1651,8 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                           backgroundColor: isSel
                             ? '#003882'
                             : isDark
-                            ? '#262626'
-                            : '#F1F5F9',
+                              ? '#262626'
+                              : '#F1F5F9',
                           borderColor: isSel ? '#003882' : borderColor,
                         },
                       ]}
@@ -1856,8 +1787,8 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                             ? 'rgba(30, 58, 138, 0.5)'
                             : 'rgba(0, 56, 130, 0.08)'
                           : isDark
-                          ? '#262626'
-                          : '#F8FAFC',
+                            ? '#262626'
+                            : '#F8FAFC',
                         borderColor: isSel ? '#003882' : borderColor,
                         borderWidth: isSel ? 1.5 : 1,
                       },
@@ -2175,7 +2106,6 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                       activeOpacity={0.8}
                     >
                       <MaterialIcons name="send" size={14} color="#FFFFFF" />
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Email</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -2249,7 +2179,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                       activeOpacity={0.8}
                     >
                       <MaterialIcons name="call" size={14} color="#FFFFFF" />
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>Call</Text>
+
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -2943,56 +2873,6 @@ const styles = StyleSheet.create({
   avatarActionSub: {
     fontSize: 11,
     marginTop: 2,
-  },
-  presetSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  presetSectionTitle: {
-    fontSize: 13.5,
-    fontWeight: '700',
-  },
-  avatarPresetsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  presetItem: {
-    width: '22%',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  presetAvatarWrapper: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  presetAvatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  presetCheckmarkBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: '#003882',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  presetLabel: {
-    fontSize: 10,
-    marginTop: 4,
-    textAlign: 'center',
   },
   /* Custom URL Section */
   customUrlSection: {
