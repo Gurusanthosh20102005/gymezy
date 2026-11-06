@@ -560,7 +560,7 @@ export const MembersManagement = ({
             : item.status === 'COMPLETED'
             ? 'Approved'
             : item.status === 'REJECTED_BY_GYM'
-            ? 'Rejected'
+            ? 'Rejected By Gym'
             : item.status,
           adminStatus: item.status,
         };

@@ -34,78 +34,78 @@ export const MyMembershipsScreen = ({ navigation }) => {
   const [isFetching, setIsFetching] = useState(false);
 
   const loadMemberships = useCallback(async () => {
-      try {
-        setIsFetching(true);
-        const serverList = await membershipService.fetchMyMemberships(user?.id || user?._id);
-        if (Array.isArray(serverList)) {
-          const mapped = serverList.map((m, idx) => {
-            const startDateStr = m.startDate
-              ? new Date(m.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
-              : '';
-            const endDateStr = m.endDate
-              ? new Date(m.endDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
-              : '';
-            const resolvedGymLogo =
-              m.gymLogo
-              || (typeof m.gymId?.logo === 'string' && m.gymId.logo.trim())
-              || m.gymId?.logo?.fileData
-              || m.gymId?.logoUrl
-              || m.gymId?.coverPhoto?.fileData
-              || m.gymId?.coverPhotoUrl
-              || m.gymId?.image
-              || m.gymId?.images?.[0]
-              || m.gymId?.imageUrl
-              || m.gymImageUrl
-              || null;
+    try {
+      setIsFetching(true);
+      const serverList = await membershipService.fetchMyMemberships(user?.id || user?._id);
+      if (Array.isArray(serverList)) {
+        const mapped = serverList.map((m, idx) => {
+          const startDateStr = m.startDate
+            ? new Date(m.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+            : '';
+          const endDateStr = m.endDate
+            ? new Date(m.endDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+            : '';
+          const resolvedGymLogo =
+            m.gymLogo
+            || (typeof m.gymId?.logo === 'string' && m.gymId.logo.trim())
+            || m.gymId?.logo?.fileData
+            || m.gymId?.logoUrl
+            || m.gymId?.coverPhoto?.fileData
+            || m.gymId?.coverPhotoUrl
+            || m.gymId?.image
+            || m.gymId?.images?.[0]
+            || m.gymId?.imageUrl
+            || m.gymImageUrl
+            || null;
 
-            let uniqueDocId = `mem_${idx}`;
-            if (m._id) {
-              uniqueDocId = String(m._id);
-            } else if (m.id && m.id !== m.membershipId) {
-              uniqueDocId = String(m.id);
-            } else if (m.membershipId) {
-              uniqueDocId = `${m.membershipId}_${idx}`;
-            }
+          let uniqueDocId = `mem_${idx}`;
+          if (m._id) {
+            uniqueDocId = String(m._id);
+          } else if (m.id && m.id !== m.membershipId) {
+            uniqueDocId = String(m.id);
+          } else if (m.membershipId) {
+            uniqueDocId = `${m.membershipId}_${idx}`;
+          }
 
-            return {
-              id: uniqueDocId,
-              membershipId: m.membershipId || uniqueDocId,
-              _id: m._id || uniqueDocId,
-              customerId: m.userId?.fullName || user?.fullName || user?.email || 'Member',
-              gymName: m.gymId?.name || 'Gym Membership',
-              gymLocation:
-                typeof m.gymId?.location === 'string'
-                  ? m.gymId.location
-                  : (m.gymId?.address || m.gymId?.city || m.gymId?.area || ''),
-              gymImageUrl: resolvedGymLogo,
-              planName: `${m.membershipTier} Membership`,
-              membershipTier: m.membershipTier,
-              durationDays: m.durationDays,
-              amountPaid: m.pricing?.totalAmount || 0,
-              startDate: startDateStr,
-              endDate: endDateStr,
-              rawStartDate: m.startDate,
-              rawEndDate: m.endDate,
-              paymentMode: m.payment?.method || 'UPI',
-              status: m.status,
-              otp: m.entryOtp || null,
-              entryOtp: m.entryOtp || null,
-              gymDbId: m.gymId?._id || m.gymId,
-              hasPersonalTrainer: Boolean(m.trainerId),
-              trainerName: m.trainerId?.name || null,
-              trainerSchedule: m.trainerSlot || null,
-              trainerFee: m.pricing?.trainerFee || 0,
-              planDescription: m.planDescription || m.description || null,
-              gym: m.gymId,
-            };
-          });
-          setAllMemberships(mapped);
-        }
-      } catch (err) {
-        console.warn('Could not fetch server memberships:', err.message);
-      } finally {
-        setIsFetching(false);
+          return {
+            id: uniqueDocId,
+            membershipId: m.membershipId || uniqueDocId,
+            _id: m._id || uniqueDocId,
+            customerId: m.userId?.fullName || user?.fullName || user?.email || 'Member',
+            gymName: m.gymId?.name || 'Gym Membership',
+            gymLocation:
+              typeof m.gymId?.location === 'string'
+                ? m.gymId.location
+                : (m.gymId?.address || m.gymId?.city || m.gymId?.area || ''),
+            gymImageUrl: resolvedGymLogo,
+            planName: `${m.membershipTier} Membership`,
+            membershipTier: m.membershipTier,
+            durationDays: m.durationDays,
+            amountPaid: m.pricing?.totalAmount || 0,
+            startDate: startDateStr,
+            endDate: endDateStr,
+            rawStartDate: m.startDate,
+            rawEndDate: m.endDate,
+            paymentMode: m.payment?.method || 'UPI',
+            status: m.status,
+            otp: m.entryOtp || null,
+            entryOtp: m.entryOtp || null,
+            gymDbId: m.gymId?._id || m.gymId,
+            hasPersonalTrainer: Boolean(m.trainerId),
+            trainerName: m.trainerId?.name || null,
+            trainerSchedule: m.trainerSlot || null,
+            trainerFee: m.pricing?.trainerFee || 0,
+            planDescription: m.planDescription || m.description || null,
+            gym: m.gymId,
+          };
+        });
+        setAllMemberships(mapped);
       }
+    } catch (err) {
+      console.warn('Could not fetch server memberships:', err.message);
+    } finally {
+      setIsFetching(false);
+    }
   }, [user?.id, user?._id, setAllMemberships]);
 
   useEffect(() => {
@@ -165,7 +165,7 @@ export const MyMembershipsScreen = ({ navigation }) => {
         ]}
       >
         {/* 1. Upgrade Promo Banner */}
-        <LinearGradient
+        {/* <LinearGradient
           colors={['#1E1B4B', '#312E81', '#4338CA']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -187,7 +187,7 @@ export const MyMembershipsScreen = ({ navigation }) => {
           <View style={styles.promoIconBadge}>
             <MaterialIcons name="workspace-premium" size={36} color="#FBBF24" />
           </View>
-        </LinearGradient>
+        </LinearGradient> */}
 
         {/* 2. Filter Tabs */}
         <View style={styles.tabsWrapper}>
@@ -206,8 +206,8 @@ export const MyMembershipsScreen = ({ navigation }) => {
                 tab === 'Active'
                   ? activeCount
                   : tab === 'Completed'
-                  ? completedCount
-                  : cancelledCount;
+                    ? completedCount
+                    : cancelledCount;
 
               return (
                 <TouchableOpacity
@@ -337,8 +337,8 @@ export const MyMembershipsScreen = ({ navigation }) => {
                             backgroundColor: isActive
                               ? '#E6F7EF'
                               : isDark
-                              ? '#262626'
-                              : '#F1F5F9',
+                                ? '#262626'
+                                : '#F1F5F9',
                           },
                         ]}
                       >
@@ -346,11 +346,17 @@ export const MyMembershipsScreen = ({ navigation }) => {
                           style={[
                             styles.statusTagText,
                             {
-                              color: isActive ? '#16A34A' : colors.subtitle,
+                              color: isActive
+                                ? '#16A34A'
+                                : mbr.status === 'REJECTED_BY_GYM'
+                                ? '#EF4444'
+                                : colors.subtitle,
                             },
                           ]}
                         >
-                          {mbr.status}
+                          {mbr.status === 'REJECTED_BY_GYM'
+                            ? 'Rejected By Gym'
+                            : String(mbr.status || '').replace(/_/g, ' ')}
                         </Text>
                       </View>
                     </View>

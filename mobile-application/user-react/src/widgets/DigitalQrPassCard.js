@@ -285,7 +285,9 @@ export const DigitalQrPassCard = ({
                   },
                 ]}
               >
-                {normStatus}
+                {normStatus === 'REJECTED_BY_GYM'
+                  ? 'Rejected By Gym'
+                  : String(normStatus || '').replace(/_/g, ' ')}
               </Text>
             </View>
           </View>
