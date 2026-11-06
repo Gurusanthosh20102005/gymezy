@@ -53,11 +53,18 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
   const { showToast } = useToast();
 
   const booking = bookings.find((b) => b.id === initialBooking.id) || initialBooking;
+  const isCompleted = booking.status === 'Completed';
+  const isPendingCancellation = booking.status === 'Cancellation_Requested';
   const isPassVisible =
-    booking.status === 'Active' ||
+    (booking.status === 'Active' ||
     booking.status === 'Upcoming' ||
-    booking.status === 'Confirmed';
-  const isActionable = isPassVisible;
+    booking.status === 'Confirmed') && !isPendingCancellation;
+  const isActionable = isPassVisible && !isCompleted;
+
+  // Cancellation quote preview & submission state
+  const [cancellationQuote, setCancellationQuote] = useState(null);
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
 
   // Modals state
   const [showFullscreenQr, setShowFullscreenQr] = useState(false);
@@ -211,13 +218,46 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
     });
   };
 
-  const handleConfirmCancel = () => {
-    cancelBooking(booking.id, cancelReason);
-    setShowCancelSheet(false);
-    showToast({
-      message: `Booking cancelled. Refund of ₹${Math.round(booking.amountPaid)} initiated to UPI.`,
-      isSuccess: true,
-    });
+  const handleOpenCancelSheet = async () => {
+    setShowCancelSheet(true);
+    setIsLoadingQuote(true);
+    try {
+      const quote = await apiService.getBookingCancellationQuote(booking.id || booking._id || booking.bookingId);
+      setCancellationQuote(quote);
+    } catch (err) {
+      console.warn('Failed to load cancellation quote:', err?.message);
+    } finally {
+      setIsLoadingQuote(false);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    setIsSubmittingCancel(true);
+    try {
+      const updated = await cancelBooking(booking.id || booking._id || booking.bookingId, cancelReason);
+      setShowCancelSheet(false);
+      if (updated?.status === 'Cancellation_Requested') {
+        showToast({
+          message: 'Cancellation request submitted to Gym Owner for review.',
+          isSuccess: true,
+        });
+      } else {
+        const refundAmount = cancellationQuote?.refundAmount ?? Math.round(booking.amountPaid || 0);
+        showToast({
+          message: refundAmount > 0
+            ? `Booking cancelled. Refund of ₹${refundAmount} initiated to your original payment method.`
+            : 'Booking cancelled successfully.',
+          isSuccess: true,
+        });
+      }
+    } catch (err) {
+      showToast({
+        message: err?.message || 'Failed to cancel booking.',
+        isSuccess: false,
+      });
+    } finally {
+      setIsSubmittingCancel(false);
+    }
   };
 
   const getStatusColors = (status) => {
@@ -226,12 +266,13 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
     } else if (status === 'Confirmed' || status === 'Upcoming') {
       return { text: '#D97706', bg: 'rgba(217, 119, 6, 0.12)' };
     } else if (status === 'Completed') {
-      return { text: '#60A5FA', bg: 'rgba(96, 165, 250, 0.12)' };
+      return { text: '#6B7280', bg: 'rgba(107, 114, 128, 0.12)' };
+    } else if (status === 'Cancellation_Requested') {
+      return { text: '#D97706', bg: 'rgba(217, 119, 6, 0.12)' };
     } else {
       return { text: '#EF4444', bg: 'rgba(239, 68, 68, 0.12)' };
     }
   };
-
   const statusColors = getStatusColors(booking.status);
 
   return (
@@ -257,6 +298,59 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
+        {/* Session Completed Notice */}
+        {isCompleted && (
+          <View style={[styles.statusNoticeCard, { backgroundColor: isDark ? '#1F2937' : '#F3F4F6', borderColor: isDark ? '#374151' : '#E5E7EB', marginBottom: 18, padding: 16, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'center' }]}>
+            <MaterialIcons name="check-circle" size={26} color="#10B981" />
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Session Completed</Text>
+              <Text style={{ fontSize: 13, color: colors.subtitle, marginTop: 3, lineHeight: 18 }}>
+                This workout session has concluded. Completed sessions cannot be cancelled or refunded.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Cancellation Under Review Notice */}
+        {isPendingCancellation && (
+          <View style={[styles.statusNoticeCard, { backgroundColor: isDark ? '#2D2013' : '#FFFBEB', borderColor: '#F59E0B', marginBottom: 18, padding: 16, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'flex-start' }]}>
+            <MaterialIcons name="hourglass-empty" size={24} color="#D97706" style={{ marginTop: 2 }} />
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#D97706' }}>Cancellation Under Review</Text>
+              <Text style={{ fontSize: 13, color: colors.text, marginTop: 4, lineHeight: 18 }}>
+                Your cancellation request has been forwarded to the Gym Owner for approval.
+              </Text>
+              <View style={{ marginTop: 8, padding: 10, backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(217, 119, 6, 0.08)', borderRadius: 8 }}>
+                <Text style={{ fontSize: 12, color: colors.text }}>
+                  • Consumed: {booking.cancellation?.consumedDays || 1} day(s) (-₹{booking.cancellation?.deductedAmount || 0})
+                </Text>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text, marginTop: 3 }}>
+                  • Expected Refund: ₹{booking.cancellation?.refundAmount || 0} to Original Payment Method
+                </Text>
+              </View>
+              <Text style={{ fontSize: 11, color: colors.subtitle, marginTop: 6 }}>
+                Entry QR & OTP are temporarily suspended while this request is being reviewed.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Cancellation Rejected Alert */}
+        {booking.cancellation?.cancellationStatus === 'REJECTED' && (
+          <View style={[styles.statusNoticeCard, { backgroundColor: isDark ? '#2B1718' : '#FEF2F2', borderColor: '#EF4444', marginBottom: 18, padding: 16, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'flex-start' }]}>
+            <MaterialIcons name="info" size={24} color="#EF4444" style={{ marginTop: 2 }} />
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#EF4444' }}>Cancellation Rejected by Gym</Text>
+              <Text style={{ fontSize: 13, color: colors.text, marginTop: 3 }}>
+                Reason: {booking.cancellation?.rejectionReason || 'Gym owner rejected the cancellation request.'}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.subtitle, marginTop: 4 }}>
+                Your entry pass has been restored so you can complete your remaining workouts.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* 1. Digital Entry Pass Card */}
         {isPassVisible && (
           <View style={{ marginBottom: 18 }}>
@@ -679,7 +773,7 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
 
             {/* Cancel Booking Button */}
             <TouchableOpacity
-              onPress={() => setShowCancelSheet(true)}
+              onPress={handleOpenCancelSheet}
               style={[
                 styles.actionBtn,
                 {
@@ -877,6 +971,7 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
       </Modal>
 
       {/* ========================================== */}
+      {/* ========================================== */}
       {/* CANCEL BOOKING MODAL SHEET                 */}
       {/* ========================================== */}
       <Modal
@@ -889,7 +984,7 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
           <View
             style={[
               styles.sheetContainer,
-              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF' },
+              { backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF', maxHeight: '85%' },
             ]}
           >
             {/* Header */}
@@ -900,89 +995,135 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
               </TouchableOpacity>
             </View>
 
-            {/* Booking Preview Box */}
-            <View
-              style={[
-                styles.currentBookingCard,
-                {
-                  backgroundColor: isDark ? '#262626' : '#F8FAFC',
-                  borderColor: colors.border,
-                  flexDirection: 'column',
-                  alignItems: 'stretch',
-                },
-              ]}
-            >
-              <View style={styles.previewTopRow}>
-                <Text style={[styles.previewLabel, { color: colors.subtitle }]}>Booking ID</Text>
-                <Text style={styles.previewId}>{booking.id}</Text>
-              </View>
-              <Text style={[styles.previewGymName, { color: colors.text }]}>
-                {booking.gymName}
-              </Text>
-              <Text style={[styles.previewSub, { color: colors.subtitle }]}>
-                {booking.sessionSubtitle} • {booking.date}
-              </Text>
-              <Text style={[styles.previewAmount, { color: colors.text }]}>
-                ₹{Math.round(booking.amountPaid)} Paid via {booking.paymentMode}
-              </Text>
-            </View>
-
-            {/* Reason Selector */}
-            <Text style={[styles.reasonTitle, { color: colors.text }]}>
-              Reason for Cancellation (Optional)
-            </Text>
-            <View style={styles.reasonsList}>
-              {CANCEL_REASONS.map((r) => {
-                const isSelected = cancelReason === r;
-                return (
-                  <TouchableOpacity
-                    key={r}
-                    onPress={() => setCancelReason(r)}
-                    style={styles.reasonRadioRow}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons
-                      name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
-                      size={20}
-                      color={isSelected ? '#EF4444' : colors.subtitle}
-                    />
-                    <Text
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Loading State */}
+              {isLoadingQuote ? (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color={isDark ? '#93C5FD' : AppColors.primaryColor} />
+                  <Text style={{ marginTop: 10, fontSize: 13, color: colors.subtitle }}>Calculating cancellation refund quote...</Text>
+                </View>
+              ) : (
+                <>
+                  {/* Dynamic Refund Quote Summary */}
+                  {cancellationQuote && (
+                    <View
                       style={[
-                        styles.reasonRadioText,
+                        styles.currentBookingCard,
                         {
-                          color: colors.text,
-                          fontWeight: isSelected ? '700' : '500',
+                          backgroundColor: isDark ? '#262626' : '#F8FAFC',
+                          borderColor: cancellationQuote.requiresGymApproval ? '#F59E0B' : colors.border,
+                          flexDirection: 'column',
+                          alignItems: 'stretch',
+                          marginBottom: 14,
                         },
                       ]}
                     >
-                      {r}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.subtitle, textTransform: 'uppercase' }}>
+                          {cancellationQuote.requiresGymApproval ? 'Partial Cancellation (Prorated)' : 'Pre-Start Full Refund'}
+                        </Text>
+                        <View style={[styles.statusPill, { backgroundColor: cancellationQuote.requiresGymApproval ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)' }]}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: cancellationQuote.requiresGymApproval ? '#D97706' : '#10B981' }}>
+                            {cancellationQuote.requiresGymApproval ? 'Gym Review Required' : 'Instant Approval'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                        <Text style={{ fontSize: 13, color: colors.subtitle }}>Total Paid</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>₹{cancellationQuote.totalAmount}</Text>
+                      </View>
+
+                      {cancellationQuote.consumedDays > 0 && (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                          <Text style={{ fontSize: 13, color: colors.subtitle }}>Consumed ({cancellationQuote.consumedDays} of {cancellationQuote.totalDays} sessions)</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#EF4444' }}>-₹{cancellationQuote.deductedAmount}</Text>
+                        </View>
+                      )}
+
+                      <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 8 }} />
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Net Refundable Amount</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: '#10B981' }}>₹{cancellationQuote.refundAmount}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Reason Selector */}
+                  <Text style={[styles.reasonTitle, { color: colors.text, marginBottom: 8 }]}>
+                    Reason for Cancellation
+                  </Text>
+                  <View style={styles.reasonsList}>
+                    {CANCEL_REASONS.map((r) => {
+                      const isSelected = cancelReason === r;
+                      return (
+                        <TouchableOpacity
+                          key={r}
+                          onPress={() => setCancelReason(r)}
+                          style={styles.reasonRadioRow}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons
+                            name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
+                            size={20}
+                            color={isSelected ? '#EF4444' : colors.subtitle}
+                          />
+                          <Text
+                            style={[
+                              styles.reasonRadioText,
+                              {
+                                color: colors.text,
+                                fontWeight: isSelected ? '700' : '500',
+                              },
+                            ]}
+                          >
+                            {r}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Policy Notice Box */}
+                  <View style={[styles.policyNoticeBox, { marginTop: 10, marginBottom: 16 }]}>
+                    <MaterialIcons name="info-outline" size={18} color="#D97706" />
+                    <Text style={styles.policyNoticeText}>
+                      {cancellationQuote?.policyNotice || 'Refunds are reversed to your original payment method in 5-7 business days.'}
                     </Text>
+                  </View>
+
+                  {/* Confirm Cancel Button */}
+                  <TouchableOpacity
+                    onPress={handleConfirmCancel}
+                    disabled={isSubmittingCancel || (cancellationQuote && !cancellationQuote.canCancel)}
+                    style={[
+                      styles.sheetPrimaryBtn,
+                      {
+                        backgroundColor: cancellationQuote?.requiresGymApproval ? '#D97706' : '#EF4444',
+                        opacity: isSubmittingCancel || (cancellationQuote && !cancellationQuote.canCancel) ? 0.6 : 1,
+                        marginBottom: 16,
+                      },
+                    ]}
+                    activeOpacity={0.85}
+                  >
+                    {isSubmittingCancel ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.sheetPrimaryBtnText}>
+                        {cancellationQuote?.requiresGymApproval
+                          ? 'Submit Cancellation Request'
+                          : 'Confirm Cancellation & Refund'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Policy Box */}
-            <View style={styles.policyNoticeBox}>
-              <MaterialIcons name="info-outline" size={18} color="#D97706" />
-              <Text style={styles.policyNoticeText}>
-                Note: Cancelling within 2 hours of the session start time may not be eligible for a full refund as per gym policy.
-              </Text>
-            </View>
-
-            {/* Confirm Cancel Button */}
-            <TouchableOpacity
-              onPress={handleConfirmCancel}
-              style={[styles.sheetPrimaryBtn, { backgroundColor: '#EF4444' }]}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.sheetPrimaryBtnText}>Confirm Cancellation</Text>
-            </TouchableOpacity>
+                </>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* ========================================== */}
       {/* RESCHEDULE SESSION MODAL                   */}
       {/* ========================================== */}
       <Modal

@@ -13,6 +13,7 @@ import {
   Dimensions,
   ActivityIndicator,
   NativeModules,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
@@ -124,21 +125,84 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   );
   const avatarUrl = user?.avatar || DEFAULT_AVATAR;
 
-  // Keep local state in sync when auth user updates
+  // Keep local state in sync when auth user updates from DB
   useEffect(() => {
     if (user) {
       if (user.fullName) setUserName(user.fullName);
       if (user.email) setUserEmail(user.email);
       if (user.phone) setUserPhone(user.phone);
       if (user.emergencyContact) setUserEmergencyContact(user.emergencyContact);
+
+      // Sync real-time body metrics & target from customerProfile in DB
+      if (user.customerProfile) {
+        if (typeof user.customerProfile.heightCm === 'number' && user.customerProfile.heightCm > 0) {
+          setHeightCm(user.customerProfile.heightCm);
+        }
+        if (typeof user.customerProfile.weightKg === 'number' && user.customerProfile.weightKg > 0) {
+          setWeightKg(user.customerProfile.weightKg);
+        }
+        if (typeof user.customerProfile.targetWeightKg === 'number' && user.customerProfile.targetWeightKg > 0) {
+          setTargetWeightKg(user.customerProfile.targetWeightKg);
+        }
+        if (user.customerProfile.fitnessGoal) {
+          setFitnessGoal(user.customerProfile.fitnessGoal);
+        }
+      }
     }
   }, [user]);
 
-  // Body & Fitness Metrics
-  const [heightCm, setHeightCm] = useState(178);
-  const [weightKg, setWeightKg] = useState(74.5);
-  const [targetWeightKg, setTargetWeightKg] = useState(70.0);
-  const [fitnessGoal, setFitnessGoal] = useState('Muscle Building & Hypertrophy');
+  // Pull-to-refresh handler to fetch latest live user profile from database
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const freshUser = await apiService.getCurrentUser();
+      if (freshUser && updateUser) {
+        await updateUser(freshUser);
+      }
+    } catch (err) {
+      console.warn('[PROFILE] Refresh error:', err.message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Background refresh on screen load
+  useEffect(() => {
+    let isMounted = true;
+    apiService
+      .getCurrentUser()
+      .then((freshUser) => {
+        if (isMounted && freshUser && updateUser) {
+          updateUser(freshUser);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [updateUser]);
+
+  // Body & Fitness Metrics - initialized from database (user.customerProfile)
+  const [heightCm, setHeightCm] = useState(
+    user?.customerProfile?.heightCm !== undefined && user?.customerProfile?.heightCm !== null
+      ? Number(user.customerProfile.heightCm)
+      : 178
+  );
+  const [weightKg, setWeightKg] = useState(
+    user?.customerProfile?.weightKg !== undefined && user?.customerProfile?.weightKg !== null
+      ? Number(user.customerProfile.weightKg)
+      : 74.5
+  );
+  const [targetWeightKg, setTargetWeightKg] = useState(
+    user?.customerProfile?.targetWeightKg !== undefined && user?.customerProfile?.targetWeightKg !== null
+      ? Number(user.customerProfile.targetWeightKg)
+      : 70.0
+  );
+  const [fitnessGoal, setFitnessGoal] = useState(
+    user?.customerProfile?.fitnessGoal || 'Muscle Building & Hypertrophy'
+  );
+  const [isSavingMetrics, setIsSavingMetrics] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Preferences Toggles - initialized from user preferences or defaults (default false)
   const [workoutReminders, setWorkoutReminders] = useState(
@@ -430,10 +494,15 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   const [tempWeight, setTempWeight] = useState(weightKg.toString());
   const [tempTargetWeight, setTempTargetWeight] = useState(targetWeightKg.toString());
   const [tempGoal, setTempGoal] = useState(fitnessGoal);
+  const [metricsModalError, setMetricsModalError] = useState('');
+  const [editProfileError, setEditProfileError] = useState('');
 
-  // Computed values
-  const bmi = weightKg / ((heightCm / 100) * (heightCm / 100));
+  // Computed BMI values from real-time database metrics
+  const bmi = (heightCm > 0 && weightKg > 0)
+    ? weightKg / ((heightCm / 100) * (heightCm / 100))
+    : 0;
   const getBmiCategory = () => {
+    if (bmi <= 0) return { label: 'Not Set', color: subtitleColor };
     if (bmi < 18.5) return { label: 'Underweight', color: '#F59E0B' };
     if (bmi < 24.9) return { label: 'Normal Weight', color: '#16A34A' };
     if (bmi < 29.9) return { label: 'Overweight', color: '#EA580C' };
@@ -577,10 +646,15 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
     setTempPhone(userPhone);
     setTempEmergency(userEmergencyContact);
     setTempGender(userGender);
+    setTempHeight(heightCm > 0 ? String(heightCm) : '');
+    setTempWeight(weightKg > 0 ? String(weightKg) : '');
+    setTempTargetWeight(targetWeightKg > 0 ? String(targetWeightKg) : '');
+    setTempGoal(fitnessGoal || 'Muscle Building & Hypertrophy');
+    setEditProfileError('');
     setShowEditProfileModal(true);
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     const updatedName = tempName.trim() || userName;
     const updatedEmail = tempEmail.trim() || userEmail;
     const updatedPhone = tempPhone.trim() || userPhone;
@@ -592,50 +666,149 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
     setUserEmergencyContact(updatedEmergency);
     setUserGender(tempGender);
 
-    if (updateUser) {
-      updateUser({
-        fullName: updatedName,
-        email: updatedEmail,
-        phone: updatedPhone,
-        emergencyContact: updatedEmergency,
-        gender: tempGender,
-      });
+    const parsedH = tempHeight ? Number.parseFloat(tempHeight) : null;
+    const parsedW = tempWeight ? Number.parseFloat(tempWeight) : null;
+    const parsedTW = tempTargetWeight ? Number.parseFloat(tempTargetWeight) : null;
+    const goal = tempGoal || fitnessGoal || 'Muscle Building & Hypertrophy';
+
+    const payload = {
+      fullName: updatedName,
+      email: updatedEmail,
+      phone: updatedPhone,
+      emergencyContact: updatedEmergency,
+      gender: tempGender,
+    };
+
+    if (parsedH && parsedH > 0) {
+      setHeightCm(parsedH);
+    }
+    if (parsedW && parsedW > 0) {
+      setWeightKg(parsedW);
+    }
+    if (parsedTW && parsedTW > 0) {
+      setTargetWeightKg(parsedTW);
+    }
+    if (goal) {
+      setFitnessGoal(goal);
+    }
+
+    if ((parsedH && parsedH > 0) || (parsedW && parsedW > 0) || (parsedTW && parsedTW > 0)) {
+      payload.customerProfile = {
+        ...(parsedH && parsedH > 0 ? { heightCm: parsedH } : {}),
+        ...(parsedW && parsedW > 0 ? { weightKg: parsedW } : {}),
+        ...(parsedTW && parsedTW > 0 ? { targetWeightKg: parsedTW } : {}),
+        fitnessGoal: goal,
+      };
     }
 
     try {
-      apiService.updateProfile({
-        fullName: updatedName,
-        email: updatedEmail,
-        phone: updatedPhone,
-        emergencyContact: updatedEmergency,
-        gender: tempGender,
-      }).catch(() => {});
-    } catch {
-      // Offline mode or network error
+      const res = await apiService.updateProfile(payload);
+      if (updateUser) {
+        await updateUser({
+          fullName: updatedName,
+          email: updatedEmail,
+          phone: updatedPhone,
+          emergencyContact: updatedEmergency,
+          gender: tempGender,
+          customerProfile: res?.customerProfile || {
+            ...(heightCm > 0 ? { heightCm } : {}),
+            ...(weightKg > 0 ? { weightKg } : {}),
+            ...(targetWeightKg > 0 ? { targetWeightKg } : {}),
+            fitnessGoal: goal,
+          },
+        });
+      }
+      setShowEditProfileModal(false);
+      showToast({ message: 'Profile updated successfully', isSuccess: true });
+    } catch (err) {
+      console.warn('[PROFILE] Save profile error:', err.message);
+      setEditProfileError(err.message || 'Failed to update profile.');
+      showToast({ message: err.message || 'Failed to update profile.', isError: true });
     }
-
-    setShowEditProfileModal(false);
-    showToast({ message: 'Profile updated successfully', isSuccess: true });
   };
 
   const handleOpenMeasurements = () => {
-    setTempHeight(heightCm.toFixed(0));
-    setTempWeight(weightKg.toFixed(1));
-    setTempTargetWeight(targetWeightKg.toFixed(1));
-    setTempGoal(fitnessGoal);
+    setTempHeight(heightCm > 0 ? String(heightCm) : '');
+    setTempWeight(weightKg > 0 ? String(weightKg) : '');
+    setTempTargetWeight(targetWeightKg > 0 ? String(targetWeightKg) : '');
+    setTempGoal(fitnessGoal || 'Muscle Building & Hypertrophy');
+    setMetricsModalError('');
     setShowMeasurementsModal(true);
   };
 
-  const handleSaveMeasurements = () => {
-    const h = Number.parseFloat(tempHeight) || heightCm;
-    const w = Number.parseFloat(tempWeight) || weightKg;
-    const tw = Number.parseFloat(tempTargetWeight) || targetWeightKg;
-    setHeightCm(h);
-    setWeightKg(w);
-    setTargetWeightKg(tw);
-    setFitnessGoal(tempGoal);
-    setShowMeasurementsModal(false);
-    showToast({ message: 'Measurements updated successfully', isSuccess: true });
+  const handleSaveMeasurements = async () => {
+    setMetricsModalError('');
+    const parsedH = Number.parseFloat(tempHeight);
+    const parsedW = Number.parseFloat(tempWeight);
+    const parsedTW = tempTargetWeight ? Number.parseFloat(tempTargetWeight) : parsedW;
+
+    if (isNaN(parsedH) || parsedH <= 0) {
+      setMetricsModalError('Please enter a valid height in cm (e.g. 175)');
+      showToast({ message: 'Please enter a valid height in cm (e.g. 175)', isError: true });
+      return;
+    }
+    if (parsedH < 50 || parsedH > 260) {
+      setMetricsModalError('Height must be between 50 and 260 cm');
+      showToast({ message: 'Height must be between 50 and 260 cm', isError: true });
+      return;
+    }
+    if (isNaN(parsedW) || parsedW <= 0) {
+      setMetricsModalError('Please enter a valid current weight in kg (e.g. 70.5)');
+      showToast({ message: 'Please enter a valid current weight in kg (e.g. 70.5)', isError: true });
+      return;
+    }
+    if (parsedW < 20 || parsedW > 350) {
+      setMetricsModalError('Current weight must be between 20 and 350 kg');
+      showToast({ message: 'Current weight must be between 20 and 350 kg', isError: true });
+      return;
+    }
+    if (parsedTW && (parsedTW < 20 || parsedTW > 350)) {
+      setMetricsModalError('Target weight must be between 20 and 350 kg');
+      showToast({ message: 'Target weight must be between 20 and 350 kg', isError: true });
+      return;
+    }
+
+    const goal = tempGoal || fitnessGoal || 'Muscle Building & Hypertrophy';
+    setIsSavingMetrics(true);
+
+    try {
+      const payload = {
+        customerProfile: {
+          heightCm: parsedH,
+          weightKg: parsedW,
+          targetWeightKg: parsedTW || parsedW,
+          fitnessGoal: goal,
+        },
+      };
+
+      const res = await apiService.updateProfile(payload);
+
+      setHeightCm(parsedH);
+      setWeightKg(parsedW);
+      setTargetWeightKg(parsedTW || parsedW);
+      setFitnessGoal(goal);
+
+      if (updateUser) {
+        await updateUser({
+          customerProfile: res?.customerProfile || {
+            heightCm: parsedH,
+            weightKg: parsedW,
+            targetWeightKg: parsedTW || parsedW,
+            fitnessGoal: goal,
+            bmi: Number((parsedW / ((parsedH / 100) * (parsedH / 100))).toFixed(1)),
+          },
+        });
+      }
+
+      setShowMeasurementsModal(false);
+      showToast({ message: 'Body metrics & target saved to database successfully', isSuccess: true });
+    } catch (err) {
+      console.warn('[PROFILE] Save body metrics error:', err.message);
+      setMetricsModalError(err.message || 'Failed to save body metrics to database.');
+      showToast({ message: err.message || 'Failed to save body metrics to database.', isError: true });
+    } finally {
+      setIsSavingMetrics(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -666,6 +839,14 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={['#003882']}
+            tintColor={isDark ? '#93C5FD' : '#003882'}
+          />
+        }
       >
         {/* 1. User Profile Header Card */}
         <View
@@ -883,29 +1064,41 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
             </TouchableOpacity>
           </View>
 
-          {/* 4-Column Metric Boxes */}
+          {/* 4-Column Metric Boxes - Interactive Tap to Edit */}
           <View style={styles.metricBoxesRow}>
             {/* Height */}
-            <View style={[styles.metricBox, { backgroundColor: inputBgColor }]}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleOpenMeasurements}
+              style={[styles.metricBox, { backgroundColor: inputBgColor }]}
+            >
               <Text style={[styles.metricBoxLabel, { color: subtitleColor }]}>Height</Text>
               <Text style={[styles.metricBoxValue, { color: textColor }]}>
-                {Math.round(heightCm)} cm
+                {heightCm > 0 ? `${Math.round(heightCm)} cm` : '--'}
               </Text>
-            </View>
+            </TouchableOpacity>
 
             {/* Weight */}
-            <View style={[styles.metricBox, { backgroundColor: inputBgColor }]}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleOpenMeasurements}
+              style={[styles.metricBox, { backgroundColor: inputBgColor }]}
+            >
               <Text style={[styles.metricBoxLabel, { color: subtitleColor }]}>Weight</Text>
               <Text style={[styles.metricBoxValue, { color: textColor }]}>
-                {weightKg.toFixed(1)} kg
+                {weightKg > 0 ? `${weightKg.toFixed(1)} kg` : '--'}
               </Text>
-            </View>
+            </TouchableOpacity>
 
             {/* BMI */}
-            <View style={[styles.metricBox, { backgroundColor: inputBgColor }]}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleOpenMeasurements}
+              style={[styles.metricBox, { backgroundColor: inputBgColor }]}
+            >
               <Text style={[styles.metricBoxLabel, { color: subtitleColor }]}>BMI</Text>
               <Text style={[styles.metricBoxValue, { color: bmiInfo.color }]}>
-                {bmi.toFixed(1)}
+                {bmi > 0 ? bmi.toFixed(1) : '--'}
               </Text>
               <Text
                 style={[styles.bmiBadgeText, { color: bmiInfo.color }]}
@@ -913,19 +1106,27 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
               >
                 {bmiInfo.label}
               </Text>
-            </View>
+            </TouchableOpacity>
 
             {/* Target */}
-            <View style={[styles.metricBox, { backgroundColor: inputBgColor }]}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleOpenMeasurements}
+              style={[styles.metricBox, { backgroundColor: inputBgColor }]}
+            >
               <Text style={[styles.metricBoxLabel, { color: subtitleColor }]}>Target</Text>
               <Text style={[styles.metricBoxValue, { color: textColor }]}>
-                {targetWeightKg.toFixed(1)} kg
+                {targetWeightKg > 0 ? `${targetWeightKg.toFixed(1)} kg` : '--'}
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
-          {/* Goal Banner */}
-          <View style={[styles.goalBanner, { backgroundColor: inputBgColor }]}>
+          {/* Goal Banner - Tap to Edit */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleOpenMeasurements}
+            style={[styles.goalBanner, { backgroundColor: inputBgColor }]}
+          >
             <MaterialIcons name="track-changes" size={16} color="#003882" />
             <Text
               style={[styles.goalBannerText, { color: textColor }]}
@@ -933,7 +1134,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
             >
               Goal: {fitnessGoal}
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* 4. Section: Passes & Activity */}
@@ -1550,7 +1751,20 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              style={{ maxHeight: 480 }}
+            >
+              {/* Inline Error Message */}
+              {metricsModalError ? (
+                <View style={{ backgroundColor: '#FEE2E2', borderRadius: 10, padding: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}>
+                  <MaterialIcons name="error-outline" size={18} color="#DC2626" style={{ marginRight: 8 }} />
+                  <Text style={{ color: '#DC2626', fontSize: 13, flex: 1, fontWeight: '600' }}>{metricsModalError}</Text>
+                </View>
+              ) : null}
+
               {/* Height & Weight Row */}
               <View style={styles.metricsFormRow}>
                 <View style={{ flex: 1, marginRight: 6 }}>
@@ -1559,7 +1773,9 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                     <MaterialIcons name="height" size={20} color={isDark ? '#93C5FD' : '#003882'} style={{ marginRight: 8 }} />
                     <TextInput
                       value={tempHeight}
-                      onChangeText={setTempHeight}
+                      onChangeText={(t) => { setTempHeight(t); setMetricsModalError(''); }}
+                      placeholder="e.g. 175"
+                      placeholderTextColor={subtitleColor}
                       keyboardType="numeric"
                       style={[styles.textInput, { color: textColor }]}
                     />
@@ -1572,7 +1788,9 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                     <MaterialIcons name="monitor-weight" size={20} color={isDark ? '#93C5FD' : '#003882'} style={{ marginRight: 8 }} />
                     <TextInput
                       value={tempWeight}
-                      onChangeText={setTempWeight}
+                      onChangeText={(t) => { setTempWeight(t); setMetricsModalError(''); }}
+                      placeholder="e.g. 72.5"
+                      placeholderTextColor={subtitleColor}
                       keyboardType="decimal-pad"
                       style={[styles.textInput, { color: textColor }]}
                     />
@@ -1586,7 +1804,9 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                 <MaterialIcons name="flag" size={20} color={isDark ? '#93C5FD' : '#003882'} style={{ marginRight: 10 }} />
                 <TextInput
                   value={tempTargetWeight}
-                  onChangeText={setTempTargetWeight}
+                  onChangeText={(t) => { setTempTargetWeight(t); setMetricsModalError(''); }}
+                  placeholder="e.g. 68.0"
+                  placeholderTextColor={subtitleColor}
                   keyboardType="decimal-pad"
                   style={[styles.textInput, { color: textColor }]}
                 />
@@ -1637,13 +1857,18 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                 );
               })}
 
-              {/* Save Button */}
+              {/* Save Button with Loading State */}
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={handleSaveMeasurements}
-                style={styles.sheetSaveBtn}
+                disabled={isSavingMetrics}
+                style={[styles.sheetSaveBtn, isSavingMetrics && { opacity: 0.75 }]}
               >
-                <Text style={styles.sheetSaveBtnText}>Update Metrics</Text>
+                {isSavingMetrics ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.sheetSaveBtnText}>Save Metrics & Target</Text>
+                )}
               </TouchableOpacity>
             </ScrollView>
           </View>

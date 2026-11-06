@@ -21,15 +21,15 @@ export const GENDER_ENUM = ['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'];
 
 const customerProfileSchema = new mongoose.Schema(
   {
-    heightCm: { type: Number, min: 0 },
-    weightKg: { type: Number, min: 0 },
-    targetWeightKg: { type: Number, min: 0 },
+    heightCm: { type: Number, min: 0, default: null },
+    weightKg: { type: Number, min: 0, default: null },
+    targetWeightKg: { type: Number, min: 0, default: null },
     fitnessGoal: {
       type: String,
-      enum: ['WEIGHT_LOSS', 'HYPERTROPHY', 'STRENGTH', 'HIIT', 'CARDIO', 'GENERAL_FITNESS'],
-      default: 'GENERAL_FITNESS',
+      trim: true,
+      default: 'General Fitness & Mobility',
     },
-    bmi: { type: Number, min: 0 },
+    bmi: { type: Number, min: 0, default: null },
   },
   { _id: false }
 );

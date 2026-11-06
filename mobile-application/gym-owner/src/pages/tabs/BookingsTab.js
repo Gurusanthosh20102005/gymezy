@@ -28,7 +28,7 @@ export const SOURCE_FILTERS = [
   { key: 'WALK_IN', label: 'Front-Desk Walk-in' },
 ];
 
-export const STATUS_FILTERS = ['All', 'Upcoming', 'Checked-in', 'Completed', 'Cancelled'];
+export const STATUS_FILTERS = ['All', 'Upcoming', 'Checked-in', 'Cancellation Requests', 'Completed', 'Cancelled'];
 
 export const TYPE_FILTERS = ['All', 'Gym Session', 'Group Class', 'Walk-in Pass'];
 
@@ -118,6 +118,7 @@ export const BookingsTab = ({ topInset, navigation }) => {
           isCustomDates: b.isCustomDates,
           customDates: b.customDates || [],
           trainerName: b.trainerId?.name || (typeof b.trainerId === 'string' ? b.trainerId : null),
+          cancellation: b.cancellation || null,
         };
       });
 
@@ -186,6 +187,8 @@ export const BookingsTab = ({ topInset, navigation }) => {
           ? b.status === 'Upcoming' || b.status === 'Active' || b.status === 'Confirmed'
           : selectedStatus === 'Checked-in'
           ? b.status === 'Checked-in' || b.status === 'Attended'
+          : selectedStatus === 'Cancellation Requests'
+          ? b.status === 'Cancellation_Requested' || b.cancellation?.cancellationStatus === 'PENDING_GYM_APPROVAL'
           : b.status === selectedStatus;
 
       // Type filter
@@ -592,7 +595,45 @@ export const BookingsTab = ({ topInset, navigation }) => {
                       </Text>
                     </View>
 
-                    {isUpcoming && !isCheckedIn ? (
+                    {b.status === 'Cancellation_Requested' || b.cancellation?.cancellationStatus === 'PENDING_GYM_APPROVAL' ? (
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <TouchableOpacity
+                          style={[styles.verifyCheckinBtn, { backgroundColor: '#16A34A', paddingHorizontal: 12, paddingVertical: 7 }]}
+                          disabled={reviewLoadingId === b._id}
+                          onPress={() =>
+                            Alert.alert(
+                              'Accept Cancellation',
+                              `Approve prorated refund of ₹${b.cancellation?.refundAmount || 0} for ${b.customerName}? (Deducted: ₹${b.cancellation?.deductedAmount || 0} for ${b.cancellation?.consumedDays || 1} day(s))`,
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Confirm & Refund', onPress: () => handleReviewCancellation(b.key, 'ACCEPT') },
+                              ]
+                            )
+                          }
+                          activeOpacity={0.8}
+                        >
+                          <MaterialIcons name="check" size={15} color="#FFFFFF" />
+                          <Text style={styles.verifyCheckinBtnText}>Accept (₹{b.cancellation?.refundAmount || 0})</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.verifyCheckinBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 7 }]}
+                          disabled={reviewLoadingId === b._id}
+                          onPress={() =>
+                            Alert.alert(
+                              'Reject Cancellation',
+                              `Reject cancellation request and restore remaining sessions for ${b.customerName}?`,
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Reject Request', style: 'destructive', onPress: () => handleReviewCancellation(b.key, 'REJECT', 'Rejected by gym owner') },
+                              ]
+                            )
+                          }
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.verifyCheckinBtnText, { color: '#EF4444' }]}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : isUpcoming && !isCheckedIn ? (
                       <TouchableOpacity
                         style={styles.verifyCheckinBtn}
                         onPress={() => handleCheckInBooking(b.key)}
@@ -601,6 +642,11 @@ export const BookingsTab = ({ topInset, navigation }) => {
                         <MaterialIcons name="qr-code-scanner" size={16} color="#FFFFFF" />
                         <Text style={styles.verifyCheckinBtnText}>Check In Pass</Text>
                       </TouchableOpacity>
+                    ) : b.status === 'Completed' ? (
+                      <View style={[styles.verifiedPassBadge, { backgroundColor: 'rgba(107, 114, 128, 0.12)' }]}>
+                        <MaterialIcons name="check-circle" size={14} color="#6B7280" />
+                        <Text style={[styles.verifiedPassText, { color: '#6B7280' }]}>Completed</Text>
+                      </View>
                     ) : (
                       <View style={styles.verifiedPassBadge}>
                         <MaterialIcons

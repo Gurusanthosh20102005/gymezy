@@ -3,7 +3,9 @@ import {
   createBooking,
   getMyBookings,
   getBookingById,
+  getBookingCancellationQuote,
   cancelBooking,
+  reviewBookingCancellation,
   getSectionEnrollments,
   requestReschedule,
   reviewReschedule,
@@ -35,10 +37,16 @@ router.post('/:id/request-reschedule', optionalAuthenticate, requestReschedule);
 router.post('/:id/review-reschedule', optionalAuthenticate, reviewReschedule);
 router.post('/:id/respond-proposal', optionalAuthenticate, respondRescheduleProposal);
 
+// Cancellation quote preview
+router.get('/:id/cancellation-quote', optionalAuthenticate, getBookingCancellationQuote);
+
 // Get single booking details
 router.get('/:id', optionalAuthenticate, getBookingById);
 
-// Cancel booking
+// Cancel booking (Pre-start or In-progress request)
 router.patch('/:id/cancel', optionalAuthenticate, cancelBooking);
+
+// Review booking cancellation (Gym Owner accept / reject)
+router.patch('/:id/cancellation-review', optionalAuthenticate, reviewBookingCancellation);
 
 export default router;
