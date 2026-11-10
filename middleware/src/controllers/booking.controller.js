@@ -186,21 +186,15 @@ export const createBooking = asyncHandler(async (req, res) => {
       throw ApiError.badRequest('You already have an active enrollment in this Batch.');
     }
 
-    // Atomically increment enrolledCount only if below maxCapacity
-    const updatedSection = await Section.findOneAndUpdate(
-      {
-        _id: section._id,
-        $expr: { $lt: ['$enrolledCount', '$maxCapacity'] },
-      },
-      { $inc: { enrolledCount: 1 } },
-      { returnDocument: 'after', new: true }
-    );
-
-    if (!updatedSection) {
+    // Verify capacity strictly against actual active bookings in database
+    const activeEnrollmentsCount = await Booking.countDocuments({
+      sectionId: section._id,
+      status: { $in: ['Upcoming', 'Active'] },
+    });
+    if (activeEnrollmentsCount >= (section.maxCapacity || 25)) {
       throw ApiError.badRequest('This batch is already full. No available slots remain.');
     }
 
-    section = updatedSection;
     if (!allocatedTrainerId && section.trainerId) {
       allocatedTrainerId = section.trainerId;
     }
@@ -233,9 +227,13 @@ export const createBooking = asyncHandler(async (req, res) => {
     if (sessionTrainer.status !== 'Active') {
       throw ApiError.badRequest('Selected personal trainer is currently inactive.');
     }
-    const singleSessionFee = Number(sessionTrainer.trainerPricing?.singleSession || 0);
-    if (singleSessionFee <= 0) {
-      throw ApiError.badRequest('Selected personal trainer is not available for day pass or session bookings.');
+
+    // Personal trainer single-session fee check ONLY applies to direct gym session booking, NOT group class batches
+    if (!section) {
+      const singleSessionFee = Number(sessionTrainer.trainerPricing?.singleSession || 0);
+      if (singleSessionFee <= 0) {
+        throw ApiError.badRequest('Selected personal trainer is not available for day pass or session bookings.');
+      }
     }
     allocatedTrainerId = sessionTrainer._id;
   }
@@ -512,16 +510,21 @@ export const createBooking = asyncHandler(async (req, res) => {
   try {
     await newBooking.save();
   } catch (error) {
-    // If saving the booking document fails, roll back section count and wallet deduction
-    if (section) {
-      await Section.findByIdAndUpdate(section._id, { $inc: { enrolledCount: -1 } });
-    }
     if (debitedWallet && appliedWalletPaise > 0) {
       debitedWallet.balancePaise += appliedWalletPaise;
       debitedWallet.history.pop();
       await debitedWallet.save();
     }
     throw error;
+  }
+
+  // Synchronize section enrolledCount strictly from real active bookings
+  if (section) {
+    const finalEnrolledCount = await Booking.countDocuments({
+      sectionId: section._id,
+      status: { $in: ['Upcoming', 'Active'] },
+    });
+    await Section.updateOne({ _id: section._id }, { enrolledCount: finalEnrolledCount });
   }
 
   // Populate references for client response
@@ -986,12 +989,13 @@ export const cancelBooking = asyncHandler(async (req, res) => {
 
     await booking.save();
 
-    // Atomically decrement section enrolledCount if this was a section booking
+    // Synchronize section enrolledCount strictly from real active bookings
     if (booking.sectionId) {
-      await Section.findOneAndUpdate(
-        { _id: booking.sectionId, enrolledCount: { $gt: 0 } },
-        { $inc: { enrolledCount: -1 } }
-      );
+      const remainingCount = await Booking.countDocuments({
+        sectionId: booking.sectionId,
+        status: { $in: ['Upcoming', 'Active'] },
+      });
+      await Section.updateOne({ _id: booking.sectionId }, { enrolledCount: remainingCount });
     }
 
     const updatedBooking = await Booking.findById(booking._id)
@@ -1075,12 +1079,13 @@ export const reviewBookingCancellation = asyncHandler(async (req, res) => {
 
     await booking.save();
 
-    // Decrement section capacity if applicable
+    // Synchronize section capacity from real active bookings
     if (booking.sectionId) {
-      await Section.findOneAndUpdate(
-        { _id: booking.sectionId, enrolledCount: { $gt: 0 } },
-        { $inc: { enrolledCount: -1 } }
-      );
+      const remainingCount = await Booking.countDocuments({
+        sectionId: booking.sectionId,
+        status: { $in: ['Upcoming', 'Active'] },
+      });
+      await Section.updateOne({ _id: booking.sectionId }, { enrolledCount: remainingCount });
     }
 
     return res.status(200).json(ApiResponse.success(
@@ -1130,14 +1135,20 @@ export const getSectionEnrollments = asyncHandler(async (req, res) => {
   const activeCount = enrollments.filter((b) => b.status === 'Upcoming' || b.status === 'Active').length;
   const cancelledCount = enrollments.filter((b) => b.status === 'Cancelled').length;
 
+  // Auto-heal section enrolledCount to strictly match active bookings
+  if (section.enrolledCount !== activeCount) {
+    section.enrolledCount = activeCount;
+    Section.updateOne({ _id: section._id }, { enrolledCount: activeCount }).catch(() => {});
+  }
+
   return res.status(200).json(ApiResponse.success({
     section,
     summary: {
       maxCapacity: section.maxCapacity || 25,
-      enrolledCount: section.enrolledCount || 0,
+      enrolledCount: activeCount,
       activeCount,
       cancelledCount,
-      availableSlots: Math.max(0, (section.maxCapacity || 25) - (section.enrolledCount || 0)),
+      availableSlots: Math.max(0, (section.maxCapacity || 25) - activeCount),
     },
     enrollments,
   }, 'Section enrollments retrieved successfully'));

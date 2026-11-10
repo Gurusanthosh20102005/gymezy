@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createSection,
   getSections,
+  getAvailableTrainersForSection,
   getSectionById,
   updateSection,
   toggleSectionStatus,
@@ -15,6 +16,9 @@ const router = Router();
 
 // Get all sections for gym (Public discovery or Authenticated Member/Owner)
 router.get('/', optionalAuthenticate, getSections);
+
+// Get available trainers for a proposed section schedule (Must be before /:id)
+router.get('/available-trainers', optionalAuthenticate, getAvailableTrainersForSection);
 
 // Get single section details
 router.get('/:id', optionalAuthenticate, getSectionById);

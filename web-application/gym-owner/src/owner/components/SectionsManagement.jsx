@@ -22,6 +22,7 @@ import {
   Empty,
   DatePicker,
   Segmented,
+  Alert,
 } from 'antd';
 import {
   PlusOutlined,
@@ -137,10 +138,17 @@ export const SectionsManagement = () => {
     }
   };
 
-  // Dynamic Watch for Estimated End Date calculation
+  // Dynamic Watch for Estimated End Date calculation & Trainer Availability
   const watchedStartDate = Form.useWatch('startDate', form);
   const watchedDurationDays = Form.useWatch('durationDays', form);
   const watchedActiveDays = Form.useWatch('activeDays', form);
+  const watchedStartTime = Form.useWatch('startTime', form);
+  const watchedEndTime = Form.useWatch('endTime', form);
+  const watchedTrainerId = Form.useWatch('trainerId', form);
+
+  // Available Trainers for the current schedule
+  const [availableTrainers, setAvailableTrainers] = useState([]);
+  const [isLoadingAvailableTrainers, setIsLoadingAvailableTrainers] = useState(false);
 
   // Calculates exact completion date by counting occurrences of active weekly days
   const calculateScheduleEndDate = useCallback((startDateInput, durationDaysInput, activeDaysInput) => {
@@ -257,9 +265,61 @@ export const SectionsManagement = () => {
     fetchTrainers();
   }, [fetchSections, fetchTrainers]);
 
-  // Trainer Select Options
+  // Dynamic Available Trainers Fetcher for Selected Schedule
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    let isMounted = true;
+    const fetchAvailable = async () => {
+      setIsLoadingAvailableTrainers(true);
+      try {
+        const params = {
+          startDate: watchedStartDate || undefined,
+          durationDays: watchedDurationDays || 20,
+          activeDays: watchedActiveDays ? (Array.isArray(watchedActiveDays) ? watchedActiveDays.join(',') : watchedActiveDays) : undefined,
+          startTime: watchedStartTime || undefined,
+          endTime: watchedEndTime || undefined,
+          excludeSectionId: editingSection?._id || undefined,
+        };
+        const res = await apiClient.get('/sections/available-trainers', { params });
+        if (isMounted && res.data?.success) {
+          const avail = res.data.data?.availableTrainers || [];
+          setAvailableTrainers(avail);
+
+          // If current trainer is no longer available, update selection
+          const currentTid = form.getFieldValue('trainerId');
+          const stillAvail = avail.some((t) => String(t._id || t.id) === String(currentTid));
+          if (!stillAvail) {
+            form.setFieldsValue({
+              trainerId: avail.length > 0 ? String(avail[0]._id || avail[0].id) : undefined,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch available trainers:', err);
+      } finally {
+        if (isMounted) setIsLoadingAvailableTrainers(false);
+      }
+    };
+
+    fetchAvailable();
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    isModalOpen,
+    watchedStartDate,
+    watchedDurationDays,
+    watchedActiveDays,
+    watchedStartTime,
+    watchedEndTime,
+    editingSection,
+    form,
+  ]);
+
+  // Trainer Select Options (Showing ONLY available trainers for current schedule)
   const trainerOptions = React.useMemo(() => {
-    return trainers.map((t) => ({
+    return availableTrainers.map((t) => ({
       value: String(t._id || t.id),
       label: (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -277,13 +337,13 @@ export const SectionsManagement = () => {
             }}
           />
           <span style={{ fontWeight: 600 }}>{t.name}</span>
-          {t.employeeId ? (
-            <span style={{ color: '#94a3b8', fontSize: 12 }}>({t.employeeId})</span>
-          ) : null}
+          <span style={{ color: '#94a3b8', fontSize: 12 }}>
+            ({t.specialty || t.role || 'Coach'}{t.employeeId ? ` • ${t.employeeId}` : ''})
+          </span>
         </div>
       ),
     }));
-  }, [trainers]);
+  }, [availableTrainers, isDarkMode]);
 
   // Open Create/Edit Modal
   const handleOpenModal = (section = null) => {
@@ -960,11 +1020,26 @@ export const SectionsManagement = () => {
               <Form.Item
                 name="trainerId"
                 label="Assigned Gym Trainer (Available in Gym)"
-                rules={[{ required: true, message: 'Please select a trainer' }]}
+                rules={[{ required: true, message: 'Please select an available trainer' }]}
+                help={
+                  !isLoadingAvailableTrainers && availableTrainers.length === 0 ? (
+                    <span style={{ color: '#ef4444', fontWeight: 500 }}>
+                      No trainers are available for this time and schedule. Adjust the time slot or active days.
+                    </span>
+                  ) : undefined
+                }
+                validateStatus={!isLoadingAvailableTrainers && availableTrainers.length === 0 ? 'error' : undefined}
               >
                 <Select
                   size="large"
-                  placeholder="Select a gym trainer"
+                  placeholder={
+                    isLoadingAvailableTrainers
+                      ? 'Evaluating available trainers...'
+                      : availableTrainers.length === 0
+                      ? 'No trainers available for this schedule'
+                      : 'Select an available trainer'
+                  }
+                  loading={isLoadingAvailableTrainers}
                   style={{ borderRadius: 'var(--radius-base)' }}
                   options={trainerOptions}
                 />
@@ -987,6 +1062,16 @@ export const SectionsManagement = () => {
               </Form.Item>
             </Col>
           </Row>
+
+          {!isLoadingAvailableTrainers && availableTrainers.length === 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message="No Trainers Available for this Schedule"
+              description="All trainers either have an overlapping batch or do not work during these hours/days. Please adjust the daily time slot, active days, or date range to assign a trainer."
+              style={{ marginBottom: 16, borderRadius: 'var(--radius-base)' }}
+            />
+          )}
 
           <Row gutter={16}>
             <Col span={6}>
@@ -1152,7 +1237,11 @@ export const SectionsManagement = () => {
               size="large"
               htmlType="submit"
               loading={isSubmitting}
-              style={{ backgroundColor: '#003882', fontWeight: 600 }}
+              disabled={availableTrainers.length === 0 || !watchedTrainerId}
+              style={{
+                backgroundColor: availableTrainers.length === 0 || !watchedTrainerId ? undefined : '#003882',
+                fontWeight: 600,
+              }}
             >
               {editingSection ? 'Save Changes' : 'Create & Publish Section'}
             </Button>

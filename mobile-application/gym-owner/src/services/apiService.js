@@ -690,6 +690,29 @@ class ApiService {
     return result.data;
   }
 
+  async getAvailableTrainers(params = {}) {
+    const queryParts = [];
+    Object.entries(params).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        if (Array.isArray(val)) {
+          queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(val.join(','))}`);
+        } else {
+          queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(val)}`);
+        }
+      }
+    });
+    const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+    const response = await this.executeFetch(`/sections/available-trainers${queryString}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to evaluate trainer availability.');
+    }
+    return result.data || { availableTrainers: [], allTrainers: [] };
+  }
+
   async createSection(payload) {
     const response = await this.executeFetch('/sections', {
       method: 'POST',

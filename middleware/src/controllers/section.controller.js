@@ -1,6 +1,15 @@
 import mongoose from 'mongoose';
-import { Section, SECTION_CATEGORIES, DAYS_OF_WEEK, calculateScheduleEndDate, getSectionLifecycle } from '../models/section.model.js';
+import {
+  Section,
+  SECTION_CATEGORIES,
+  DAYS_OF_WEEK,
+  calculateScheduleEndDate,
+  getSectionLifecycle,
+  isTrainerAvailableForSchedule,
+  checkTrainerSectionConflict,
+} from '../models/section.model.js';
 import { Employee } from '../models/employee.model.js';
+import { Booking } from '../models/booking.model.js';
 import { Gym } from '../models/gym.model.js';
 import { ApiError } from '../utils/apiError.js';
 import { ApiResponse } from '../utils/apiResponse.js';
@@ -32,6 +41,117 @@ const resolveGymId = async (req, gymIdInput) => {
 
   return null;
 };
+
+/**
+ * @desc Get available trainers for a proposed section schedule
+ * @route GET /api/v1/sections/available-trainers
+ * @access Authenticated User / Gym Owner / Admin
+ */
+export const getAvailableTrainersForSection = asyncHandler(async (req, res) => {
+  const {
+    gymId: inputGymId,
+    startDate,
+    durationDays = 20,
+    activeDays,
+    startTime,
+    endTime,
+    excludeSectionId,
+  } = req.query;
+
+  const resolvedGymId = await resolveGymId(req, inputGymId);
+  if (!resolvedGymId) {
+    throw new ApiError(400, 'Gym ID is required to evaluate trainer availability.');
+  }
+
+  // Parse activeDays
+  let parsedActiveDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  if (Array.isArray(activeDays)) {
+    parsedActiveDays = activeDays;
+  } else if (typeof activeDays === 'string' && activeDays.trim()) {
+    parsedActiveDays = activeDays.split(',').map((d) => d.trim()).filter(Boolean);
+  }
+
+  const pStart = startDate ? new Date(startDate) : new Date();
+  const pDuration = Math.max(1, Number(durationDays) || 20);
+  const pEnd = calculateScheduleEndDate(pStart, pDuration, parsedActiveDays) || pStart;
+
+  const proposedSchedule = {
+    startDate: pStart,
+    durationDays: pDuration,
+    endDate: pEnd,
+    activeDays: parsedActiveDays,
+    startTime: startTime || '06:00 AM',
+    endTime: endTime || '07:00 AM',
+    excludeSectionId,
+  };
+
+  // 1. Fetch all gym trainers/coaches who are not deactivated
+  const trainers = await Employee.find({
+    gymId: resolvedGymId,
+    status: { $ne: 'Deactivated' },
+    $or: [
+      { role: { $regex: /trainer|coach/i } },
+      { role: { $exists: false } },
+    ],
+  }).select('name employeeId avatar phone role status schedule rating reviewsCount specialty specialization');
+
+  // 2. Fetch all active sections for this gym to check conflict
+  const existingSections = await Section.find({
+    gymId: resolvedGymId,
+    isActive: true,
+    ...(excludeSectionId && mongoose.isValidObjectId(excludeSectionId)
+      ? { _id: { $ne: new mongoose.Types.ObjectId(excludeSectionId) } }
+      : {}),
+  }).select('trainerId title startDate durationDays endDate startTime endTime activeDays isActive');
+
+  // Group sections by trainerId
+  const sectionsByTrainer = new Map();
+  for (const sec of existingSections) {
+    const tId = sec.trainerId?.toString();
+    if (tId) {
+      if (!sectionsByTrainer.has(tId)) {
+        sectionsByTrainer.set(tId, []);
+      }
+      sectionsByTrainer.get(tId).push(sec);
+    }
+  }
+
+  // 3. Evaluate availability for each trainer
+  const referenceNow = new Date();
+  const evaluatedTrainers = trainers.map((t) => {
+    const tId = t._id.toString();
+    const trainerSections = sectionsByTrainer.get(tId) || [];
+    const avail = isTrainerAvailableForSchedule(t, proposedSchedule, trainerSections, referenceNow);
+    return {
+      _id: t._id,
+      id: t._id,
+      employeeId: t.employeeId,
+      name: t.name,
+      avatar: t.avatar,
+      phone: t.phone,
+      role: t.role,
+      specialty: t.specialty || t.specialization || '',
+      status: t.status,
+      isAvailable: avail.isAvailable,
+      reason: avail.reason || '',
+      conflictingSection: avail.conflictingSection || '',
+    };
+  });
+
+  const availableTrainers = evaluatedTrainers.filter((t) => t.isAvailable);
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        availableTrainers,
+        allTrainers: evaluatedTrainers,
+        totalAvailable: availableTrainers.length,
+        totalTrainers: evaluatedTrainers.length,
+      },
+      'Available trainers evaluated successfully.'
+    )
+  );
+});
 
 /**
  * @desc Create a new Workout/Class Section
@@ -108,6 +228,26 @@ export const createSection = asyncHandler(async (req, res) => {
   const parsedStartDate = new Date(startDate);
   const parsedDuration = Math.max(1, Number(durationDays) || 20);
   const calculatedEndDate = calculateScheduleEndDate(parsedStartDate, parsedDuration, activeDays);
+
+  // Validate Trainer Availability & Absence of Schedule Conflicts
+  const proposedSchedule = {
+    startDate: parsedStartDate,
+    durationDays: parsedDuration,
+    endDate: calculatedEndDate,
+    startTime: startTime.trim(),
+    endTime: endTime.trim(),
+    activeDays,
+  };
+
+  const existingTrainerSections = await Section.find({
+    trainerId: new mongoose.Types.ObjectId(trainerId),
+    isActive: true,
+  });
+
+  const availCheck = isTrainerAvailableForSchedule(trainer, proposedSchedule, existingTrainerSections);
+  if (!availCheck.isAvailable) {
+    throw new ApiError(400, `Selected trainer is not available: ${availCheck.reason}`);
+  }
 
   const formattedInclusions = Array.isArray(inclusions)
     ? inclusions.map((i) => String(i).trim()).filter(Boolean)
@@ -211,6 +351,33 @@ export const getSections = asyncHandler(async (req, res) => {
   const rawSections = await queryBuilder.lean();
   const now = new Date();
 
+  // Auto-heal enrolledCount against actual active/upcoming bookings in database
+  if (rawSections.length > 0) {
+    const sectionIds = rawSections.map((s) => s._id);
+    const bookingCounts = await Booking.aggregate([
+      {
+        $match: {
+          sectionId: { $in: sectionIds },
+          status: { $in: ['Upcoming', 'Active'] },
+        },
+      },
+      {
+        $group: {
+          _id: '$sectionId',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+    const realCountMap = new Map(bookingCounts.map((b) => [b._id.toString(), b.count]));
+    for (const sec of rawSections) {
+      const realCount = realCountMap.get(sec._id.toString()) || 0;
+      if (sec.enrolledCount !== realCount) {
+        sec.enrolledCount = realCount;
+        Section.updateOne({ _id: sec._id }, { enrolledCount: realCount }).catch(() => {});
+      }
+    }
+  }
+
   // Attach SSOT computed lifecycle fields to every section
   let sections = rawSections.map((sec) => {
     const lifecycle = getSectionLifecycle(sec, now);
@@ -302,6 +469,16 @@ export const getSectionById = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Section not found.');
   }
 
+  // Auto-heal enrolledCount against actual active bookings
+  const realCount = await Booking.countDocuments({
+    sectionId: id,
+    status: { $in: ['Upcoming', 'Active'] },
+  });
+  if (rawSection.enrolledCount !== realCount) {
+    rawSection.enrolledCount = realCount;
+    Section.updateOne({ _id: id }, { enrolledCount: realCount }).catch(() => {});
+  }
+
   const lifecycle = getSectionLifecycle(rawSection, new Date());
   const section = {
     ...rawSection,
@@ -346,16 +523,50 @@ export const updateSection = asyncHandler(async (req, res) => {
     updateData.trainerId = new mongoose.Types.ObjectId(updateData.trainerId);
   }
 
+  // Find existing section to merge schedule and validate conflicts
+  const existing = await Section.findById(id);
+  if (!existing) {
+    throw new ApiError(404, 'Section not found.');
+  }
+
   // Recalculate end date if start date, duration, or activeDays is updated
+  const start = updateData.startDate ? new Date(updateData.startDate) : existing.startDate;
+  const duration = updateData.durationDays ? Number(updateData.durationDays) : existing.durationDays;
+  const days = updateData.activeDays || existing.activeDays;
   if (updateData.startDate || updateData.durationDays || updateData.activeDays) {
-    const existing = await Section.findById(id);
-    if (!existing) {
-      throw new ApiError(404, 'Section not found.');
-    }
-    const start = updateData.startDate ? new Date(updateData.startDate) : existing.startDate;
-    const duration = updateData.durationDays ? Number(updateData.durationDays) : existing.durationDays;
-    const days = updateData.activeDays || existing.activeDays;
     updateData.endDate = calculateScheduleEndDate(start, duration, days);
+  }
+
+  // Validate Trainer Availability & Absence of Schedule Conflicts
+  const effectiveTrainerId = updateData.trainerId || existing.trainerId;
+  const effectiveTrainer = await Employee.findById(effectiveTrainerId);
+  if (!effectiveTrainer) {
+    throw new ApiError(404, 'Assigned trainer not found in employee records.');
+  }
+
+  const effectiveSchedule = {
+    startDate: start,
+    durationDays: duration,
+    endDate: updateData.endDate || existing.endDate,
+    startTime: updateData.startTime ? updateData.startTime.trim() : existing.startTime,
+    endTime: updateData.endTime ? updateData.endTime.trim() : existing.endTime,
+    activeDays: days,
+    excludeSectionId: id,
+  };
+
+  const existingTrainerSections = await Section.find({
+    _id: { $ne: new mongoose.Types.ObjectId(id) },
+    trainerId: effectiveTrainerId,
+    isActive: true,
+  });
+
+  const availCheck = isTrainerAvailableForSchedule(
+    effectiveTrainer,
+    effectiveSchedule,
+    existingTrainerSections
+  );
+  if (!availCheck.isAvailable) {
+    throw new ApiError(400, `Selected trainer is not available: ${availCheck.reason}`);
   }
 
   const updatedSection = await Section.findByIdAndUpdate(id, updateData, {
@@ -390,7 +601,33 @@ export const toggleSectionStatus = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Section not found.');
   }
 
-  section.isActive = isActive !== undefined ? Boolean(isActive) : !section.isActive;
+  const targetActive = isActive !== undefined ? Boolean(isActive) : !section.isActive;
+
+  // If activating, verify trainer has no conflicting active section
+  if (targetActive) {
+    const lifecycle = getSectionLifecycle(section, new Date());
+    if (lifecycle.isCompleted) {
+      throw new ApiError(400, 'This batch schedule has already ended. Edit the schedule dates to reopen it.');
+    }
+
+    const trainer = await Employee.findById(section.trainerId);
+    if (!trainer) {
+      throw new ApiError(404, 'Assigned trainer not found in employee records.');
+    }
+
+    const existingTrainerSections = await Section.find({
+      _id: { $ne: section._id },
+      trainerId: section.trainerId,
+      isActive: true,
+    });
+
+    const availCheck = isTrainerAvailableForSchedule(trainer, section, existingTrainerSections);
+    if (!availCheck.isAvailable) {
+      throw new ApiError(400, `Cannot activate section: ${availCheck.reason}`);
+    }
+  }
+
+  section.isActive = targetActive;
   await section.save();
 
   return res

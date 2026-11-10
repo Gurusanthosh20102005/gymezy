@@ -168,7 +168,7 @@ export const CreateSectionModal = ({
   const [isLoadingTrainers, setIsLoadingTrainers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch Gym Trainers on Open
+  // Fetch Available Trainers for the proposed Schedule dynamically
   useEffect(() => {
     if (!visible) return;
 
@@ -176,24 +176,29 @@ export const CreateSectionModal = ({
     const fetchTrainersList = async () => {
       setIsLoadingTrainers(true);
       try {
-        const staffRes = await apiService.getEmployees({ limit: 'all' }).catch(() => []);
-        const staff = Array.isArray(staffRes) ? staffRes : (staffRes?.employees || []);
-        if (isMounted && staff.length > 0) {
-          const gymTrainers = staff.filter(
-            (emp) =>
-              emp.status !== 'Deactivated' &&
-              (!emp.role ||
-                emp.role.toLowerCase().includes('trainer') ||
-                emp.role.toLowerCase().includes('coach'))
-          );
-          const finalTrainers = gymTrainers.length > 0 ? gymTrainers : staff;
-          setTrainers(finalTrainers);
-          if (!trainerId && finalTrainers.length > 0) {
-            setTrainerId(finalTrainers[0]._id || finalTrainers[0].id);
-          }
+        const standardStartDate = parseDDMMYYYYtoStandard(startDate);
+        const data = await apiService.getAvailableTrainers({
+          startDate: standardStartDate || undefined,
+          durationDays: Math.max(1, Number(durationDays) || 20),
+          activeDays,
+          startTime,
+          endTime,
+          excludeSectionId: initialSection?._id || undefined,
+        });
+
+        if (isMounted) {
+          const availList = Array.isArray(data?.availableTrainers) ? data.availableTrainers : [];
+          setTrainers(availList);
+
+          // If current trainerId is no longer in the available list, select first or null
+          setTrainerId((currentId) => {
+            const stillAvailable = availList.some((t) => (t._id || t.id) === currentId);
+            if (stillAvailable) return currentId;
+            return availList.length > 0 ? (availList[0]._id || availList[0].id) : null;
+          });
         }
       } catch (err) {
-        console.warn('Failed to load trainers for section:', err.message);
+        console.warn('Failed to load available trainers for section:', err.message);
       } finally {
         if (isMounted) setIsLoadingTrainers(false);
       }
@@ -203,7 +208,7 @@ export const CreateSectionModal = ({
     return () => {
       isMounted = false;
     };
-  }, [visible, trainerId]);
+  }, [visible, startDate, durationDays, activeDays, startTime, endTime, initialSection?._id]);
 
   // Selected Trainer Object
   const selectedTrainer = useMemo(() => {
@@ -396,16 +401,41 @@ export const CreateSectionModal = ({
               </Text>
               <TouchableOpacity
                 onPress={() => setShowTrainerPicker(true)}
-                style={[styles.pickerTrigger, { backgroundColor: inputBg, borderColor: borderCol }]}
+                style={[styles.pickerTrigger, { backgroundColor: inputBg, borderColor: trainers.length === 0 && !isLoadingTrainers ? '#EF4444' : borderCol }]}
               >
                 <View style={styles.pickerTriggerLeft}>
                   <MaterialIcons name="person" size={20} color="#003882" style={{ marginRight: 8 }} />
                   <Text style={[styles.pickerTriggerText, { color: textCol }]}>
-                    {selectedTrainer ? selectedTrainer.name : 'Select a gym trainer'}
+                    {isLoadingTrainers
+                      ? 'Checking trainer availability...'
+                      : selectedTrainer
+                      ? selectedTrainer.name
+                      : trainers.length === 0
+                      ? 'No available trainers for this schedule'
+                      : 'Select an available trainer'}
                   </Text>
                 </View>
                 <MaterialIcons name="keyboard-arrow-down" size={20} color={subTextCol} />
               </TouchableOpacity>
+              {!isLoadingTrainers && trainers.length === 0 && (
+                <View
+                  style={{
+                    backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2',
+                    borderColor: '#F87171',
+                    borderWidth: 1,
+                    borderRadius: 8,
+                    padding: 10,
+                    marginTop: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <MaterialIcons name="error-outline" size={18} color="#EF4444" style={{ marginRight: 6 }} />
+                  <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, flex: 1, fontWeight: '500' }}>
+                    No trainers are available for this time slot and days. Adjust the schedule or time to assign a trainer.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Cost & Capacity in 2 columns */}
@@ -599,8 +629,11 @@ export const CreateSectionModal = ({
 
             <TouchableOpacity
               onPress={handleSubmit}
-              disabled={isSubmitting}
-              style={[styles.submitBtn, { opacity: isSubmitting ? 0.7 : 1 }]}
+              disabled={isSubmitting || trainers.length === 0 || !trainerId}
+              style={[
+                styles.submitBtn,
+                { opacity: isSubmitting || trainers.length === 0 || !trainerId ? 0.45 : 1 },
+              ]}
             >
               {isSubmitting ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
@@ -619,7 +652,7 @@ export const CreateSectionModal = ({
         <View style={styles.pickerOverlay}>
           <View style={[styles.pickerCard, { backgroundColor: cardBg }]}>
             <View style={styles.pickerHeader}>
-              <Text style={[styles.pickerTitle, { color: textCol }]}>Select Gym Trainer</Text>
+              <Text style={[styles.pickerTitle, { color: textCol }]}>Select Available Trainer</Text>
               <TouchableOpacity onPress={() => setShowTrainerPicker(false)}>
                 <MaterialIcons name="close" size={20} color={subTextCol} />
               </TouchableOpacity>
@@ -629,7 +662,7 @@ export const CreateSectionModal = ({
                 <ActivityIndicator size="small" color="#003882" style={{ padding: 20 }} />
               ) : trainers.length === 0 ? (
                 <Text style={{ padding: 20, textAlign: 'center', color: subTextCol }}>
-                  No active trainers found in gym records.
+                  No trainers are available for the selected time, active days, and dates.
                 </Text>
               ) : (
                 trainers.map((t) => {

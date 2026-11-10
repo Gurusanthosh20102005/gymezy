@@ -1,7 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
-import { Section, SECTION_CATEGORIES, DAYS_OF_WEEK, getSectionLifecycle } from '../src/models/section.model.js';
+import {
+  Section,
+  SECTION_CATEGORIES,
+  DAYS_OF_WEEK,
+  getSectionLifecycle,
+  checkTrainerSectionConflict,
+  isTrainerAvailableForSchedule,
+} from '../src/models/section.model.js';
 
 describe('Section Model Schema & Validation Tests', () => {
   it('should expose standard SECTION_CATEGORIES and DAYS_OF_WEEK', () => {
@@ -140,5 +147,126 @@ describe('Section Model Schema & Validation Tests', () => {
     assert.strictEqual(fullLife.status, 'UPCOMING');
     assert.strictEqual(fullLife.isCapacityFull, true);
     assert.strictEqual(fullLife.isBookable, false);
+  });
+
+  it('should detect schedule and section conflicts when checking trainer availability', () => {
+    const referenceNow = new Date('2026-11-10T10:00:00.000Z');
+    const existingSectionId = new mongoose.Types.ObjectId();
+
+    const existingSection = {
+      _id: existingSectionId,
+      title: 'Morning Yoga Batch',
+      startDate: new Date('2026-11-15'),
+      endDate: new Date('2026-11-30'),
+      startTime: '06:00 AM',
+      endTime: '07:00 AM',
+      activeDays: ['Mon', 'Wed', 'Fri'],
+      isActive: true,
+    };
+
+    // 1. Overlapping Section Conflict
+    const conflictingSchedule = {
+      startDate: new Date('2026-11-20'),
+      endDate: new Date('2026-12-05'),
+      startTime: '06:30 AM',
+      endTime: '07:30 AM',
+      activeDays: ['Mon', 'Fri'],
+    };
+    const conflictResult = checkTrainerSectionConflict(existingSection, conflictingSchedule, referenceNow);
+    assert.strictEqual(conflictResult.hasConflict, true);
+    assert.ok(conflictResult.reason.includes('Morning Yoga Batch'));
+
+    // 2. Non-overlapping time slot -> No conflict
+    const nonConflictingTimeSchedule = {
+      startDate: new Date('2026-11-20'),
+      endDate: new Date('2026-12-05'),
+      startTime: '08:00 AM',
+      endTime: '09:00 AM',
+      activeDays: ['Mon', 'Fri'],
+    };
+    const noTimeConflict = checkTrainerSectionConflict(existingSection, nonConflictingTimeSchedule, referenceNow);
+    assert.strictEqual(noTimeConflict.hasConflict, false);
+
+    // 3. Non-overlapping active days -> No conflict
+    const nonConflictingDaysSchedule = {
+      startDate: new Date('2026-11-20'),
+      endDate: new Date('2026-12-05'),
+      startTime: '06:00 AM',
+      endTime: '07:00 AM',
+      activeDays: ['Tue', 'Thu', 'Sat'],
+    };
+    const noDaysConflict = checkTrainerSectionConflict(existingSection, nonConflictingDaysSchedule, referenceNow);
+    assert.strictEqual(noDaysConflict.hasConflict, false);
+
+    // 4. Exclude self when editing -> No conflict
+    const editSelfSchedule = {
+      ...conflictingSchedule,
+      excludeSectionId: existingSectionId,
+    };
+    const noSelfConflict = checkTrainerSectionConflict(existingSection, editSelfSchedule, referenceNow);
+    assert.strictEqual(noSelfConflict.hasConflict, false);
+
+    // 5. Full trainer availability evaluation
+    const activeTrainer = {
+      name: 'John Coach',
+      status: 'Active',
+      schedule: {
+        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+        workingTimeStart: '06:00 AM',
+        workingTimeEnd: '02:00 PM',
+      },
+    };
+
+    // Should be unavailable if section has conflict
+    const availWithConflict = isTrainerAvailableForSchedule(
+      activeTrainer,
+      conflictingSchedule,
+      [existingSection],
+      referenceNow
+    );
+    assert.strictEqual(availWithConflict.isAvailable, false);
+
+    // Should be available when times do not conflict
+    const availWithoutConflict = isTrainerAvailableForSchedule(
+      activeTrainer,
+      nonConflictingTimeSchedule,
+      [existingSection],
+      referenceNow
+    );
+    assert.strictEqual(availWithoutConflict.isAvailable, true);
+
+    // Should be unavailable if section is on trainer's day off (e.g. Sunday)
+    const sundaySchedule = {
+      startDate: new Date('2026-11-20'),
+      endDate: new Date('2026-12-05'),
+      startTime: '08:00 AM',
+      endTime: '09:00 AM',
+      activeDays: ['Sun'],
+    };
+    const availSunday = isTrainerAvailableForSchedule(
+      activeTrainer,
+      sundaySchedule,
+      [existingSection],
+      referenceNow
+    );
+    assert.strictEqual(availSunday.isAvailable, false);
+    assert.ok(availSunday.reason.includes('SUN'));
+
+    // Should be unavailable if section is outside working hours (e.g. 05:00 PM)
+    const eveningSchedule = {
+      startDate: new Date('2026-11-20'),
+      endDate: new Date('2026-12-05'),
+      startTime: '05:00 PM',
+      endTime: '06:00 PM',
+      activeDays: ['Mon', 'Wed'],
+    };
+    const availEvening = isTrainerAvailableForSchedule(
+      activeTrainer,
+      eveningSchedule,
+      [existingSection],
+      referenceNow
+    );
+    assert.strictEqual(availEvening.isAvailable, false);
+    assert.ok(availEvening.reason.includes('outside trainer\'s working hours'));
   });
 });
