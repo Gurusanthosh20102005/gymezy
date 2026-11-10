@@ -819,7 +819,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
             (s) => (s.category || '').toLowerCase() === selectedGroupCategory.toLowerCase()
           );
     return list.filter(isSectionOpenForBooking);
-  }, [sections, selectedGroupCategory, bookingList]);
+  }, [sections, selectedGroupCategory, bookings]);
 
   const renderTrainerSelector = (bookingMode = 'session') => {
     const isWeekly = bookingMode === 'weekly';
