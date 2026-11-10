@@ -8,7 +8,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 /**
  * Helper to locate a gym by Mongo ID, partnerId, or slug (returns Mongoose query for chaining)
  */
-const findGymByParam = (param) => {
+export const findGymByParam = (param) => {
   if (mongoose.Types.ObjectId.isValid(param)) {
     return Gym.findById(param);
   }

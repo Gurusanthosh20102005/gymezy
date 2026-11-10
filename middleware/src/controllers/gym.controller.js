@@ -25,7 +25,7 @@ import {
   sanitizeDocument,
 } from '../utils/responseTransformer.js';
 import { normalizeOpeningHours, getGymTimingStatus } from '../utils/gymTimingHelper.js';
-import { computeTimeAgo } from './gymReviews.controller.js';
+import { computeTimeAgo, findGymByParam } from './gymReviews.controller.js';
 import { fetchTransactionsFleet } from './admin.controller.js';
 
 
@@ -737,13 +737,14 @@ export const resolveGymMediaUrls = (gym) => {
   if (gym?.logo) {
     if (typeof gym.logo === 'string' && gym.logo.trim()) {
       resolvedLogo = gym.logo.trim();
-    } else if (
-      typeof gym.logo === 'object' &&
-      gym.logo.fileData &&
-      typeof gym.logo.fileData === 'string' &&
-      gym.logo.fileData.trim()
-    ) {
-      resolvedLogo = gym.logo.fileData.trim();
+    } else if (typeof gym.logo === 'object') {
+      if (typeof gym.logo.fileData === 'string' && gym.logo.fileData.trim()) {
+        resolvedLogo = gym.logo.fileData.trim();
+      } else if (typeof gym.logo.url === 'string' && gym.logo.url.trim()) {
+        resolvedLogo = gym.logo.url.trim();
+      } else if (typeof gym.logo.secure_url === 'string' && gym.logo.secure_url.trim()) {
+        resolvedLogo = gym.logo.secure_url.trim();
+      }
     }
   }
 
@@ -751,13 +752,14 @@ export const resolveGymMediaUrls = (gym) => {
   if (gym?.coverPhoto) {
     if (typeof gym.coverPhoto === 'string' && gym.coverPhoto.trim()) {
       resolvedCover = gym.coverPhoto.trim();
-    } else if (
-      typeof gym.coverPhoto === 'object' &&
-      gym.coverPhoto.fileData &&
-      typeof gym.coverPhoto.fileData === 'string' &&
-      gym.coverPhoto.fileData.trim()
-    ) {
-      resolvedCover = gym.coverPhoto.fileData.trim();
+    } else if (typeof gym.coverPhoto === 'object') {
+      if (typeof gym.coverPhoto.fileData === 'string' && gym.coverPhoto.fileData.trim()) {
+        resolvedCover = gym.coverPhoto.fileData.trim();
+      } else if (typeof gym.coverPhoto.url === 'string' && gym.coverPhoto.url.trim()) {
+        resolvedCover = gym.coverPhoto.url.trim();
+      } else if (typeof gym.coverPhoto.secure_url === 'string' && gym.coverPhoto.secure_url.trim()) {
+        resolvedCover = gym.coverPhoto.secure_url.trim();
+      }
     }
   }
 
@@ -2759,10 +2761,12 @@ export const getMyBookmarkedGyms = asyncHandler(async (req, res) => {
         pricePerSession: sessionPrice,
         monthlyPrice,
         membershipPrice: monthlyPrice,
-        logo: g.logo || mediaUrls.logoUrl,
-        coverPhoto: g.coverPhoto || mediaUrls.coverPhotoUrl,
+        logo: mediaUrls.logoUrl,
+        coverPhoto: mediaUrls.coverPhotoUrl,
         logoUrl: mediaUrls.logoUrl,
         coverPhotoUrl: mediaUrls.coverPhotoUrl,
+        imageUrl: mediaUrls.imageUrl,
+        thumbnailImage: mediaUrls.thumbnailImage,
         badgeText: g.badgeText || (metrics.rating >= 4.8 ? 'Top Rated' : ''),
         isBookmarked: true,
       };
