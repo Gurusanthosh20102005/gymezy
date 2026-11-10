@@ -411,13 +411,34 @@ export const generateAvailableSlots = (openingHours, targetDate = new Date(), sl
     }
   }
 
+  // If targetDate is today, filter out past time slots (strict same-day slot cutoff)
+  const now = new Date();
+  const isToday =
+    targetDate.getFullYear() === now.getFullYear() &&
+    targetDate.getMonth() === now.getMonth() &&
+    targetDate.getDate() === now.getDate();
+
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  const filterPastSlots = (slotList) => {
+    if (!isToday) return slotList;
+    return slotList.filter((timeStr) => {
+      const slotMins = parseTimeToMinutes(timeStr);
+      return slotMins !== null && slotMins > currentMinutes;
+    });
+  };
+
+  const filteredMorning = filterPastSlots(morningSlots);
+  const filteredEvening = filterPastSlots(eveningSlots);
+  const allFiltered = [...filteredMorning, ...filteredEvening];
+
   return {
-    morningSlots,
-    eveningSlots,
-    allSlots: [...morningSlots, ...eveningSlots],
-    isOpen: true,
+    morningSlots: filteredMorning,
+    eveningSlots: filteredEvening,
+    allSlots: allFiltered,
+    isOpen: isToday ? allFiltered.length > 0 : true,
     mode: activeMode,
-    reason: null,
+    reason: isToday && allFiltered.length === 0 ? 'All time slots for today have completed' : null,
   };
 };
 

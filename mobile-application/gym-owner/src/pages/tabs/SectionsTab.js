@@ -44,6 +44,7 @@ export const SectionsTab = ({ topInset, navigation }) => {
 
   // Filter & Search States
   const [activeCategory, setActiveCategory] = useState('all');
+  const [lifecycleTab, setLifecycleTab] = useState('active'); // 'active' (Upcoming/Ongoing), 'completed', 'all'
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modal States
@@ -102,8 +103,33 @@ export const SectionsTab = ({ topInset, navigation }) => {
     fetchSectionsList();
   };
 
-  // Toggle active status
+  // Single Source of Truth Lifecycle Calculator for Section Batches
+  const getSectionLifecycleState = useCallback((sec) => {
+    if (sec.lifecycleStatus) return sec.lifecycleStatus;
+    const now = new Date();
+    const sDate = sec.startDate ? new Date(sec.startDate) : new Date();
+    let effectiveEnd = sec.endDate;
+    if (!effectiveEnd && sec.startDate && sec.durationDays) {
+      effectiveEnd = calculateScheduleEndDate(sec.startDate, sec.durationDays, sec.activeDays);
+    }
+    const eDate = effectiveEnd ? new Date(effectiveEnd) : sDate;
+    eDate.setHours(23, 59, 59, 999);
+    if (now > eDate) return 'COMPLETED';
+    if (sec.isActive === false) return 'PAUSED';
+    if (now >= sDate) return 'ONGOING';
+    return 'UPCOMING';
+  }, []);
+
+  // Toggle active status (guard against activating completed batches)
   const handleToggleStatus = async (sectionId, currentStatus) => {
+    const targetSection = sections.find((s) => s._id === sectionId);
+    if (targetSection && getSectionLifecycleState(targetSection) === 'COMPLETED') {
+      Alert.alert(
+        'Batch Completed',
+        'This batch schedule has already ended. To reopen enrollment, please edit the section and update the start and end dates.'
+      );
+      return;
+    }
     try {
       await apiService.toggleSectionStatus(sectionId, !currentStatus);
       setSections((prev) =>
@@ -137,9 +163,18 @@ export const SectionsTab = ({ topInset, navigation }) => {
     );
   };
 
-  // Filtered Sections
+  // Filtered Sections by Lifecycle + Category + Search
   const filteredSections = useMemo(() => {
     return sections.filter((sec) => {
+      const state = getSectionLifecycleState(sec);
+      // Lifecycle filter
+      if (lifecycleTab === 'active' && state !== 'UPCOMING' && state !== 'ONGOING') {
+        return false;
+      }
+      if (lifecycleTab === 'completed' && state !== 'COMPLETED') {
+        return false;
+      }
+
       // Category filter
       if (activeCategory !== 'all' && sec.category !== activeCategory) {
         return false;
@@ -161,11 +196,14 @@ export const SectionsTab = ({ topInset, navigation }) => {
       }
       return true;
     });
-  }, [sections, activeCategory, searchQuery]);
+  }, [sections, activeCategory, searchQuery, lifecycleTab, getSectionLifecycleState]);
 
-  // Dynamic Dashboard Stats (matching Web App)
+  // Dynamic Dashboard & Lifecycle Counts
+  const upcomingCount = sections.filter((s) => getSectionLifecycleState(s) === 'UPCOMING').length;
+  const ongoingCount = sections.filter((s) => getSectionLifecycleState(s) === 'ONGOING').length;
+  const activeSectionsCount = upcomingCount + ongoingCount;
+  const completedSectionsCount = sections.filter((s) => getSectionLifecycleState(s) === 'COMPLETED').length;
   const totalSectionsCount = sections.length;
-  const activeSectionsCount = sections.filter((s) => s.isActive !== false).length;
   const totalCapacityCount = sections.reduce((acc, s) => acc + (Number(s.maxCapacity) || 0), 0);
   const totalEnrolledCount = sections.reduce(
     (acc, s) => acc + (Number(s.enrolledCount) || (Array.isArray(s.enrolledUsers) ? s.enrolledUsers.length : 0)),
@@ -279,6 +317,40 @@ export const SectionsTab = ({ topInset, navigation }) => {
           )}
         </View>
 
+        {/* Lifecycle Segment Tabs (Active/Upcoming vs Completed vs All) */}
+        <View style={styles.lifecycleSegmentRow}>
+          {[
+            { key: 'active', label: 'Active', count: activeSectionsCount, icon: 'bolt' },
+            { key: 'completed', label: 'Completed', count: completedSectionsCount, icon: 'check-circle' },
+            { key: 'all', label: 'All', count: totalSectionsCount, icon: 'layers' },
+          ].map((tab) => {
+            const isTabActive = lifecycleTab === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                onPress={() => setLifecycleTab(tab.key)}
+                style={[
+                  styles.lifecycleTabBtn,
+                  isTabActive
+                    ? { backgroundColor: '#003882', borderColor: '#003882' }
+                    : { backgroundColor: cardBg, borderColor: borderCol },
+                ]}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons
+                  name={tab.icon}
+                  size={14}
+                  color={isTabActive ? '#FFFFFF' : subTextCol}
+                  style={{ marginRight: 5 }}
+                />
+                <Text style={[styles.lifecycleTabText, { color: isTabActive ? '#FFFFFF' : textCol }]}>
+                  {tab.label} ({tab.count})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {/* Category Horizontal Filter Pills */}
         <View style={styles.categoryScrollWrap}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
@@ -384,6 +456,11 @@ export const SectionsTab = ({ topInset, navigation }) => {
               if (end) formattedEndDate = formatDDMMYYYY(end);
             }
 
+            const lifecycleState = getSectionLifecycleState(section);
+            const isCompleted = lifecycleState === 'COMPLETED';
+            const isOngoing = lifecycleState === 'ONGOING';
+            const isPaused = lifecycleState === 'PAUSED';
+
             return (
               <View
                 key={section._id}
@@ -395,7 +472,7 @@ export const SectionsTab = ({ topInset, navigation }) => {
                   },
                 ]}
               >
-                {/* Top Row: Category Pill, Cost, Status Switch */}
+                {/* Top Row: Category Pill, Cost, Lifecycle Badge & Toggle */}
                 <View style={styles.cardHeaderRow}>
                   <View style={styles.cardHeaderLeft}>
                     <View style={[styles.catBadge, { backgroundColor: `${catColor}15` }]}>
@@ -409,21 +486,53 @@ export const SectionsTab = ({ topInset, navigation }) => {
                   </View>
 
                   <View style={styles.cardHeaderRight}>
-                    <Text
+                    <View
                       style={[
-                        styles.statusLabel,
-                        { color: section.isActive !== false ? AppColors.secondaryColor : '#94A3B8' },
+                        styles.lifecycleBadge,
+                        {
+                          backgroundColor: isCompleted
+                            ? isDark ? 'rgba(100, 116, 139, 0.2)' : '#F1F5F9'
+                            : isOngoing
+                            ? isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFF7ED'
+                            : isPaused
+                            ? isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2'
+                            : isDark ? 'rgba(2, 132, 199, 0.2)' : '#F0F9FF',
+                          borderColor: isCompleted
+                            ? '#94A3B8'
+                            : isOngoing
+                            ? '#EA580C'
+                            : isPaused
+                            ? '#EF4444'
+                            : '#0284C7',
+                        },
                       ]}
                     >
-                      {section.isActive !== false ? 'Active' : 'Paused'}
-                    </Text>
-                    <Switch
-                      value={section.isActive !== false}
-                      onValueChange={() => handleToggleStatus(section._id, section.isActive !== false)}
-                      trackColor={{ false: '#94A3B8', true: 'rgba(0, 191, 98, 0.4)' }}
-                      thumbColor={section.isActive !== false ? AppColors.secondaryColor : '#E2E8F0'}
-                      style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                    />
+                      <Text
+                        style={[
+                          styles.lifecycleBadgeText,
+                          {
+                            color: isCompleted
+                              ? '#64748B'
+                              : isOngoing
+                              ? '#EA580C'
+                              : isPaused
+                              ? '#EF4444'
+                              : '#0284C7',
+                          },
+                        ]}
+                      >
+                        {lifecycleState}
+                      </Text>
+                    </View>
+                    {!isCompleted ? (
+                      <Switch
+                        value={section.isActive !== false}
+                        onValueChange={() => handleToggleStatus(section._id, section.isActive !== false)}
+                        trackColor={{ false: '#94A3B8', true: 'rgba(0, 191, 98, 0.4)' }}
+                        thumbColor={section.isActive !== false ? AppColors.secondaryColor : '#E2E8F0'}
+                        style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                      />
+                    ) : null}
                   </View>
                 </View>
 
@@ -821,6 +930,36 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
+  },
+  lifecycleSegmentRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  lifecycleTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  lifecycleTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  lifecycleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  lifecycleBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   sectionCard: {
     padding: 16,

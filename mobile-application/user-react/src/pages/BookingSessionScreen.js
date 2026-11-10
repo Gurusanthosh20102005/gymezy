@@ -11,6 +11,7 @@ import {
   Platform,
   ActivityIndicator,
   BackHandler,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -553,6 +554,13 @@ export const BookingSessionScreen = ({ route, navigation }) => {
     const activeSection = sectionOverride || selectedSection;
 
     if ((currentView === 'group_classes' || currentView === 'group_class_detail') && activeSection) {
+      if (!isSectionOpenForBooking(activeSection)) {
+        Alert.alert(
+          'Batch Closed',
+          'Registration for this batch has closed or the session is already completed. Please select an upcoming batch.'
+        );
+        return;
+      }
       title = `Group Class: ${activeSection.title}`;
       const startStr = formatToDDMMYYYY(activeSection.startDate);
       const endStr = formatToDDMMYYYY(activeSection.endDate);
@@ -769,12 +777,49 @@ export const BookingSessionScreen = ({ route, navigation }) => {
     return () => sub.remove();
   }, [currentView, sessionSubView, activeSessionKey, isInitialGroupClasses]);
 
-  const filteredSections =
-    selectedGroupCategory === 'all'
-      ? sections
-      : sections.filter(
-          (s) => (s.category || '').toLowerCase() === selectedGroupCategory.toLowerCase()
-        );
+  // Filter out completed and started batches (strict start cut-off)
+  const isSectionOpenForBooking = (sec) => {
+    if (!sec) return false;
+    if (getSectionBooking(sec)) return true; // Keep visible if user is already enrolled so they can see pass
+
+    // If backend computed lifecycleStatus
+    if (sec.lifecycleStatus === 'COMPLETED' || sec.lifecycleStatus === 'ONGOING' || sec.lifecycleStatus === 'PAUSED') {
+      return false;
+    }
+    if (sec.isBookable === false) {
+      return false;
+    }
+
+    // Client-side date check fallback
+    if (sec.startDate) {
+      const sDate = new Date(sec.startDate);
+      const timeStr = sec.startTime || '00:00';
+      const clean = timeStr.trim().toUpperCase();
+      const isPM = clean.includes('PM');
+      const isAM = clean.includes('AM');
+      const numbers = clean.replace(/[^\d:]/g, '');
+      const [hStr, mStr] = numbers.split(':');
+      let h = parseInt(hStr || '0', 10);
+      let m = parseInt(mStr || '0', 10);
+      if (isPM && h < 12) h += 12;
+      if (isAM && h === 12) h = 0;
+      const startDateTime = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate(), h, m, 0, 0);
+      if (new Date() >= startDateTime) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const filteredSections = useMemo(() => {
+    const list =
+      selectedGroupCategory === 'all'
+        ? sections
+        : sections.filter(
+            (s) => (s.category || '').toLowerCase() === selectedGroupCategory.toLowerCase()
+          );
+    return list.filter(isSectionOpenForBooking);
+  }, [sections, selectedGroupCategory, bookingList]);
 
   const renderTrainerSelector = (bookingMode = 'session') => {
     const isWeekly = bookingMode === 'weekly';
@@ -1796,6 +1841,9 @@ export const BookingSessionScreen = ({ route, navigation }) => {
             const bookedPass = getSectionBooking(selectedSection);
             const isAlreadyBooked = Boolean(bookedPass);
             const isSlotFull = (selectedSection.enrolledCount || 0) >= (selectedSection.maxCapacity || 25);
+            const isClosedOrEnded = !isAlreadyBooked && !isSectionOpenForBooking(selectedSection);
+            const isCompleted = selectedSection?.lifecycleStatus === 'COMPLETED';
+            const closedLabel = isCompleted ? 'Batch Completed' : 'Registration Closed';
 
             return (
               <View
@@ -1814,22 +1862,30 @@ export const BookingSessionScreen = ({ route, navigation }) => {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.bottomPriceLabel, { color: subtitleColor }]}>
-                    {isAlreadyBooked ? 'Enrollment Status' : 'Total Batch Fee'}
+                    {isAlreadyBooked ? 'Enrollment Status' : isClosedOrEnded ? 'Status' : 'Total Batch Fee'}
                   </Text>
                   <Text
                     style={[
                       styles.bottomPriceValue,
-                      { color: isAlreadyBooked ? '#00BF62' : textColor },
+                      {
+                        color: isAlreadyBooked
+                          ? '#00BF62'
+                          : isClosedOrEnded
+                          ? '#94A3B8'
+                          : textColor,
+                      },
                     ]}
                   >
                     {isAlreadyBooked
                       ? 'Enrolled'
+                      : isClosedOrEnded
+                      ? closedLabel
                       : `₹${Math.round(Number(selectedSection.cost) || 0)}`}
                   </Text>
                 </View>
                 <TouchableOpacity
                   activeOpacity={0.85}
-                  disabled={!isAlreadyBooked && isSlotFull}
+                  disabled={(!isAlreadyBooked && isSlotFull) || isClosedOrEnded}
                   onPress={() => {
                     if (isAlreadyBooked) {
                       navigation.navigate('BookingDetails', { booking: bookedPass });
@@ -1849,6 +1905,9 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                     !isAlreadyBooked && isSlotFull && {
                       backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.12)',
                     },
+                    isClosedOrEnded && {
+                      backgroundColor: isDark ? 'rgba(100, 116, 139, 0.25)' : 'rgba(100, 116, 139, 0.15)',
+                    },
                   ]}
                 >
                   {isAlreadyBooked && (
@@ -1860,10 +1919,15 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                       !isAlreadyBooked && isSlotFull && {
                         color: '#EF4444',
                       },
+                      isClosedOrEnded && {
+                        color: isDark ? '#94A3B8' : '#64748B',
+                      },
                     ]}
                   >
                     {isAlreadyBooked
                       ? 'View Your Pass'
+                      : isClosedOrEnded
+                      ? closedLabel
                       : isSlotFull
                       ? 'Slot Full'
                       : 'Continue to Payment'}

@@ -21,6 +21,7 @@ import {
   Spin,
   Empty,
   DatePicker,
+  Segmented,
 } from 'antd';
 import {
   PlusOutlined,
@@ -98,6 +99,7 @@ export const SectionsManagement = () => {
 
   // Filters
   const [activeCategory, setActiveCategory] = useState('all');
+  const [lifecycleFilter, setLifecycleFilter] = useState('active'); // 'active' (Upcoming/Ongoing), 'completed', 'all'
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 350);
 
@@ -171,6 +173,29 @@ export const SectionsManagement = () => {
     }
     return current;
   }, []);
+
+  // Single Source of Truth Lifecycle Calculator for Section Batches
+  const getSectionLifecycleState = useCallback((record) => {
+    if (record.lifecycleStatus) return record.lifecycleStatus;
+    const now = new Date();
+    const sDate = record.startDate ? new Date(record.startDate) : new Date();
+    let effectiveEnd = record.endDate;
+    if (!effectiveEnd && record.startDate && record.durationDays) {
+      effectiveEnd = calculateScheduleEndDate(record.startDate, record.durationDays, record.activeDays);
+    }
+    const eDate = effectiveEnd ? new Date(effectiveEnd) : sDate;
+    eDate.setHours(23, 59, 59, 999);
+    if (now > eDate) return 'COMPLETED';
+    if (record.isActive === false) return 'PAUSED';
+    if (now >= sDate) return 'ONGOING';
+    return 'UPCOMING';
+  }, [calculateScheduleEndDate]);
+
+  // Lifecycle counts for tabs
+  const upcomingCount = sections.filter((s) => getSectionLifecycleState(s) === 'UPCOMING').length;
+  const ongoingCount = sections.filter((s) => getSectionLifecycleState(s) === 'ONGOING').length;
+  const activeCount = upcomingCount + ongoingCount;
+  const completedCount = sections.filter((s) => getSectionLifecycleState(s) === 'COMPLETED').length;
 
   const estimatedEndDate = React.useMemo(() => {
     const rawStart = watchedStartDate || form.getFieldValue('startDate');
@@ -366,6 +391,11 @@ export const SectionsManagement = () => {
 
   // Toggle Section Status
   const handleToggleStatus = async (id, currentStatus) => {
+    const target = sections.find((s) => s._id === id);
+    if (target && getSectionLifecycleState(target) === 'COMPLETED' && !currentStatus) {
+      message.warning('This batch schedule has already ended. Edit the schedule dates to reopen it.');
+      return;
+    }
     try {
       const response = await apiClient.patch(`/sections/${id}/status`, {
         isActive: !currentStatus,
@@ -397,6 +427,10 @@ export const SectionsManagement = () => {
   // Filtered Sections
   const filteredSections = React.useMemo(() => {
     return sections.filter((sec) => {
+      const state = getSectionLifecycleState(sec);
+      if (lifecycleFilter === 'active' && state !== 'UPCOMING' && state !== 'ONGOING') return false;
+      if (lifecycleFilter === 'completed' && state !== 'COMPLETED') return false;
+
       const matchesCategory = activeCategory === 'all' || sec.category === activeCategory;
       const trainerName =
         (typeof sec.trainerId === 'object' ? sec.trainerId?.name : '') || '';
@@ -408,7 +442,7 @@ export const SectionsManagement = () => {
         (sec.category || '').toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
-  }, [sections, activeCategory, debouncedSearchQuery]);
+  }, [sections, lifecycleFilter, activeCategory, debouncedSearchQuery, getSectionLifecycleState]);
 
   // Category Color Helper
   const getCategoryColor = (catKey) => {
@@ -604,16 +638,48 @@ export const SectionsManagement = () => {
     },
     {
       title: 'Status',
-      dataIndex: 'isActive',
-      key: 'isActive',
-      width: 100,
-      render: (isActive, record) => (
-        <Switch
-          checked={isActive}
-          onChange={() => handleToggleStatus(record._id, isActive)}
-          size="small"
-        />
-      ),
+      key: 'lifecycleStatus',
+      width: 130,
+      render: (_, record) => {
+        const state = getSectionLifecycleState(record);
+        const isCompleted = state === 'COMPLETED';
+        const badgeColors = {
+          UPCOMING: '#0284c7',
+          ONGOING: '#ea580c',
+          COMPLETED: '#64748b',
+          PAUSED: '#ef4444',
+        };
+        const badgeLabels = {
+          UPCOMING: 'Upcoming',
+          ONGOING: 'Ongoing',
+          COMPLETED: 'Completed',
+          PAUSED: 'Paused',
+        };
+        return (
+          <Space direction="vertical" size={4} style={{ display: 'inline-flex', alignItems: 'flex-start' }}>
+            <Tag
+              color={badgeColors[state] || '#64748b'}
+              style={{
+                borderRadius: 12,
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '1px 8px',
+                border: 'none',
+                margin: 0,
+              }}
+            >
+              {badgeLabels[state] || state}
+            </Tag>
+            {!isCompleted && (
+              <Switch
+                checked={record.isActive}
+                onChange={() => handleToggleStatus(record._id, record.isActive)}
+                size="small"
+              />
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: 'Action',
@@ -667,8 +733,18 @@ export const SectionsManagement = () => {
           marginBottom: 20,
         }}
       >
-        {/* Category Dropdown & Search Filter */}
+        {/* Lifecycle Tabs, Category Dropdown & Search Filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Segmented
+            value={lifecycleFilter}
+            onChange={setLifecycleFilter}
+            options={[
+              { label: `Active (${activeCount})`, value: 'active' },
+              { label: `Completed (${completedCount})`, value: 'completed' },
+              { label: `All (${sections.length})`, value: 'all' },
+            ]}
+          />
+
           <Select
             value={activeCategory}
             onChange={(val) => setActiveCategory(val)}

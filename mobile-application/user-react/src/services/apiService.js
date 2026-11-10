@@ -545,10 +545,14 @@ class ApiService {
   }
 
   /**
-   * Fetch Active Workout Sections / Group Classes for a Gym
+   * Fetch Active, Bookable Workout Sections / Group Classes for a Gym (Excludes Completed / Started Batches)
    */
   async getGymSections(gymId, params = {}) {
+    const isBookableOnly = params.bookableOnly !== undefined ? params.bookableOnly : true;
     let url = `/sections?gymId=${gymId}&isActive=true`;
+    if (isBookableOnly) {
+      url += `&bookableOnly=true`;
+    }
     if (params.category && params.category !== 'all') {
       url += `&category=${encodeURIComponent(params.category)}`;
     }

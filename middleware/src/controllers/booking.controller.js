@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import crypto from 'node:crypto';
 import Booking from '../models/booking.model.js';
-import { Section } from '../models/section.model.js';
+import { Section, getSectionLifecycle, parseTimeStringToHoursMinutes } from '../models/section.model.js';
 import Gym from '../models/gym.model.js';
 import Employee from '../models/employee.model.js';
 import User from '../models/user.model.js';
@@ -161,8 +161,18 @@ export const createBooking = asyncHandler(async (req, res) => {
       throw ApiError.notFound('The selected Batch / Section was not found.');
     }
 
-    if (!section.isActive) {
-      throw ApiError.badRequest('This Batch / Section is currently inactive and not accepting bookings.');
+    const lifecycle = getSectionLifecycle(section, new Date());
+    if (lifecycle.isCompleted) {
+      throw ApiError.badRequest('This workout section has already completed and is no longer accepting bookings.');
+    }
+    if (lifecycle.isStarted) {
+      throw ApiError.badRequest('Registration for this section has closed as the batch has already started.');
+    }
+    if (lifecycle.isPaused) {
+      throw ApiError.badRequest('This Batch / Section is currently inactive/paused and not accepting bookings.');
+    }
+    if (lifecycle.isCapacityFull) {
+      throw ApiError.badRequest('This Batch is fully booked (maximum capacity reached).');
     }
 
     // Check duplicate active booking for this user in this section
@@ -263,6 +273,34 @@ export const createBooking = asyncHandler(async (req, res) => {
   const resolvedTimeSlot = timeSlot || (section ? `${section.startTime} - ${section.endTime}` : '');
   const resolvedTitle = title || (section ? section.title : 'Gym Session');
   const resolvedCategory = category || section?.category || 'general';
+
+  // Strict Validation: disallow booking past time slots on today's date for single-session bookings
+  if (!section && resolvedTimeSlot && resolvedStartDate) {
+    const today = new Date();
+    const isToday =
+      resolvedStartDate.getFullYear() === today.getFullYear() &&
+      resolvedStartDate.getMonth() === today.getMonth() &&
+      resolvedStartDate.getDate() === today.getDate();
+
+    if (isToday) {
+      const slotStartTimeStr = resolvedTimeSlot.split('-')[0].trim();
+      const { hours, minutes } = parseTimeStringToHoursMinutes(slotStartTimeStr, -1, -1);
+      if (hours >= 0) {
+        const slotStartDateTime = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate(),
+          hours,
+          minutes,
+          0,
+          0
+        );
+        if (today > slotStartDateTime) {
+          throw ApiError.badRequest('The selected time slot has already passed for today. Please select a future time slot.');
+        }
+      }
+    }
+  }
 
   // Strict Trainer Schedule & Engagement Boundaries Enforcement
   if (sessionTrainer) {
