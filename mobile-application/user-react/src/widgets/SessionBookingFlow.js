@@ -15,6 +15,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { MonthlyGridCalendar } from './CustomCalendar';
 import { TrainerReviewsPopup } from './DetailsPopups';
 import { generateAvailableSlots, generateTrainerAvailableSlots } from '../utils/gymTimingHelper';
+import { getSafeImageUri, getGymCoverImage } from '../utils/mediaUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -205,7 +206,7 @@ export const SessionBookingFlow = ({
         specialty: t.specialization || t.specialty || 'Personal Trainer',
         rating: Number(t.rating) || 4.9,
         reviews: Number(t.reviewsCount || t.reviews?.length || 0),
-        image: t.imageUrl || t.avatar || t.image || null,
+        image: getSafeImageUri(t.imageUrl) || getSafeImageUri(t.avatar) || getSafeImageUri(t.image) || null,
         fee: Number(t.trainerPricing?.singleSession || 0),
         raw: t,
         isNone: false,
@@ -372,8 +373,8 @@ export const SessionBookingFlow = ({
                 },
               ]}
             >
-              {t.image ? (
-                <Image source={{ uri: t.image }} style={styles.trainerAvatarImg} />
+              {getSafeImageUri(t.image) ? (
+                <Image source={{ uri: getSafeImageUri(t.image) }} style={styles.trainerAvatarImg} />
               ) : (
                 <View
                   style={[
@@ -446,7 +447,11 @@ export const SessionBookingFlow = ({
 
             {/* Hero Banner */}
             <ImageBackground
-              source={{ uri: sessionConfig.heroImage || gym?.imageUrl || 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800&auto=format&fit=crop' }}
+              source={{
+                uri:
+                  getSafeImageUri(sessionConfig?.heroImage) ||
+                  getGymCoverImage(gym),
+              }}
               style={styles.heroBanner}
               imageStyle={{ borderRadius: 20 }}
               resizeMode="cover"

@@ -493,6 +493,58 @@ class ApiService {
   }
 
   /**
+   * Toggle Bookmark Status for a Gym
+   */
+  async toggleBookmark(gymId) {
+    const response = await this.executeFetch(`/gyms/${gymId}/bookmark`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Failed to toggle bookmark.');
+    }
+    return json.data;
+  }
+
+  /**
+   * Retrieve all gyms bookmarked by the authenticated user
+   */
+  async getMyBookmarkedGyms(params = {}) {
+    let url = '/gyms/bookmarks/my';
+    const query = [];
+    if (params.lat !== undefined && params.lat !== null) query.push(`lat=${params.lat}`);
+    if (params.lng !== undefined && params.lng !== null) query.push(`lng=${params.lng}`);
+    if (query.length > 0) url += `?${query.join('&')}`;
+
+    const response = await this.executeFetch(url, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Failed to fetch bookmarked gyms.');
+    }
+    return json.data;
+  }
+
+  /**
+   * Sync guest / offline bookmarked gym IDs into MongoDB account
+   */
+  async syncBookmarks(gymIds = []) {
+    const response = await this.executeFetch('/gyms/bookmarks/sync', {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ gymIds }),
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Failed to sync bookmarks.');
+    }
+    return json.data;
+  }
+
+  /**
    * Fetch Active Workout Sections / Group Classes for a Gym
    */
   async getGymSections(gymId, params = {}) {

@@ -14,6 +14,11 @@ import { MaterialIcons, Ionicons, MaterialCommunityIcons } from '@expo/vector-ic
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { formatTimeAgo } from '../utils/dateUtils';
+import {
+  getSafeImageUri,
+  DEFAULT_TRAINER_AVATAR,
+  DEFAULT_USER_AVATAR,
+} from '../utils/mediaUtils';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -269,9 +274,10 @@ export const TrainersPopup = ({ visible, onClose, trainers = [], onTrainerTap })
             <Image
               source={{
                 uri:
-                  trainer.imageUrl ||
-                  trainer.image?.fileData ||
-                  'https://images.unsplash.com/photo-1567013127542-490d757e51fc?q=80&w=400&auto=format&fit=crop',
+                  getSafeImageUri(trainer.imageUrl) ||
+                  getSafeImageUri(trainer.avatar) ||
+                  getSafeImageUri(trainer.image) ||
+                  DEFAULT_TRAINER_AVATAR,
               }}
               style={styles.trainerAvatar}
             />
@@ -393,7 +399,16 @@ export const TrainerReviewsPopup = ({ visible, onClose, trainer, reviews = [], o
             },
           ]}
         >
-          <Image source={{ uri: trainer.imageUrl || trainer.avatar }} style={styles.largeTrainerAvatar} />
+          <Image
+            source={{
+              uri:
+                getSafeImageUri(trainer.imageUrl) ||
+                getSafeImageUri(trainer.avatar) ||
+                getSafeImageUri(trainer.image) ||
+                DEFAULT_TRAINER_AVATAR,
+            }}
+            style={styles.largeTrainerAvatar}
+          />
           <View style={styles.largeTrainerInfo}>
             <Text style={[styles.largeTrainerName, { color: colors.text }]}>{trainer.name}</Text>
             <Text style={[styles.trainerSpecText, { color: colors.subtitle }]}>
@@ -512,7 +527,14 @@ export const TrainerReviewsPopup = ({ visible, onClose, trainer, reviews = [], o
               >
                 <View style={styles.revHeaderRow}>
                   <View style={styles.revUserRow}>
-                    <Image source={{ uri: rev.userImageUrl }} style={styles.revUserAvatar} />
+                    <Image
+                      source={{
+                        uri:
+                          getSafeImageUri(rev.userImageUrl) ||
+                          DEFAULT_USER_AVATAR,
+                      }}
+                      style={styles.revUserAvatar}
+                    />
                     <View style={styles.revUserNameCol}>
                       <Text style={[styles.revUserName, { color: colors.text }]}>
                         {rev.userName}
@@ -566,18 +588,19 @@ export const AllReviewsPopup = ({
     : [5, 4, 3, 2, 1].map((s) => ({ stars: s, ratio: 0, percent: '0%' }));
 
   const numericRating = Number(rating) || 0;
+  const formattedRating = numericRating > 0 ? numericRating.toFixed(1) : (reviewsCount > 0 ? '5.0' : '0.0');
   const hasReviews = reviewsCount > 0 || reviews.length > 0;
 
   return (
     <BasePopupModal visible={visible} onClose={onClose} title="All Reviews">
-      <ScrollView contentContainerStyle={styles.listContainer}>
+      <ScrollView contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={false}>
         {/* Score Summary Dashboard */}
         {hasReviews ? (
           <>
             <View style={styles.scoreRow}>
               <View style={styles.scoreNumberCol}>
                 <Text style={[styles.scoreBigNum, { color: colors.text }]}>
-                  {rating}
+                  {formattedRating}
                 </Text>
                 <View style={styles.starsRow}>
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -644,7 +667,14 @@ export const AllReviewsPopup = ({
               >
                 <View style={styles.revHeaderRow}>
                   <View style={styles.revUserRow}>
-                    <Image source={{ uri: rev.userImageUrl }} style={styles.revUserAvatar} />
+                    <Image
+                      source={{
+                        uri:
+                          getSafeImageUri(rev.userImageUrl) ||
+                          DEFAULT_USER_AVATAR,
+                      }}
+                      style={styles.revUserAvatar}
+                    />
                     <View style={styles.revUserNameCol}>
                       <Text style={[styles.revUserName, { color: colors.text }]}>
                         {rev.userName}

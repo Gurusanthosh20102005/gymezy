@@ -25,12 +25,14 @@ import { AppColors } from '../theme/appTheme';
 import { useBookingRepository } from '../data/BookingContext';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { BrandWatermarkFooter } from '../widgets/BrandWatermarkFooter';
+import { BookmarkedGymsModal } from '../widgets/BookmarkedGymsModal';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
 import { attendanceService } from '../services/attendanceService';
 import { notificationService } from '../services/notificationService';
 import { biometricService } from '../services/biometricService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSafeImageUri } from '../utils/mediaUtils';
 
 // Storage keys for user preferences & security
 const PREF_WORKOUT_REMINDERS_KEY = '@gymezy_pref_workout_reminders';
@@ -156,7 +158,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   const [userEmergencyContact, setUserEmergencyContact] = useState(
     user?.emergencyContact || '+91 98123 45678 (Spouse)'
   );
-  const avatarUrl = user?.avatar || DEFAULT_AVATAR;
+  const avatarUrl = getSafeImageUri(user?.avatar) || DEFAULT_AVATAR;
 
   // Keep local state in sync when auth user updates from DB
   useEffect(() => {
@@ -497,6 +499,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   }, []);
 
   // Modals state
+  const [showBookmarksModal, setShowBookmarksModal] = useState(false);
   const [showAvatarPickerModal, setShowAvatarPickerModal] = useState(false);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
   const [customAvatarUrl, setCustomAvatarUrl] = useState('');
@@ -1209,6 +1212,21 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                 ? `${monthlyCheckInsCount} check-ins recorded this month`
                 : 'View all check-in & workout logs'}
             </Text>
+          </View>
+          <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => setShowBookmarksModal(true)}
+          style={[styles.menuTile, { backgroundColor: cardColor, borderColor: borderColor }]}
+        >
+          <View style={[styles.menuIconBox, { backgroundColor: isDark ? '#262626' : 'rgba(0, 191, 98, 0.12)' }]}>
+            <MaterialIcons name="bookmark" size={20} color={AppColors.secondaryColor} />
+          </View>
+          <View style={styles.menuTileContent}>
+            <Text style={[styles.menuTileTitle, { color: textColor }]}>Bookmarked Gyms</Text>
+            <Text style={[styles.menuTileSubtitle, { color: subtitleColor }]}>View your saved favorite fitness centers</Text>
           </View>
           <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
         </TouchableOpacity>
@@ -2461,6 +2479,13 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
           </View>
         </View>
       </Modal>
+
+      {/* Bookmarked Gyms Modal */}
+      <BookmarkedGymsModal
+        visible={showBookmarksModal}
+        onClose={() => setShowBookmarksModal(false)}
+        navigation={navigation}
+      />
     </View>
   );
 };

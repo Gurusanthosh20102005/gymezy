@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -38,7 +38,11 @@ import {
   CHENNAI_LOCATIONS,
 } from '../services/locationService';
 import { gymService } from '../services/gymService';
+import { getGymCoverImage, getSafeImageUri } from '../utils/mediaUtils';
 import { apiService } from '../services/apiService';
+import { bookmarkService } from '../services/bookmarkService';
+import { BookmarkedGymsModal } from '../widgets/BookmarkedGymsModal';
+import { SkeletonGymCard, SkeletonSpotlightCard, SkeletonCategoryChips } from '../widgets/Skeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -78,17 +82,6 @@ const CATEGORIES = [
   { name: 'AC Gym', icon: 'ac-unit' },
   { name: 'Women Only', icon: 'female' },
 ];
-
-const getGymCoverImage = (gym) => {
-  if (!gym) return 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800&auto=format&fit=crop';
-  if (typeof gym.thumbnailImage === 'string' && gym.thumbnailImage.length > 0) return gym.thumbnailImage;
-  if (typeof gym.imageUrl === 'string' && gym.imageUrl.length > 0) return gym.imageUrl;
-  if (typeof gym.image === 'string' && gym.image.length > 0) return gym.image;
-  if (gym.images && gym.images.length > 0 && typeof gym.images[0] === 'string') return gym.images[0];
-  if (typeof gym.coverPhoto === 'string' && gym.coverPhoto.length > 0) return gym.coverPhoto;
-  if (gym.coverPhoto?.fileData) return gym.coverPhoto.fileData;
-  return 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800&auto=format&fit=crop';
-};
 
 export const HomeScreen = ({ navigation }) => {
   const { isDark, colors } = useTheme();
@@ -235,11 +228,55 @@ export const HomeScreen = ({ navigation }) => {
   const handleApplyDidYouMean = (suggestion) => {
     setSearchQuery(suggestion);
   };
-  const [selectedType, setSelectedType] = useState(null);
-  const [selectedFacility, setSelectedFacility] = useState(null);
+
+  // Multi-selective Filter States
+  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [selectedFacilities, setSelectedFacilities] = useState([]);
   const [selectedWorkout, setSelectedWorkout] = useState(null);
+
+  const handleToggleType = useCallback((type) => {
+    if (type === 'All Gyms') {
+      setSelectedTypes([]);
+      return;
+    }
+    setSelectedTypes((prev) => {
+      if (prev.includes(type)) {
+        return prev.filter((t) => t !== type);
+      }
+      return [...prev, type];
+    });
+  }, []);
+
+  const handleToggleFacility = useCallback((fac) => {
+    if (fac === 'All Facilities') {
+      setSelectedFacilities([]);
+      return;
+    }
+    setSelectedFacilities((prev) => {
+      if (prev.includes(fac)) {
+        return prev.filter((f) => f !== fac);
+      }
+      return [...prev, fac];
+    });
+  }, []);
+
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [bookmarkedGymNames, setBookmarkedGymNames] = useState(new Set());
+  const [showBookmarksModal, setShowBookmarksModal] = useState(false);
+  const [bookmarkedIds, setBookmarkedIds] = useState(() => new Set(bookmarkService.getBookmarkedIds()));
+  const [bookmarkCount, setBookmarkCount] = useState(() => bookmarkService.getCount());
+
+  useEffect(() => {
+    bookmarkService.init().then(() => {
+      setBookmarkedIds(new Set(bookmarkService.getBookmarkedIds()));
+      setBookmarkCount(bookmarkService.getCount());
+      bookmarkService.fetchLiveBookmarks();
+    });
+    const unsubscribe = bookmarkService.subscribe((ids, gyms, count) => {
+      setBookmarkedIds(new Set(ids));
+      setBookmarkCount(typeof count === 'number' ? count : bookmarkService.getCount());
+    });
+    return unsubscribe;
+  }, []);
 
   // Promotional Banners State (Location-aware, Priority-sorted & Auto-scrolling)
   const [promotionalBanners, setPromotionalBanners] = useState([]);
@@ -356,8 +393,8 @@ export const HomeScreen = ({ navigation }) => {
       lng: userLocation.longitude,
       category: selectedCategory,
       search: searchQuery,
-      type: selectedType,
-      facility: selectedFacility,
+      type: selectedTypes,
+      facility: selectedFacilities,
       workout: selectedWorkout,
       page: 1,
       limit: PAGE_SIZE,
@@ -402,8 +439,8 @@ export const HomeScreen = ({ navigation }) => {
           lng: userLocation.longitude,
           category: selectedCategory,
           search: searchQuery,
-          type: selectedType,
-          facility: selectedFacility,
+          type: selectedTypes,
+          facility: selectedFacilities,
           workout: selectedWorkout,
           page: 1,
           limit: PAGE_SIZE,
@@ -439,8 +476,8 @@ export const HomeScreen = ({ navigation }) => {
     userLocation.longitude ? Number(userLocation.longitude).toFixed(2) : '',
     selectedCategory,
     searchQuery,
-    selectedType,
-    selectedFacility,
+    selectedTypes,
+    selectedFacilities,
     selectedWorkout,
   ]);
 
@@ -457,8 +494,8 @@ export const HomeScreen = ({ navigation }) => {
         lng: userLocation.longitude,
         category: selectedCategory,
         search: searchQuery,
-        type: selectedType,
-        facility: selectedFacility,
+        type: selectedTypes,
+        facility: selectedFacilities,
         workout: selectedWorkout,
         page: nextPage,
         limit: PAGE_SIZE,
@@ -588,31 +625,27 @@ export const HomeScreen = ({ navigation }) => {
   // Filtered Gyms are the backend-computed and processed gyms
   const filteredGyms = gyms;
 
-  const toggleBookmark = (gymName) => {
-    setBookmarkedGymNames((prev) => {
-      const next = new Set(prev);
-      if (next.has(gymName)) {
-        next.delete(gymName);
-      } else {
-        next.add(gymName);
-      }
-      return next;
+  const toggleBookmark = async (gym) => {
+    if (!gym) return;
+    const nextState = await bookmarkService.toggleBookmark(gym);
+    showToast({
+      message: nextState ? `Saved "${gym.name}" to bookmarks` : `Removed "${gym.name}" from bookmarks`,
     });
   };
 
   const clearAllFilters = () => {
     setSearchQuery('');
     setSelectedCategory('All');
-    setSelectedType(null);
-    setSelectedFacility(null);
+    setSelectedTypes([]);
+    setSelectedFacilities([]);
     setSelectedWorkout(null);
   };
 
   const hasActiveFilters =
     searchQuery.trim().length > 0 ||
     selectedCategory !== 'All' ||
-    selectedType !== null ||
-    selectedFacility !== null ||
+    selectedTypes.length > 0 ||
+    selectedFacilities.length > 0 ||
     selectedWorkout !== null;
 
   // 1. Explore Tab View matching Flutter 1:1
@@ -670,20 +703,46 @@ export const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {/* Wallet Button */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Wallet')}
-            style={[
-              styles.notificationBtn,
-              {
-                backgroundColor: isDark ? '#1E1E1E' : '#F8FAFC',
-                borderColor: colors.border,
-              },
-            ]}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="wallet-outline" size={22} color={colors.text} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {/* Bookmarks Modal Trigger Button */}
+            <TouchableOpacity
+              onPress={() => setShowBookmarksModal(true)}
+              style={[
+                styles.notificationBtn,
+                {
+                  backgroundColor: isDark ? '#1E1E1E' : '#F8FAFC',
+                  borderColor: colors.border,
+                },
+              ]}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons
+                name={bookmarkCount > 0 ? 'bookmark' : 'bookmark-border'}
+                size={22}
+                color={bookmarkCount > 0 ? AppColors.secondaryColor : colors.text}
+              />
+              {bookmarkCount > 0 && (
+                <View style={styles.headerBookmarkBadge}>
+                  <Text style={styles.headerBookmarkBadgeText}>{bookmarkCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Wallet Button */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Wallet')}
+              style={[
+                styles.notificationBtn,
+                {
+                  backgroundColor: isDark ? '#1E1E1E' : '#F8FAFC',
+                  borderColor: colors.border,
+                },
+              ]}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="wallet-outline" size={22} color={colors.text} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* 2. Search & Filter Bar */}
@@ -747,7 +806,7 @@ export const HomeScreen = ({ navigation }) => {
               style={styles.filterBtn}
             >
               <MaterialIcons name="tune" size={22} color="#FFFFFF" />
-              {(selectedType || selectedFacility || selectedWorkout) && (
+              {(selectedTypes.length > 0 || selectedFacilities.length > 0 || selectedWorkout) && (
                 <View style={styles.activeFilterDot} />
               )}
             </LinearGradient>
@@ -837,19 +896,10 @@ export const HomeScreen = ({ navigation }) => {
             scrollEventThrottle={16}
           >
             {bannersToDisplay.map((banner, index) => {
-              let bannerImg = null;
-              if (typeof banner.image === 'string' && banner.image.trim().length > 0) {
-                bannerImg = banner.image.trim();
-              } else if (banner.image?.fileData && banner.image.fileData.trim().length > 50) {
-                bannerImg = banner.image.fileData.trim();
-              } else if (typeof banner.imageUrl === 'string' && banner.imageUrl.trim().length > 0) {
-                bannerImg = banner.imageUrl.trim();
-              } else if (banner.image?.fileUrl && banner.image.fileUrl.trim().length > 0) {
-                bannerImg = banner.image.fileUrl.trim();
-              }
-              if (!bannerImg) {
-                bannerImg = getGymCoverImage(banner.gym);
-              }
+              const bannerImg =
+                getSafeImageUri(banner.image) ||
+                getSafeImageUri(banner.imageUrl) ||
+                getGymCoverImage(banner.gym);
               const isPriority = Boolean(banner.isPriority);
               const gymName = banner.gymName || banner.gym?.name || 'GYMEZY Partner Gym';
               const bannerTitle = banner.title || gymName;
@@ -1084,7 +1134,9 @@ export const HomeScreen = ({ navigation }) => {
               contentContainerStyle={styles.spotlightScroll}
             >
               {topRatedGyms.map((gym) => {
-                const isBookmarked = bookmarkedGymNames.has(gym.name);
+                const gymKey = String(gym.id || gym._id || gym.partnerId || gym.name);
+                const isBookmarked = bookmarkedIds.has(gymKey);
+                const spotlightRating = Number(gym.rating) > 0 ? Number(gym.rating).toFixed(1) : 'No ratings';
                 return (
                   <TouchableOpacity
                     key={gym._id || gym.id || gym.name}
@@ -1107,10 +1159,10 @@ export const HomeScreen = ({ navigation }) => {
                       />
                       {/* Rating Badge */}
                       <View style={styles.spotlightRatingBadge}>
-                        {gym.rating && Number(gym.rating) > 0 ? (
+                        {Number(gym.rating) > 0 ? (
                           <>
                             <MaterialIcons name="star" size={14} color="#F59E0B" />
-                            <Text style={styles.spotlightRatingText}>{gym.rating}</Text>
+                            <Text style={styles.spotlightRatingText}>{spotlightRating}</Text>
                           </>
                         ) : (
                           <Text style={styles.spotlightRatingText}>No ratings</Text>
@@ -1119,7 +1171,7 @@ export const HomeScreen = ({ navigation }) => {
 
                       {/* Bookmark Button */}
                       <TouchableOpacity
-                        onPress={() => toggleBookmark(gym.name)}
+                        onPress={() => toggleBookmark(gym)}
                         style={styles.spotlightBookmarkBtn}
                         activeOpacity={0.8}
                       >
@@ -1209,18 +1261,15 @@ export const HomeScreen = ({ navigation }) => {
 
         {/* 7. Gym List Cards */}
         {isLoadingGyms ? (
-          <View style={styles.gymsLoadingContainer}>
-            <ActivityIndicator size="large" color={AppColors.primaryColor} />
-            <Text style={[styles.gymsLoadingText, { color: colors.subtitle }]}>
-              Finding nearest gyms in {userLocation.name}...
-            </Text>
+          <View style={{ paddingTop: 4 }}>
+            <SkeletonGymCard />
+            <SkeletonGymCard />
+            <SkeletonGymCard />
           </View>
         ) : filteredGyms.length === 0 && isSearchingGyms ? (
-          <View style={styles.gymsLoadingContainer}>
-            <ActivityIndicator size="small" color={AppColors.primaryColor} />
-            <Text style={[styles.gymsLoadingText, { color: colors.subtitle, marginTop: 8 }]}>
-              Searching gyms...
-            </Text>
+          <View style={{ paddingTop: 4 }}>
+            <SkeletonGymCard />
+            <SkeletonGymCard />
           </View>
         ) : filteredGyms.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -1233,72 +1282,73 @@ export const HomeScreen = ({ navigation }) => {
         ) : (
           <View>
             {filteredGyms.map((gym, index) => {
-            const isBookmarked = bookmarkedGymNames.has(gym.name);
+              const gymKey = String(gym.id || gym._id || gym.partnerId || gym.name);
+              const isBookmarked = bookmarkedIds.has(gymKey);
+              const cardRating = Number(gym.rating) > 0 ? Number(gym.rating).toFixed(1) : 'No ratings';
 
-
-            return (
-              <View key={gym.id || gym.name} style={{ marginHorizontal: 16, marginBottom: 16 }}>
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('GymDetails', { gym })}
-                  activeOpacity={0.9}
-                  style={[
-                    styles.gymCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: isDark ? colors.border : 'transparent',
-                      borderWidth: isDark ? 1 : 0,
-                    },
-                  ]}
-                >
-                  {/* Gym Hero Image with Badges */}
-                  <View style={styles.gymCardImageContainer}>
-                    <Image
-                      source={{ uri: getGymCoverImage(gym) }}
-                      style={styles.gymCardImage}
-                      resizeMode="cover"
-                    />
-
-                    <LinearGradient
-                      colors={['transparent', 'rgba(0,0,0,0.6)']}
-                      style={styles.gymCardGradient}
-                    />
-
-                    {/* Popular / Best Badge */}
-                    {gym.badgeText && (
-                      <View style={styles.cardPopularBadge}>
-                        <MaterialIcons name="local-fire-department" size={13} color="#FFFFFF" />
-                        <Text style={styles.cardPopularBadgeText}>{gym.badgeText}</Text>
-                      </View>
-                    )}
-
-                    {/* Bookmark Button */}
-                    <TouchableOpacity
-                      onPress={() => toggleBookmark(gym.name)}
-                      style={styles.cardBookmarkBtn}
-                      activeOpacity={0.8}
-                    >
-                      <MaterialIcons
-                        name={isBookmarked ? 'bookmark' : 'bookmark-border'}
-                        size={18}
-                        color={isBookmarked ? AppColors.secondaryColor : '#FFFFFF'}
+              return (
+                <View key={gym.id || gym._id || gym.name || index} style={{ marginHorizontal: 16, marginBottom: 16 }}>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('GymDetails', { gym })}
+                    activeOpacity={0.9}
+                    style={[
+                      styles.gymCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: isDark ? colors.border : 'transparent',
+                        borderWidth: isDark ? 1 : 0,
+                      },
+                    ]}
+                  >
+                    {/* Gym Hero Image with Badges */}
+                    <View style={styles.gymCardImageContainer}>
+                      <Image
+                        source={{ uri: getGymCoverImage(gym) }}
+                        style={styles.gymCardImage}
+                        resizeMode="cover"
                       />
-                    </TouchableOpacity>
 
-                    {/* Image Bottom Info Overlay */}
-                    <View style={styles.cardImageBottomInfo}>
-                      <View style={styles.cardRatingPill}>
-                        {gym.rating && Number(gym.rating) > 0 ? (
-                          <>
-                            <MaterialIcons name="star" size={13} color="#F59E0B" />
-                            <Text style={styles.cardRatingText}>{gym.rating}</Text>
-                            {gym.reviewsCount ? (
-                              <Text style={styles.cardReviewsCountText}>({gym.reviewsCount})</Text>
-                            ) : null}
-                          </>
-                        ) : (
-                          <Text style={styles.cardRatingText}>No ratings</Text>
-                        )}
-                      </View>
+                      <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.6)']}
+                        style={styles.gymCardGradient}
+                      />
+
+                      {/* Popular / Best Badge */}
+                      {gym.badgeText && (
+                        <View style={styles.cardPopularBadge}>
+                          <MaterialIcons name="local-fire-department" size={13} color="#FFFFFF" />
+                          <Text style={styles.cardPopularBadgeText}>{gym.badgeText}</Text>
+                        </View>
+                      )}
+
+                      {/* Bookmark Button */}
+                      <TouchableOpacity
+                        onPress={() => toggleBookmark(gym)}
+                        style={styles.cardBookmarkBtn}
+                        activeOpacity={0.8}
+                      >
+                        <MaterialIcons
+                          name={isBookmarked ? 'bookmark' : 'bookmark-border'}
+                          size={18}
+                          color={isBookmarked ? AppColors.secondaryColor : '#FFFFFF'}
+                        />
+                      </TouchableOpacity>
+
+                      {/* Image Bottom Info Overlay */}
+                      <View style={styles.cardImageBottomInfo}>
+                        <View style={styles.cardRatingPill}>
+                          {Number(gym.rating) > 0 ? (
+                            <>
+                              <MaterialIcons name="star" size={13} color="#F59E0B" />
+                              <Text style={styles.cardRatingText}>{cardRating}</Text>
+                              {gym.reviewsCount ? (
+                                <Text style={styles.cardReviewsCountText}>({gym.reviewsCount})</Text>
+                              ) : null}
+                            </>
+                          ) : (
+                            <Text style={styles.cardRatingText}>No ratings</Text>
+                          )}
+                        </View>
 
                       <View style={styles.cardDistancePill}>
                         <MaterialIcons name="near-me" size={12} color="#FFFFFF" />
@@ -1431,112 +1481,9 @@ export const HomeScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* 8. 'GYMEZY for you' and Watermark Branding Section at the bottom of the feed */}
+        {/* 8. Watermark Branding Section at the bottom of the feed */}
         {!isLoadingGyms && (
-          <View style={styles.gymezyForYouSection}>
-            <View style={styles.forYouHeader}>
-              <Text style={[styles.forYouTitle, { color: colors.text }]}>
-                GYMEZY for you
-              </Text>
-              <View style={styles.exclusiveBadge}>
-                <Text style={styles.exclusiveBadgeText}>Exclusive</Text>
-              </View>
-            </View>
-
-            {/* 2-Column Cards Grid */}
-            <View style={styles.forYouGrid}>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('BuyMembership', { gym: gyms[0] || {} })}
-                style={[
-                  styles.forYouCard,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.forYouIconBox,
-                    { backgroundColor: 'rgba(0, 56, 130, 0.1)' },
-                  ]}
-                >
-                  <MaterialIcons
-                    name="card-membership"
-                    size={24}
-                    color={AppColors.primaryColor}
-                  />
-                </View>
-                <Text style={[styles.forYouCardTitle, { color: colors.text }]}>
-                  All-Access Pass
-                </Text>
-                <Text style={[styles.forYouCardSub, { color: colors.subtitle }]}>
-                  Work out at any partner gym across Chennai
-                </Text>
-                <View style={styles.forYouLinkRow}>
-                  <Text
-                    style={[
-                      styles.forYouLinkText,
-                      { color: isDark ? '#93C5FD' : AppColors.primaryColor },
-                    ]}
-                  >
-                    Get pass
-                  </Text>
-                  <MaterialIcons
-                    name="arrow-outward"
-                    size={14}
-                    color={isDark ? '#93C5FD' : AppColors.primaryColor}
-                  />
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => navigation.navigate('BookingSession', { gym: gyms[0] || {} })}
-                style={[
-                  styles.forYouCard,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.forYouIconBox,
-                    { backgroundColor: 'rgba(0, 191, 98, 0.12)' },
-                  ]}
-                >
-                  <MaterialIcons
-                    name="fitness-center"
-                    size={24}
-                    color={AppColors.secondaryColor}
-                  />
-                </View>
-                <Text style={[styles.forYouCardTitle, { color: colors.text }]}>
-                  Certified Trainers
-                </Text>
-                <Text style={[styles.forYouCardSub, { color: colors.subtitle }]}>
-                  Book 1-on-1 personal coaches at special rates
-                </Text>
-                <View style={styles.forYouLinkRow}>
-                  <Text
-                    style={[
-                      styles.forYouLinkText,
-                      { color: AppColors.secondaryColor },
-                    ]}
-                  >
-                    Book trainer
-                  </Text>
-                  <MaterialIcons
-                    name="arrow-outward"
-                    size={14}
-                    color={AppColors.secondaryColor}
-                  />
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {/* Watermark Branding */}
+          <View style={{ marginHorizontal: 16 }}>
             <BrandWatermarkFooter />
           </View>
         )}
@@ -1590,15 +1537,25 @@ export const HomeScreen = ({ navigation }) => {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Gym Type */}
-              <Text style={[styles.filterGroupTitle, { color: colors.text }]}>Gym Type</Text>
+              {/* Gym Type (Multi-Select) */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={[styles.filterGroupTitle, { color: colors.text, marginTop: 0 }]}>
+                  Gym Type {selectedTypes.length > 0 ? `(${selectedTypes.length} selected)` : ''}
+                </Text>
+                {selectedTypes.length > 0 && (
+                  <TouchableOpacity onPress={() => setSelectedTypes([])} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: AppColors.primaryColor }}>Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <View style={styles.filterChipsRow}>
                 {['All Gyms', 'Unisex', 'Women Only', 'Men Only'].map((type) => {
-                  const isSel = (selectedType === null && type === 'All Gyms') || selectedType === type;
+                  const isSel = type === 'All Gyms' ? selectedTypes.length === 0 : selectedTypes.includes(type);
                   return (
                     <TouchableOpacity
                       key={type}
-                      onPress={() => setSelectedType(type === 'All Gyms' ? null : type)}
+                      onPress={() => handleToggleType(type)}
+                      activeOpacity={0.8}
                       style={[
                         styles.filterChip,
                         {
@@ -1608,9 +1565,14 @@ export const HomeScreen = ({ navigation }) => {
                             ? '#262626'
                             : '#F1F5F9',
                           borderColor: isSel ? AppColors.primaryColor : colors.border,
+                          flexDirection: 'row',
+                          alignItems: 'center',
                         },
                       ]}
                     >
+                      {isSel && type !== 'All Gyms' && (
+                        <MaterialIcons name="check" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                      )}
                       <Text
                         style={[
                           styles.filterChipText,
@@ -1624,17 +1586,25 @@ export const HomeScreen = ({ navigation }) => {
                 })}
               </View>
 
-              {/* Facility */}
-              <Text style={[styles.filterGroupTitle, { color: colors.text, marginTop: 16 }]}>
-                Facilities
-              </Text>
+              {/* Facilities (Multi-Select) */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 }}>
+                <Text style={[styles.filterGroupTitle, { color: colors.text, marginTop: 0 }]}>
+                  Facilities {selectedFacilities.length > 0 ? `(${selectedFacilities.length} selected)` : ''}
+                </Text>
+                {selectedFacilities.length > 0 && (
+                  <TouchableOpacity onPress={() => setSelectedFacilities([])} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: AppColors.primaryColor }}>Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               <View style={styles.filterChipsRow}>
-                {['All Facilities', 'AC', 'Locker', 'Shower', 'Parking'].map((fac) => {
-                  const isSel = (selectedFacility === null && fac === 'All Facilities') || selectedFacility === fac;
+                {['All Facilities', 'AC', 'Locker', 'Shower', 'Parking', 'Steam Room', 'Juice Bar', 'Cardio Deck'].map((fac) => {
+                  const isSel = fac === 'All Facilities' ? selectedFacilities.length === 0 : selectedFacilities.includes(fac);
                   return (
                     <TouchableOpacity
                       key={fac}
-                      onPress={() => setSelectedFacility(fac === 'All Facilities' ? null : fac)}
+                      onPress={() => handleToggleFacility(fac)}
+                      activeOpacity={0.8}
                       style={[
                         styles.filterChip,
                         {
@@ -1644,9 +1614,14 @@ export const HomeScreen = ({ navigation }) => {
                             ? '#262626'
                             : '#F1F5F9',
                           borderColor: isSel ? AppColors.primaryColor : colors.border,
+                          flexDirection: 'row',
+                          alignItems: 'center',
                         },
                       ]}
                     >
+                      {isSel && fac !== 'All Facilities' && (
+                        <MaterialIcons name="check" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                      )}
                       <Text
                         style={[
                           styles.filterChipText,
@@ -2047,6 +2022,14 @@ export const HomeScreen = ({ navigation }) => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Bookmarked Gyms Modal */}
+      <BookmarkedGymsModal
+        visible={showBookmarksModal}
+        onClose={() => setShowBookmarksModal(false)}
+        navigation={navigation}
+        userLocation={userLocation}
+      />
     </View>
   );
 };
@@ -2106,6 +2089,23 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: '#EF4444',
+  },
+  headerBookmarkBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: AppColors.secondaryColor,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  headerBookmarkBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontWeight: '800',
   },
 
   /* Search & Filter Bar */

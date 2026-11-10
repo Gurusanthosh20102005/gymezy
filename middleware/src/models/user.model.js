@@ -178,6 +178,15 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
+    // User Bookmarked Gyms
+    bookmarks: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Gym',
+        index: true,
+      },
+    ],
+
     // Role-specific embedded profiles
     customerProfile: {
       type: customerProfileSchema,

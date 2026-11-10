@@ -1611,8 +1611,8 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
               ]}
             >
               <View style={styles.trainerHeaderRow}>
-                {item.imageUrl ? (
-                  <Image source={{ uri: item.imageUrl }} style={styles.trainerAvatar} />
+                {getSafeImageUri(item.imageUrl) ? (
+                  <Image source={{ uri: getSafeImageUri(item.imageUrl) }} style={styles.trainerAvatar} />
                 ) : (
                   <View
                     style={[

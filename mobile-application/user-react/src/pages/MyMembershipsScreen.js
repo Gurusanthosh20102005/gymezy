@@ -19,6 +19,8 @@ import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { membershipService } from '../services/membershipService';
 import { calculateMembershipProgress } from '../utils/dateUtils';
+import { SkeletonBookingCard } from '../widgets/Skeleton';
+import { getSafeImageUri, getGymLogoUri, getGymCoverImage } from '../utils/mediaUtils';
 
 const TABS = ['Active', 'Completed', 'Cancelled'];
 
@@ -46,17 +48,10 @@ export const MyMembershipsScreen = ({ navigation }) => {
             ? new Date(m.endDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
             : '';
           const resolvedGymLogo =
-            m.gymLogo
-            || (typeof m.gymId?.logo === 'string' && m.gymId.logo.trim())
-            || m.gymId?.logo?.fileData
-            || m.gymId?.logoUrl
-            || m.gymId?.coverPhoto?.fileData
-            || m.gymId?.coverPhotoUrl
-            || m.gymId?.image
-            || m.gymId?.images?.[0]
-            || m.gymId?.imageUrl
-            || m.gymImageUrl
-            || null;
+            getSafeImageUri(m.gymLogo) ||
+            getGymLogoUri(m.gymId) ||
+            getSafeImageUri(m.gymImageUrl) ||
+            getGymCoverImage(m.gymId);
 
           let uniqueDocId = `mem_${idx}`;
           if (m._id) {
@@ -248,11 +243,9 @@ export const MyMembershipsScreen = ({ navigation }) => {
 
         {/* 3. Memberships List */}
         {isFetching && filteredMemberships.length === 0 ? (
-          <View style={[styles.emptyContainer, { paddingVertical: 40 }]}>
-            <ActivityIndicator size="large" color={primaryNavy} />
-            <Text style={[styles.emptySub, { color: colors.subtitle, marginTop: 12 }]}>
-              Loading memberships...
-            </Text>
+          <View style={{ paddingTop: 8 }}>
+            <SkeletonBookingCard />
+            <SkeletonBookingCard />
           </View>
         ) : filteredMemberships.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -284,9 +277,9 @@ export const MyMembershipsScreen = ({ navigation }) => {
               >
                 {/* Header Row */}
                 <View style={styles.cardHeaderRow}>
-                  {mbr.gymImageUrl ? (
+                  {getSafeImageUri(mbr.gymImageUrl) ? (
                     <Image
-                      source={{ uri: mbr.gymImageUrl }}
+                      source={{ uri: getSafeImageUri(mbr.gymImageUrl) }}
                       style={styles.gymAvatar}
                       resizeMode="cover"
                     />

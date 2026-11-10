@@ -21,6 +21,7 @@ import { useToast } from '../../widgets/CustomScaffoldMessage';
 import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../services/apiService';
 import { AddWalkInBookingModal } from '../../widgets/AddWalkInBookingModal';
+import { SkeletonBookingRow } from '../../widgets/Skeleton';
 
 export const SOURCE_FILTERS = [
   { key: 'ALL', label: 'All Sources' },
@@ -423,11 +424,10 @@ export const BookingsTab = ({ topInset, navigation }) => {
 
         {/* 6. Bookings List Content */}
         {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={AppColors.primaryColor} />
-            <Text style={[styles.loadingText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-              Loading bookings and passes...
-            </Text>
+          <View style={{ paddingTop: 8 }}>
+            <SkeletonBookingRow />
+            <SkeletonBookingRow />
+            <SkeletonBookingRow />
           </View>
         ) : filteredBookings.length === 0 ? (
           <View

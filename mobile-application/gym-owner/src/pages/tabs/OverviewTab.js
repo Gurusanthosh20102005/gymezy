@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getGymLogoUri } from '../../utils/mediaUtils';
 import { AddWalkInBookingModal } from '../../widgets/AddWalkInBookingModal';
 import { AddWalkInMemberModal } from '../../widgets/AddWalkInMemberModal';
+import { SkeletonMetricCard } from '../../widgets/Skeleton';
 
 export const WEEKLY_CHECKINS = [
   { day: 'Mon', count: 74, heightPct: 74 },
@@ -62,6 +63,7 @@ export const OverviewTab = ({
   );
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingOverview, setIsLoadingOverview] = useState(!gym);
   const [employees, setEmployees] = useState([]);
   const [membershipSummary, setMembershipSummary] = useState(null);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
@@ -88,6 +90,8 @@ export const OverviewTab = ({
       }
     } catch (err) {
       console.warn('Overview data fetch error:', err.message);
+    } finally {
+      setIsLoadingOverview(false);
     }
   }, [gym?.id, gym?._id, user?.gymId, refreshGymProfile]);
 
@@ -390,7 +394,15 @@ export const OverviewTab = ({
 
       {/* 2. Key Business Metrics Grid (6 Unified Cards) */}
       <View style={styles.metricsGrid}>
-        {metricCards.map((card) => {
+        {isLoadingOverview && !gym ? (
+          <>
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+          </>
+        ) : (
+          metricCards.map((card) => {
           const CardComp = card.onPress ? TouchableOpacity : View;
           return (
             <CardComp
@@ -449,7 +461,8 @@ export const OverviewTab = ({
               </View>
             </CardComp>
           );
-        })}
+        })
+      )}
       </View>
 
       {/* Quick Desk Actions Grid: Walk-in Booking & Walk-in Member */}

@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { apiService } from '../services/apiService';
+import { getSafeImageUri } from '../utils/mediaUtils';
 
 export const SectionRosterModal = ({ visible, onClose, section }) => {
   const { isDark } = useTheme();
@@ -165,8 +166,8 @@ export const SectionRosterModal = ({ visible, onClose, section }) => {
                       style={[styles.memberRow, { backgroundColor: cardBg, borderColor: borderCol }]}
                     >
                       {/* Avatar */}
-                      {user?.avatar || user?.profilePicture ? (
-                        <Image source={{ uri: user.avatar || user.profilePicture }} style={styles.avatarImg} />
+                      {getSafeImageUri(user?.avatar || user?.profilePicture) ? (
+                        <Image source={{ uri: getSafeImageUri(user.avatar || user.profilePicture) }} style={styles.avatarImg} />
                       ) : (
                         <View style={[styles.avatarFallback, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
                           <Text style={[styles.avatarInitial, { color: textCol }]}>

@@ -24,6 +24,7 @@ import { getSafeImageUri } from '../../utils/mediaUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDebounce } from '../../hooks/useDebounce';
 import { AddTempStaffModal } from '../../widgets/AddTempStaffModal';
+import { SkeletonEmployeeCard } from '../../widgets/Skeleton';
 import {
   AddEmployeeModal,
   AVAILABLE_SERVICES,
@@ -460,11 +461,10 @@ export const EmployeesTab = ({ topInset, navigation }) => {
 
         {/* 6. Employee Cards List */}
         {isLoading ? (
-          <View style={{ paddingVertical: 48, alignItems: 'center' }}>
-            <ActivityIndicator size="large" color={AppColors.primaryColor} />
-            <Text style={{ marginTop: 12, color: isDark ? '#94A3B8' : '#64748B' }}>
-              Loading staff roster...
-            </Text>
+          <View style={{ paddingTop: 8 }}>
+            <SkeletonEmployeeCard />
+            <SkeletonEmployeeCard />
+            <SkeletonEmployeeCard />
           </View>
         ) : filteredEmployees.length === 0 ? (
           <View

@@ -14,6 +14,9 @@ import {
   deleteGym,
   getGymTransactions,
   getGymDashboardStats,
+  toggleBookmarkGym,
+  getMyBookmarkedGyms,
+  syncGuestBookmarks,
 } from '../controllers/gym.controller.js';
 import {
   getGymReviews,
@@ -70,6 +73,16 @@ router.get('/:id/payments', optionalAuthenticate, getGymTransactions);
 router.get('/:id/dashboard-stats', optionalAuthenticate, getGymDashboardStats);
 router.get('/:id/dashboard', optionalAuthenticate, getGymDashboardStats);
 router.get('/:id/overview', optionalAuthenticate, getGymDashboardStats);
+
+// ==================== BOOKMARK ROUTES ====================
+// Authenticated: Get my bookmarked gyms
+router.get('/bookmarks/my', authenticate, getMyBookmarkedGyms);
+
+// Authenticated: Sync guest / offline bookmarked gym IDs into MongoDB
+router.post('/bookmarks/sync', authenticate, syncGuestBookmarks);
+
+// Authenticated: Toggle bookmark status for a gym
+router.post('/:id/bookmark', authenticate, toggleBookmarkGym);
 
 // Public / Authenticated Single Gym Details
 router.get('/:id', optionalAuthenticate, getGymById);

@@ -23,6 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { membershipService } from '../services/membershipService';
 import { apiService } from '../services/apiService';
 import { walletService } from '../services/walletService';
+import { getSafeImageUri, DEFAULT_TRAINER_AVATAR } from '../utils/mediaUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -264,7 +265,7 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
       specialty: t.specialty || 'Certified Personal Trainer',
       rating: Number(t.rating) || 4.9,
       reviews: Number(t.reviewsCount || t.reviews) || 0,
-      image: t.imageUrl || t.avatar || t.image || null,
+      image: getSafeImageUri(t.imageUrl) || getSafeImageUri(t.avatar) || getSafeImageUri(t.image) || null,
       trainerPricing: t.trainerPricing || {},
       monthlyFee: Number(t.trainerPricing?.monthly || t.monthlyFee || t.price) || 0,
       schedule: t.schedule || {
@@ -896,8 +897,8 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
                     },
                   ]}
                 >
-                  {t.image ? (
-                    <Image source={{ uri: t.image }} style={styles.trainerAvatarImg} />
+                  {getSafeImageUri(t.image) ? (
+                    <Image source={{ uri: getSafeImageUri(t.image) }} style={styles.trainerAvatarImg} />
                   ) : (
                     <View style={[styles.trainerAvatarPlaceholder, { backgroundColor: isDark ? '#262626' : '#F1F5F9' }]}>
                       <MaterialIcons name="person-off" size={24} color="#00BF62" />
@@ -965,10 +966,10 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
 
             {/* Trainer Mini Card */}
             <View style={[styles.miniTrainerCard, { backgroundColor: cardColor, borderColor: borderColor }]}>
-              {activeSelectedTrainerObj?.image ? (
+              {getSafeImageUri(activeSelectedTrainerObj?.image) ? (
                 <Image
                   source={{
-                    uri: activeSelectedTrainerObj.image,
+                    uri: getSafeImageUri(activeSelectedTrainerObj.image),
                   }}
                   style={styles.miniTrainerAvatar}
                 />
@@ -1433,7 +1434,10 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
 
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                  <Image source={{ uri: selectedModalTrainer.image }} style={styles.modalTrainerImg} />
+                  <Image
+                    source={{ uri: getSafeImageUri(selectedModalTrainer.image, DEFAULT_TRAINER_AVATAR) }}
+                    style={styles.modalTrainerImg}
+                  />
                   <View style={{ marginLeft: 16, flex: 1 }}>
                     <Text style={[styles.modalTrainerName, { color: textColor }]}>
                       {selectedModalTrainer.name}

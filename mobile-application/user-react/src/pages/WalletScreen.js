@@ -23,6 +23,7 @@ import { AppColors } from '../theme/appTheme';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { walletService } from '../services/walletService';
+import { getSafeImageUri } from '../utils/mediaUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -96,7 +97,10 @@ export const WalletScreen = ({ navigation }) => {
   const activeGymWallet = individualWallets[selectedGymIndex] || individualWallets[0] || null;
   const activeGymBalanceINR = activeGymWallet?.balanceINR ?? 0;
   const activeGymKey = activeGymWallet?.gymId ? String(activeGymWallet.gymId) : 'active';
-  const activeGymLogoUri = !failedLogos[activeGymKey] && activeGymWallet?.gymLogo ? activeGymWallet.gymLogo : null;
+  const activeGymLogoUri =
+    !failedLogos[activeGymKey] && getSafeImageUri(activeGymWallet?.gymLogo)
+      ? getSafeImageUri(activeGymWallet.gymLogo)
+      : null;
 
   const filteredTransactions = useMemo(() => {
     let list = transactions;
@@ -603,7 +607,10 @@ export const WalletScreen = ({ navigation }) => {
                 {individualWallets.map((gymW, idx) => {
                   const isSelected = selectedGymIndex === idx;
                   const gymKey = gymW.gymId ? String(gymW.gymId) : String(idx);
-                  const gymLogoUri = !failedLogos[gymKey] && gymW.gymLogo ? gymW.gymLogo : null;
+                  const gymLogoUri =
+                    !failedLogos[gymKey] && getSafeImageUri(gymW.gymLogo)
+                      ? getSafeImageUri(gymW.gymLogo)
+                      : null;
                   return (
                     <TouchableOpacity
                       key={gymW.gymId || idx}
