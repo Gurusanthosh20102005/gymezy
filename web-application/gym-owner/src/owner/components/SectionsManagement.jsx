@@ -320,7 +320,7 @@ export const SectionsManagement = () => {
     form,
   ]);
 
-  // Trainer Select Options (Showing all trainers with live availability status badges)
+  // Trainer Select Options (Showing all trainers: available selectable, unavailable labeled Not Available & disabled)
   const trainerOptions = React.useMemo(() => {
     const list = allEvaluatedTrainers.length > 0 ? allEvaluatedTrainers : trainers;
     return list.map((t) => {
@@ -336,7 +336,7 @@ export const SectionsManagement = () => {
               justifyContent: 'space-between',
               width: '100%',
               gap: 8,
-              opacity: isAvail ? 1 : 0.65,
+              opacity: isAvail ? 1 : 0.5,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
@@ -358,15 +358,20 @@ export const SectionsManagement = () => {
                 ({t.specialty || t.role || 'Coach'}{t.employeeId ? ` • ${t.employeeId}` : ''})
               </span>
             </div>
-            {!isAvail ? (
-              <Tag color="error" style={{ fontSize: 11, borderRadius: 10, margin: 0, whiteSpace: 'nowrap' }}>
-                {t.reason || 'Unavailable'}
-              </Tag>
-            ) : (
-              <Tag color="success" style={{ fontSize: 11, borderRadius: 10, margin: 0 }}>
-                Available
-              </Tag>
-            )}
+            <Tag
+              color={isAvail ? 'success' : 'default'}
+              style={{
+                fontSize: 11,
+                borderRadius: 10,
+                margin: 0,
+                fontWeight: 500,
+                color: isAvail ? undefined : '#64748b',
+                background: isAvail ? undefined : (isDarkMode ? '#334155' : '#f1f5f9'),
+                borderColor: 'transparent',
+              }}
+            >
+              {isAvail ? 'Available' : 'Not Available'}
+            </Tag>
           </div>
         ),
       };
@@ -1046,22 +1051,12 @@ export const SectionsManagement = () => {
                 name="trainerId"
                 label="Assigned Gym Trainer (Available in Gym)"
                 rules={[{ required: true, message: 'Please select an available trainer' }]}
-                help={
-                  !isLoadingAvailableTrainers && availableTrainers.length === 0 ? (
-                    <span style={{ color: '#ef4444', fontWeight: 500 }}>
-                      No trainers are available for this time and schedule. Adjust the time slot or active days.
-                    </span>
-                  ) : undefined
-                }
-                validateStatus={!isLoadingAvailableTrainers && availableTrainers.length === 0 ? 'error' : undefined}
               >
                 <Select
                   size="large"
                   placeholder={
                     isLoadingAvailableTrainers
                       ? 'Evaluating available trainers...'
-                      : availableTrainers.length === 0
-                      ? 'No trainers available for this schedule'
                       : 'Select an available trainer'
                   }
                   loading={isLoadingAvailableTrainers}
@@ -1087,30 +1082,6 @@ export const SectionsManagement = () => {
               </Form.Item>
             </Col>
           </Row>
-
-          {!isLoadingAvailableTrainers && availableTrainers.length === 0 && (
-            <Alert
-              type="warning"
-              showIcon
-              message="No Trainers Available for this Schedule"
-              description={
-                <div style={{ marginTop: 6 }}>
-                  <div>All trainers either have an overlapping batch or do not work during these hours/days:</div>
-                  <ul style={{ paddingLeft: 18, marginTop: 6, marginBottom: 4 }}>
-                    {allEvaluatedTrainers.map((t) => (
-                      <li key={t._id || t.id}>
-                        <strong>{t.name}</strong>: {t.reason || 'Schedule conflict or off-duty'}
-                      </li>
-                    ))}
-                  </ul>
-                  <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
-                    Tip: Adjust the Daily Start/End Time or active days (e.g. Mon, Wed, Fri) to assign a trainer.
-                  </div>
-                </div>
-              }
-              style={{ marginBottom: 16, borderRadius: 'var(--radius-base)' }}
-            />
-          )}
 
           <Row gutter={16}>
             <Col span={6}>

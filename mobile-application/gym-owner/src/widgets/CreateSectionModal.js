@@ -406,7 +406,7 @@ export const CreateSectionModal = ({
               </Text>
               <TouchableOpacity
                 onPress={() => setShowTrainerPicker(true)}
-                style={[styles.pickerTrigger, { backgroundColor: inputBg, borderColor: trainers.length === 0 && !isLoadingTrainers ? '#EF4444' : borderCol }]}
+                style={[styles.pickerTrigger, { backgroundColor: inputBg, borderColor: borderCol }]}
               >
                 <View style={styles.pickerTriggerLeft}>
                   <MaterialIcons name="person" size={20} color="#003882" style={{ marginRight: 8 }} />
@@ -415,32 +415,11 @@ export const CreateSectionModal = ({
                       ? 'Checking trainer availability...'
                       : selectedTrainer
                       ? selectedTrainer.name
-                      : trainers.length === 0
-                      ? 'No available trainers for this schedule'
                       : 'Select an available trainer'}
                   </Text>
                 </View>
                 <MaterialIcons name="keyboard-arrow-down" size={20} color={subTextCol} />
               </TouchableOpacity>
-              {!isLoadingTrainers && trainers.length === 0 && (
-                <View
-                  style={{
-                    backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2',
-                    borderColor: '#F87171',
-                    borderWidth: 1,
-                    borderRadius: 8,
-                    padding: 10,
-                    marginTop: 8,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                >
-                  <MaterialIcons name="error-outline" size={18} color="#EF4444" style={{ marginRight: 6 }} />
-                  <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, flex: 1, fontWeight: '500' }}>
-                    No trainers are available for this time slot and days. Adjust the schedule or time to assign a trainer.
-                  </Text>
-                </View>
-              )}
             </View>
 
             {/* Cost & Capacity in 2 columns */}
@@ -697,19 +676,18 @@ export const CreateSectionModal = ({
                         <Text style={[styles.pickerItemSub, { color: subTextCol }]}>
                           {t.specialty || t.role || 'Trainer'} {t.employeeId ? `• ${t.employeeId}` : ''}
                         </Text>
-                        {!isAvail && (
-                          <Text style={{ color: '#EF4444', fontSize: 11, marginTop: 2, fontWeight: '500' }}>
-                            {t.reason || 'Unavailable for this schedule'}
-                          </Text>
-                        )}
                       </View>
                       {isSelected ? (
                         <MaterialIcons name="check" size={18} color="#003882" />
                       ) : isAvail ? (
-                        <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                          <Text style={{ color: '#166534', fontSize: 10, fontWeight: '600' }}>Available</Text>
+                        <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                          <Text style={{ color: '#166534', fontSize: 11, fontWeight: '600' }}>Available</Text>
                         </View>
-                      ) : null}
+                      ) : (
+                        <View style={{ backgroundColor: isDark ? '#334155' : '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                          <Text style={{ color: '#64748B', fontSize: 11, fontWeight: '600' }}>Not Available</Text>
+                        </View>
+                      )}
                     </TouchableOpacity>
                   );
                 })
