@@ -2086,7 +2086,11 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                 ]}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.cancelModalBtnText, { color: colors.text }]}>
+                <Text
+                  style={[styles.cancelModalBtnText, { color: colors.text }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
                   Keep Membership
                 </Text>
               </TouchableOpacity>
@@ -2097,12 +2101,15 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                   styles.cancelModalBtn,
                   {
                     backgroundColor: '#EF4444',
-                    marginLeft: 12,
                   },
                 ]}
                 activeOpacity={0.85}
               >
-                <Text style={[styles.cancelModalBtnText, { color: '#FFFFFF' }]}>
+                <Text
+                  style={[styles.cancelModalBtnText, { color: '#FFFFFF' }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
                   {membership.status === 'Upcoming' ? 'Confirm & Refund 100%' : 'Confirm Cancel'}
                 </Text>
               </TouchableOpacity>
@@ -3249,6 +3256,8 @@ const styles = StyleSheet.create({
   },
   cancelSheetActionsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   cancelModalBtn: {
     flex: 1,
@@ -3256,10 +3265,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 8,
   },
   cancelModalBtnText: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '800',
+    textAlign: 'center',
   },
 
   /* Soft Rate Us Bar Styles */

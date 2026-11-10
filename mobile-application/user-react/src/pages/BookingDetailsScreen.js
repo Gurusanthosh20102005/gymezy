@@ -1605,11 +1605,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 20,
+    paddingHorizontal: 12,
   },
   sheetPrimaryBtnText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
+    textAlign: 'center',
   },
 
   /* Cancel Sheet Specifics */
