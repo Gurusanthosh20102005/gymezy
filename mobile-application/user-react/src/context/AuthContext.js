@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../services/apiService';
 import { biometricService } from '../services/biometricService';
+import { bookmarkService } from '../services/bookmarkService';
 import { isJwtExpired, getJwtRemainingMs } from '../utils/jwtUtils';
 
 const TOKEN_KEY = '@gymezy_user_jwt_token';
@@ -45,6 +46,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]).catch(() => {});
       apiService.setAuthToken(null);
+      bookmarkService.clear();
       setUser(null);
       setToken(null);
       setIsGuest(false);
@@ -122,6 +124,7 @@ export const AuthProvider = ({ children }) => {
                 if (freshUser) {
                   setUser(freshUser);
                   AsyncStorage.setItem(USER_KEY, JSON.stringify(freshUser)).catch(() => {});
+                  bookmarkService.syncGuestBookmarks().catch(() => {});
                 }
               })
               .catch((err) => {
@@ -187,6 +190,9 @@ export const AuthProvider = ({ children }) => {
         await AsyncStorage.removeItem(REMEMBER_KEY).catch(() => {});
         setSavedIdentifier('');
       }
+
+      // Sync guest bookmarks to user MongoDB account
+      bookmarkService.syncGuestBookmarks().catch(() => {});
 
       return { success: true, data: result };
     } catch (error) {
@@ -300,6 +306,9 @@ export const AuthProvider = ({ children }) => {
         await AsyncStorage.setItem(REMEMBER_KEY, registrationData.email);
         setSavedIdentifier(registrationData.email);
       }
+
+      // Sync guest bookmarks to user MongoDB account
+      bookmarkService.syncGuestBookmarks().catch(() => {});
 
       return { success: true, data: result };
     } catch (error) {

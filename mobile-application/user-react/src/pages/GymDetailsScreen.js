@@ -18,6 +18,7 @@ import { AppColors } from '../theme/appTheme';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { gymService } from '../services/gymService';
 import { apiService } from '../services/apiService';
+import { bookmarkService } from '../services/bookmarkService';
 import { getGymTimingStatus, normalizeOpeningHours, TIMING_MODES } from '../utils/gymTimingHelper';
 import { formatTimeAgo } from '../utils/dateUtils';
 import {
@@ -55,7 +56,15 @@ export const GymDetailsScreen = ({ route, navigation }) => {
   const { isDark, colors } = useTheme();
   const { showToast } = useToast();
 
-  const [isBookmarked, setIsBookmarked] = useState(rawGym.isBookmarked || false);
+  const [isBookmarked, setIsBookmarked] = useState(() => bookmarkService.isBookmarked(rawGym));
+
+  useEffect(() => {
+    setIsBookmarked(bookmarkService.isBookmarked(gym));
+    const unsubscribe = bookmarkService.subscribe(() => {
+      setIsBookmarked(bookmarkService.isBookmarked(gym));
+    });
+    return unsubscribe;
+  }, [gym]);
 
   // Popups state
   const [showFacilities, setShowFacilities] = useState(false);
@@ -117,11 +126,12 @@ export const GymDetailsScreen = ({ route, navigation }) => {
         .then((revData) => {
           if (isMounted && revData && (Array.isArray(revData.ratings) || Array.isArray(revData.reviews))) {
             const list = revData.ratings || revData.reviews || [];
+            const freshRating = revData.rating != null ? Number(Number(revData.rating).toFixed(1)).toFixed(1) : prev.rating;
             setGym((prev) => ({
               ...prev,
               ratings: list,
               reviews: list,
-              rating: revData.rating != null ? revData.rating : prev.rating,
+              rating: freshRating,
               reviewsCount: revData.reviewsCount != null ? revData.reviewsCount : prev.reviewsCount,
             }));
           }
@@ -287,10 +297,11 @@ export const GymDetailsScreen = ({ route, navigation }) => {
   const gymDistance = gym.distance !== undefined && gym.distance !== null ? `${gym.distance} km` : 'Near You';
   const badgeText = typeof gym.badgeText === 'string' && gym.badgeText.trim().length > 0 ? gym.badgeText : 'Verified Gym';
 
-  const toggleBookmark = () => {
-    setIsBookmarked(!isBookmarked);
+  const toggleBookmark = async () => {
+    const next = await bookmarkService.toggleBookmark(gym);
+    setIsBookmarked(next);
     showToast({
-      message: !isBookmarked ? 'Added to bookmarked gyms' : 'Removed from bookmarks',
+      message: next ? 'Added to bookmarked gyms' : 'Removed from bookmarks',
     });
   };
 

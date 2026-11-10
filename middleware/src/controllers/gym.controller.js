@@ -64,6 +64,40 @@ const extractCoordinatesFromMapsUrl = (url) => {
 };
 
 /**
+ * Single Source of Truth (SSOT) helper to compute dynamic single-decimal gym ratings & review count
+ */
+export const computeGymRatingMetrics = (g) => {
+  if (!g) return { rating: 0, reviewsCount: 0, hasReviews: false };
+
+  let reviewsList = [];
+  if (Array.isArray(g.ratings) && g.ratings.length > 0) {
+    reviewsList = g.ratings;
+  } else if (Array.isArray(g.reviews) && g.reviews.length > 0) {
+    reviewsList = g.reviews;
+  }
+
+  if (reviewsList.length > 0) {
+    const sum = reviewsList.reduce((acc, r) => acc + (typeof r.rating === 'number' ? r.rating : 5), 0);
+    const avg = Number((sum / reviewsList.length).toFixed(1));
+    return {
+      rating: avg,
+      reviewsCount: reviewsList.length,
+      hasReviews: true,
+    };
+  }
+
+  const baseRating = typeof g.rating === 'number' && g.rating > 0
+    ? Number(g.rating.toFixed(1))
+    : (g.rating ? Number(Number(g.rating).toFixed(1)) : 0);
+
+  return {
+    rating: baseRating,
+    reviewsCount: g.reviewsCount || 0,
+    hasReviews: Boolean(baseRating > 0),
+  };
+};
+
+/**
  * Standard 4-Tier Membership Plans Builder
  * Generates/normalizes the 4 fixed standard tiers: Monthly, Quarterly, Half Yearly, Annual
  */
@@ -922,9 +956,9 @@ export const getGyms = asyncHandler(async (req, res) => {
     query.workouts = { $regex: new RegExp(workout.trim(), 'i') };
   }
 
-  // Optimized lean projection: fetch only essential card fields (exclude heavy photos, gallery, trainers, reviews, rules, documents)
+  // Optimized lean projection: fetch only essential card fields (exclude heavy photos, gallery, trainers, rules, documents)
   const cardProjection =
-    'partnerId slug name location area city state address fullAddress phone email ownerName rating reviewsCount singleSessionPrice singleSessionBookingEnabled enabledSessionCategories pricingPlans.singleSession pricingPlans.monthly monthlyPrice logo coverPhoto image images badgeText tags workouts businessType facilities subscriptionType status approvalStatus createdAt';
+    'partnerId slug name location area city state address fullAddress phone email ownerName rating reviewsCount ratings reviews singleSessionPrice singleSessionBookingEnabled enabledSessionCategories pricingPlans.singleSession pricingPlans.monthly monthlyPrice logo coverPhoto image images badgeText tags workouts businessType facilities subscriptionType status approvalStatus createdAt';
 
   const rawGyms = await Gym.find(query).select(cardProjection).lean();
 
@@ -941,6 +975,12 @@ export const getGyms = asyncHandler(async (req, res) => {
     const monthlyPrice = g.monthlyPrice || g.pricingPlans?.monthly || sessionPrice * 10;
     const displayLocation = g.area ? `${g.area}, ${g.city}` : (g.city || 'Chennai');
     const mediaUrls = resolveGymMediaUrls(g);
+    const ratingMetrics = computeGymRatingMetrics(g);
+    const dynamicRating = ratingMetrics.rating;
+    const dynamicReviewsCount = ratingMetrics.reviewsCount;
+    const isBookmarked = Boolean(
+      req.user?.bookmarks?.some?.((bId) => (bId._id || bId).toString() === g._id.toString())
+    );
 
     return {
       index: skip + index + 1,
@@ -962,8 +1002,8 @@ export const getGyms = asyncHandler(async (req, res) => {
       distance,
       distanceText: `${distance} km`,
       coords: { latitude: gymLat, longitude: gymLng },
-      rating: g.rating || 0,
-      reviewsCount: g.reviewsCount || 0,
+      rating: dynamicRating,
+      reviewsCount: dynamicReviewsCount,
       singleSessionPrice: sessionPrice,
       pricePerSession: sessionPrice,
       singleSessionBookingEnabled: g.singleSessionBookingEnabled !== false,
@@ -976,7 +1016,8 @@ export const getGyms = asyncHandler(async (req, res) => {
       coverPhotoUrl: mediaUrls.coverPhotoUrl,
       imageUrl: mediaUrls.imageUrl,
       thumbnailImage: mediaUrls.thumbnailImage,
-      badgeText: g.badgeText || (g.rating >= 4.8 ? 'Top Rated' : ''),
+      badgeText: g.badgeText || (dynamicRating >= 4.8 ? 'Top Rated' : ''),
+      isBookmarked,
       tags: g.tags || [],
       workouts: g.workouts || [],
       facilities: g.facilities || [],
@@ -1447,10 +1488,20 @@ export const getGymById = asyncHandler(async (req, res) => {
     }));
   }
 
+  const detailRatingMetrics = computeGymRatingMetrics(sanitized);
+  sanitized.rating = detailRatingMetrics.rating;
+  sanitized.reviewsCount = detailRatingMetrics.reviewsCount;
+  sanitized.isBookmarked = Boolean(
+    req.user?.bookmarks?.some?.((bId) => (bId._id || bId).toString() === gym._id.toString())
+  );
+
   return res.status(200).json(
     ApiResponse.success(
       {
         ...sanitized,
+        rating: detailRatingMetrics.rating,
+        reviewsCount: detailRatingMetrics.reviewsCount,
+        isBookmarked: sanitized.isBookmarked,
         logoUrl: media.logoUrl,
         coverPhotoUrl: media.coverPhotoUrl,
         imageUrl: media.imageUrl,
@@ -2599,5 +2650,189 @@ export const getGymDashboardStats = asyncHandler(async (req, res) => {
     )
   );
 });
+
+// ==================== BOOKMARKING ARCHITECTURE ====================
+
+/**
+ * POST /api/v1/gyms/:id/bookmark
+ * Toggle bookmark status for a gym for the authenticated user
+ */
+export const toggleBookmarkGym = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user?._id || req.user?.id;
+  if (!userId) {
+    throw ApiError.unauthorized('Please log in to bookmark gyms.');
+  }
+
+  const gym = await findGymByParam(id);
+  if (!gym) {
+    throw ApiError.notFound('Gym not found.');
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw ApiError.notFound('User not found.');
+  }
+
+  if (!Array.isArray(user.bookmarks)) {
+    user.bookmarks = [];
+  }
+
+  const gymObjId = gym._id;
+  const isCurrentlyBookmarked = user.bookmarks.some((b) => b.toString() === gymObjId.toString());
+
+  if (isCurrentlyBookmarked) {
+    user.bookmarks = user.bookmarks.filter((b) => b.toString() !== gymObjId.toString());
+  } else {
+    user.bookmarks.push(gymObjId);
+  }
+
+  await user.save();
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        gymId: gym.partnerId || gym._id.toString(),
+        mongoId: gym._id.toString(),
+        isBookmarked: !isCurrentlyBookmarked,
+        bookmarksCount: user.bookmarks.length,
+        bookmarkedGymIds: user.bookmarks.map((b) => b.toString()),
+      },
+      !isCurrentlyBookmarked ? 'Gym added to bookmarks' : 'Gym removed from bookmarks'
+    )
+  );
+});
+
+/**
+ * GET /api/v1/gyms/bookmarks/my
+ * Retrieve all gyms bookmarked by the authenticated user
+ */
+export const getMyBookmarkedGyms = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || req.user?.id;
+  if (!userId) {
+    throw ApiError.unauthorized('Please log in to view bookmarked gyms.');
+  }
+
+  const user = await User.findById(userId).populate({
+    path: 'bookmarks',
+    select: 'partnerId slug name location area city state address fullAddress phone email rating reviewsCount ratings reviews singleSessionPrice pricingPlans logo coverPhoto image images badgeText tags workouts facilities subscriptionType status approvalStatus isActive',
+  });
+
+  if (!user) {
+    throw ApiError.notFound('User not found.');
+  }
+
+  const userLat = parseFloat(req.query.lat) || 13.085;
+  const userLng = parseFloat(req.query.lng) || 80.2101;
+  const hasCoordinates = !Number.isNaN(userLat) && !Number.isNaN(userLng);
+
+  const bookmarkedGyms = (user.bookmarks || [])
+    .filter((g) => g && (g.isActive !== false))
+    .map((g) => {
+      const gymLat = g.location?.coordinates ? g.location.coordinates[1] : 13.0827;
+      const gymLng = g.location?.coordinates ? g.location.coordinates[0] : 80.2707;
+      const distance = hasCoordinates
+        ? calculateDistanceKm(userLat, userLng, gymLat, gymLng)
+        : 0;
+
+      const sessionPrice = g.singleSessionPrice || g.pricingPlans?.singleSession || 199;
+      const monthlyPrice = g.monthlyPrice || g.pricingPlans?.monthly || sessionPrice * 10;
+      const displayLocation = g.area ? `${g.area}, ${g.city}` : (g.city || 'Chennai');
+      const mediaUrls = resolveGymMediaUrls(g);
+      const metrics = computeGymRatingMetrics(g);
+
+      return {
+        id: g.partnerId || g._id.toString(),
+        _id: g._id.toString(),
+        mongoId: g._id.toString(),
+        partnerId: g.partnerId || '',
+        name: g.name,
+        location: displayLocation,
+        place: displayLocation,
+        area: g.area || '',
+        city: g.city || '',
+        distance,
+        distanceText: `${distance} km`,
+        rating: metrics.rating,
+        reviewsCount: metrics.reviewsCount,
+        singleSessionPrice: sessionPrice,
+        pricePerSession: sessionPrice,
+        monthlyPrice,
+        membershipPrice: monthlyPrice,
+        logo: g.logo || mediaUrls.logoUrl,
+        coverPhoto: g.coverPhoto || mediaUrls.coverPhotoUrl,
+        logoUrl: mediaUrls.logoUrl,
+        coverPhotoUrl: mediaUrls.coverPhotoUrl,
+        badgeText: g.badgeText || (metrics.rating >= 4.8 ? 'Top Rated' : ''),
+        isBookmarked: true,
+      };
+    });
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        gyms: bookmarkedGyms,
+        total: bookmarkedGyms.length,
+        bookmarkedGymIds: bookmarkedGyms.map((g) => g._id),
+      },
+      'Bookmarked gyms retrieved successfully'
+    )
+  );
+});
+
+/**
+ * POST /api/v1/gyms/bookmarks/sync
+ * Sync guest / offline bookmarked gym IDs into the authenticated user's account
+ */
+export const syncGuestBookmarks = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || req.user?.id;
+  if (!userId) {
+    throw ApiError.unauthorized('Please log in to sync bookmarks.');
+  }
+
+  const { gymIds } = req.body;
+  if (!Array.isArray(gymIds) || gymIds.length === 0) {
+    return res.status(200).json(ApiResponse.success({ synced: 0 }, 'No bookmarks to sync'));
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw ApiError.notFound('User not found.');
+  }
+
+  if (!Array.isArray(user.bookmarks)) {
+    user.bookmarks = [];
+  }
+
+  // Resolve matching gym ObjectIds for gym IDs / partnerIds
+  const validGyms = await Gym.find({
+    $or: [
+      { _id: { $in: gymIds.filter((id) => mongoose.Types.ObjectId.isValid(id)) } },
+      { partnerId: { $in: gymIds } },
+    ],
+  }).select('_id');
+
+  const existingIds = new Set(user.bookmarks.map((b) => b.toString()));
+  validGyms.forEach((g) => {
+    if (!existingIds.has(g._id.toString())) {
+      user.bookmarks.push(g._id);
+      existingIds.add(g._id.toString());
+    }
+  });
+
+  await user.save();
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        synced: validGyms.length,
+        bookmarksCount: user.bookmarks.length,
+        bookmarkedGymIds: user.bookmarks.map((b) => b.toString()),
+      },
+      'Guest bookmarks synced successfully'
+    )
+  );
+});
+
 
 

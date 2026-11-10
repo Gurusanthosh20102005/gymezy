@@ -176,11 +176,15 @@ class GymService {
   }
 
   /**
-   * Clear all caches when needed (e.g. on pull-to-refresh)
+   * Clear all caches when needed (e.g. on pull-to-refresh or ratings update)
    */
   clearCache() {
     gymsCache.clear();
     gymsDetailCache.clear();
+  }
+
+  invalidateCache() {
+    this.clearCache();
   }
 }
 

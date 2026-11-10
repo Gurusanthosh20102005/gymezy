@@ -26,6 +26,7 @@ import { useToast } from '../widgets/CustomScaffoldMessage';
 import { calculateMembershipProgress } from '../utils/dateUtils';
 import { membershipService } from '../services/membershipService';
 import { apiService } from '../services/apiService';
+import { gymService } from '../services/gymService';
 import { useAuth } from '../context/AuthContext';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
@@ -416,6 +417,9 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
         });
         setHasRatedTrainer(true);
       }
+
+      // Invalidate gym service cache so real-time rating updates reflect immediately on explore feeds
+      gymService.invalidateCache();
 
       showToast({
         message: hasPersonalTrainer

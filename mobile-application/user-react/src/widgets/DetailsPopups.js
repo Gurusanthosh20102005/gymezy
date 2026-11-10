@@ -566,18 +566,19 @@ export const AllReviewsPopup = ({
     : [5, 4, 3, 2, 1].map((s) => ({ stars: s, ratio: 0, percent: '0%' }));
 
   const numericRating = Number(rating) || 0;
+  const formattedRating = numericRating > 0 ? numericRating.toFixed(1) : (reviewsCount > 0 ? '5.0' : '0.0');
   const hasReviews = reviewsCount > 0 || reviews.length > 0;
 
   return (
     <BasePopupModal visible={visible} onClose={onClose} title="All Reviews">
-      <ScrollView contentContainerStyle={styles.listContainer}>
+      <ScrollView contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={false}>
         {/* Score Summary Dashboard */}
         {hasReviews ? (
           <>
             <View style={styles.scoreRow}>
               <View style={styles.scoreNumberCol}>
                 <Text style={[styles.scoreBigNum, { color: colors.text }]}>
-                  {rating}
+                  {formattedRating}
                 </Text>
                 <View style={styles.starsRow}>
                   {Array.from({ length: 5 }).map((_, i) => (
