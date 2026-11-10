@@ -1213,7 +1213,7 @@ export const MembershipsManagement = () => {
         onCancel={() => setIsExportModalOpen(false)}
         title="Export Memberships Fleet"
         defaultFileName={getDefaultExportFileName('Memberships')}
-        totalAvailable={totalRecords}
+        totalAvailable={totalCount}
         onExport={executeExport}
         loading={isExporting}
       />

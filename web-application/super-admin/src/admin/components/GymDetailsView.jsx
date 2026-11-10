@@ -647,11 +647,14 @@ export const GymDetailsView = ({
             showSearch
             optionFilterProp="children"
           >
-            {allGyms.map((g) => (
-              <Option key={g.id || g._id} value={g.id || g._id}>
-                {g.name} {g.partnerId ? `(${g.partnerId})` : '(-)'}
-              </Option>
-            ))}
+            {allGyms.map((g) => {
+              const isGen = Boolean(g.partnerId && !/^[0-9a-fA-F]{24}$/.test(g.partnerId) && g.partnerId !== '-');
+              return (
+                <Option key={g.id || g._id} value={g.id || g._id}>
+                  {g.name} {isGen ? `(${g.partnerId})` : '(-)'}
+                </Option>
+              );
+            })}
           </Select>
 
           {(gym.approvalStatus === 'Pending Approval' || gym.approvalStatus === 'On Hold' || gym.approvalStatus === 'Rejected' || Boolean(gym.pendingChanges && Object.keys(gym.pendingChanges).length > 0) || Boolean(gym.changesCount > 0)) ? (
@@ -787,7 +790,7 @@ export const GymDetailsView = ({
               <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
                 {gym.name}
               </h1>
-              {gym.partnerId ? (
+              {gym.partnerId && !/^[0-9a-fA-F]{24}$/.test(gym.partnerId) && gym.partnerId !== '-' ? (
                 <Tag color="blue" style={{ fontWeight: 800, fontSize: 13, padding: '2px 10px', borderRadius: 6 }}>
                   {gym.partnerId}
                 </Tag>
@@ -971,7 +974,7 @@ export const GymDetailsView = ({
                     >
                       <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
                         <Descriptions.Item label="Gym Name">{gym.name}</Descriptions.Item>
-                        <Descriptions.Item label="Partner Code">{gym.partnerId || '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Partner Code">{(gym.partnerId && !/^[0-9a-fA-F]{24}$/.test(gym.partnerId) && gym.partnerId !== '-') ? gym.partnerId : '-'}</Descriptions.Item>
                         <Descriptions.Item label="Gym Type">{gym.gymType || 'Unisex Fitness Center'}</Descriptions.Item>
                         <Descriptions.Item label="Gender Policy">{gym.genderAllowed || 'Unisex'}</Descriptions.Item>
                         <Descriptions.Item label="Owner Name">{gym.ownerName || gym.fullName || '—'}</Descriptions.Item>
@@ -2520,23 +2523,13 @@ export const GymDetailsView = ({
                       </Col>
                     </Row>
                     <Row gutter={16}>
-                      <Col xs={24} sm={12}>
+                      <Col xs={24}>
                         <Form.Item
                           name="email"
                           label="Official Email"
                           rules={[{ type: 'email', message: 'Enter a valid email' }]}
                         >
                           <Input placeholder="gym@example.com" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} sm={12}>
-                        <Form.Item name="businessType" label="Business Entity Type">
-                          <Select>
-                            <Option value="Sole Proprietorship">Sole Proprietorship</Option>
-                            <Option value="Partnership">Partnership</Option>
-                            <Option value="Private Limited">Private Limited</Option>
-                            <Option value="LLP">LLP</Option>
-                          </Select>
                         </Form.Item>
                       </Col>
                     </Row>
@@ -2564,13 +2557,21 @@ export const GymDetailsView = ({
                     </Row>
                     <Row gutter={16}>
                       <Col xs={24} sm={12}>
-                        <Form.Item name="gstNumber" label="GST Number">
-                          <Input placeholder="15-digit GSTIN" />
+                        <Form.Item
+                          name="gstNumber"
+                          label="GST Number"
+                          normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15) : '')}
+                        >
+                          <Input maxLength={15} placeholder="15-digit GSTIN (e.g. 33AAAAA0000A1Z5)" />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12}>
-                        <Form.Item name="panNumber" label="PAN Number">
-                          <Input placeholder="10-digit PAN" />
+                        <Form.Item
+                          name="panNumber"
+                          label="PAN Number"
+                          normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) : '')}
+                        >
+                          <Input maxLength={10} placeholder="10-digit PAN (e.g. ABCDE1234F)" />
                         </Form.Item>
                       </Col>
                     </Row>
@@ -2784,13 +2785,13 @@ export const GymDetailsView = ({
                     </Row>
                     <Row gutter={16}>
                       <Col xs={24} sm={12}>
-                        <Form.Item name="accountNumber" label="Account Number">
-                          <Input placeholder="Bank account number" />
+                        <Form.Item name="accountNumber" label="Account Number" normalize={(val) => val ? val.replace(/\D/g, '').slice(0, 18) : ''}>
+                          <Input placeholder="Bank account number" maxLength={18} inputMode="numeric" />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12}>
-                        <Form.Item name="ifscCode" label="IFSC Code">
-                          <Input placeholder="e.g. HDFC0001234" />
+                        <Form.Item name="ifscCode" label="IFSC Code" normalize={(val) => val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11) : ''}>
+                          <Input placeholder="e.g. HDFC0001234" maxLength={11} />
                         </Form.Item>
                       </Col>
                     </Row>

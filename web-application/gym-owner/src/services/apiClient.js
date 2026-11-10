@@ -1,21 +1,26 @@
 import axios from 'axios';
 
 const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
   if (typeof window !== 'undefined' && window.location?.hostname) {
-    const { hostname } = window.location;
+    const { hostname, protocol } = window.location;
     if (
       hostname === 'localhost' ||
       hostname === '127.0.0.1' ||
       hostname.startsWith('192.168.') ||
-      hostname.startsWith('10.')
+      hostname.startsWith('10.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      hostname.endsWith('.local')
     ) {
-      return import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api/v1';
+      return `${protocol}//${hostname}:5001/api/v1`;
     }
     if (hostname.includes('dev')) {
-      return import.meta.env.VITE_API_BASE_URL || 'https://dev.api.gymezy.com/api/v1';
+      return 'https://dev.api.gymezy.com/api/v1';
     }
   }
-  return import.meta.env.VITE_API_BASE_URL || 'https://api.gymezy.com/api/v1';
+  return 'https://api.gymezy.com/api/v1';
 };
 
 export const apiClient = axios.create({

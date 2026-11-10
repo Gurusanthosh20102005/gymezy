@@ -16,7 +16,6 @@ import {
   LockOutlined,
   SunOutlined,
   MoonOutlined,
-  ArrowRightOutlined,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { loginUser, loginSuccess } from '../redux/slices/authSlice';
@@ -338,6 +337,7 @@ export const Login = () => {
             form={form}
             layout="vertical"
             onFinish={handleLogin}
+            autoComplete="off"
             initialValues={{
               email: '',
               password: '',
@@ -354,6 +354,7 @@ export const Login = () => {
               <Input
                 prefix={<UserOutlined style={{ color: '#1677ff' }} />}
                 placeholder="e.g. owner@gym.com or +91 9876543210"
+                autoComplete="username"
                 style={{
                   height: 46,
                   borderRadius: 'var(--radius-base)',
@@ -373,6 +374,7 @@ export const Login = () => {
               <Input.Password
                 prefix={<LockOutlined style={{ color: '#1677ff' }} />}
                 placeholder="••••••••"
+                autoComplete="current-password"
                 style={{
                   height: 46,
                   borderRadius: 'var(--radius-base)',
@@ -403,7 +405,6 @@ export const Login = () => {
                 htmlType="submit"
                 loading={loading}
                 block
-                icon={<ArrowRightOutlined />}
                 style={{
                   height: 48,
                   fontSize: 15,

@@ -1607,11 +1607,9 @@ export const GymProfileManagement = () => {
             <Title level={2} style={{ margin: 0, color: isDarkMode ? '#ffffff' : '#0f172a', fontWeight: 700 }}>
               Gym Profile
             </Title>
-            {gymData?.partnerId && (
-              <Tag color="blue" style={{ fontSize: 12, fontWeight: 700, borderRadius: 'var(--radius-base)', padding: '2px 8px' }}>
-                ID: {gymData.partnerId}
-              </Tag>
-            )}
+            <Tag color={gymData?.partnerId && !/^[0-9a-fA-F]{24}$/.test(gymData.partnerId) && gymData.partnerId !== '-' ? 'blue' : 'default'} style={{ fontSize: 12, fontWeight: 700, borderRadius: 'var(--radius-base)', padding: '2px 8px' }}>
+              ID: {(gymData?.partnerId && !/^[0-9a-fA-F]{24}$/.test(gymData.partnerId) && gymData.partnerId !== '-') ? gymData.partnerId : '-'}
+            </Tag>
             <Tag
               color={
                 gymStatus === 'Approved' || gymStatus === 'Active'
@@ -1949,9 +1947,6 @@ export const GymProfileManagement = () => {
                         </div>
 
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <Tag color="purple" style={{ borderRadius: 'var(--radius-base)', fontWeight: 600 }}>
-                            {activeGym?.businessType || 'Private Limited'}
-                          </Tag>
                           <Tag color="blue" style={{ borderRadius: 'var(--radius-base)', fontWeight: 600 }}>
                             {activeGym?.genderAllowed || 'Unisex'}
                           </Tag>
@@ -2192,7 +2187,6 @@ export const GymProfileManagement = () => {
                     >
                       <Row gutter={[20, 16]}>
                         {[
-                          { label: 'GYM TYPE', val: activeGym?.businessType || 'Private Limited' },
                           { label: 'GST NUMBER', val: activeGym?.gstNumber || 'Not Specified' },
                           { label: 'PAN NUMBER', val: activeGym?.panNumber || 'Not Specified' },
                           { label: 'ESTABLISHED ON', val: activeGym?.yearEstablished ? `Est. ${activeGym.yearEstablished}` : 'Not Specified' },
@@ -4091,17 +4085,6 @@ export const GymProfileManagement = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="businessType" label="Business Type">
-                <Select>
-                  <Option value="Sole Proprietorship">Sole Proprietorship</Option>
-                  <Option value="Partnership">Partnership</Option>
-                  <Option value="Private Limited">Private Limited</Option>
-                  <Option value="LLP">LLP</Option>
-                  <Option value="Other">Other</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
               <Form.Item name="genderAllowed" label="Gender Policy">
                 <Select>
                   <Option value="Unisex">Unisex</Option>
@@ -4111,13 +4094,21 @@ export const GymProfileManagement = () => {
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="gstNumber" label="GST Number">
-                <Input placeholder="e.g. 33AAAAA0000A1Z5" />
+              <Form.Item
+                name="gstNumber"
+                label="GST Number"
+                normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15) : '')}
+              >
+                <Input maxLength={15} placeholder="e.g. 33AAAAA0000A1Z5" />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="panNumber" label="PAN Number">
-                <Input placeholder="e.g. ABCDE1234F" />
+              <Form.Item
+                name="panNumber"
+                label="PAN Number"
+                normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) : '')}
+              >
+                <Input maxLength={10} placeholder="e.g. ABCDE1234F" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -4478,13 +4469,13 @@ export const GymProfileManagement = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="accountNumber" label="Account Number" rules={[{ required: true, message: 'Enter account number' }]}>
-                <Input placeholder="e.g. 50100123456789" />
+              <Form.Item name="accountNumber" label="Account Number" rules={[{ required: true, message: 'Enter account number' }]} normalize={(val) => val ? val.replace(/\D/g, '').slice(0, 18) : ''}>
+                <Input placeholder="e.g. 50100123456789" maxLength={18} inputMode="numeric" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="ifscCode" label="IFSC Code" rules={[{ required: true, message: 'Please enter IFSC Code' }]}>
-                <Input placeholder="e.g. HDFC0001234" />
+              <Form.Item name="ifscCode" label="IFSC Code" rules={[{ required: true, message: 'Please enter IFSC Code' }]} normalize={(val) => val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11) : ''}>
+                <Input placeholder="e.g. HDFC0001234" maxLength={11} />
               </Form.Item>
             </Col>
             <Col span={12}>

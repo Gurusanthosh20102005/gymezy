@@ -121,7 +121,13 @@ export const AddEmployeeModal = ({
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { showToast } = useToast();
-  const { gym } = useAuth();
+  const { gym, user } = useAuth();
+  const isCurrentUserManager = Boolean(
+    user?.isManager ||
+    user?.role === 'Manager' ||
+    user?.role === 'MANAGER' ||
+    String(user?.role || '').toLowerCase() === 'manager'
+  );
 
   // Basic Form States
   const [name, setName] = useState('');
@@ -445,12 +451,19 @@ export const AddEmployeeModal = ({
         status: initialEmployee?.status || 'Active',
         attendance: initialEmployee?.attendance || 'Present',
         accessType: isManager ? 'Admin' : accessType,
-        managerPermissions: {
-          requireStaffApproval,
-          requirePlanSwitchApproval,
-          requireCancellationApproval,
-          requireProfileEditApproval,
-        },
+        managerPermissions: isCurrentUserManager
+          ? (initialEmployee?.managerPermissions || {
+              requireStaffApproval: true,
+              requirePlanSwitchApproval: true,
+              requireCancellationApproval: true,
+              requireProfileEditApproval: true,
+            })
+          : {
+              requireStaffApproval,
+              requirePlanSwitchApproval,
+              requireCancellationApproval,
+              requireProfileEditApproval,
+            },
         ...(password?.trim() ? { password: password.trim() } : {}),
         previousEmployments: prevEmployments.filter(
           (p) => p.companyName?.trim() || p.designation?.trim()
@@ -687,9 +700,14 @@ export const AddEmployeeModal = ({
                     justifyContent: 'space-between',
                     height: 48,
                     marginBottom: showRoleDropdown ? 6 : 14,
+                    opacity: (isCurrentUserManager && !!initialEmployee) ? 0.7 : 1,
                   },
                 ]}
-                onPress={() => setShowRoleDropdown(!showRoleDropdown)}
+                onPress={() => {
+                  if (isCurrentUserManager && initialEmployee) return;
+                  setShowRoleDropdown(!showRoleDropdown);
+                }}
+                disabled={isCurrentUserManager && !!initialEmployee}
                 activeOpacity={0.7}
               >
                 <Text
@@ -701,11 +719,13 @@ export const AddEmployeeModal = ({
                 >
                   {isManagerRole(role) ? 'Manager (Operational Admin)' : role}
                 </Text>
-                <MaterialIcons
-                  name={showRoleDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
-                  size={24}
-                  color={isDark ? '#94A3B8' : '#64748B'}
-                />
+                {!(isCurrentUserManager && !!initialEmployee) && (
+                  <MaterialIcons
+                    name={showRoleDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                    size={24}
+                    color={isDark ? '#94A3B8' : '#64748B'}
+                  />
+                )}
               </TouchableOpacity>
 
               {showRoleDropdown && (
@@ -724,7 +744,7 @@ export const AddEmployeeModal = ({
                     shadowRadius: 6,
                   }}
                 >
-                  {ROLE_OPTIONS.map((r) => {
+                  {(isCurrentUserManager ? ROLE_OPTIONS.filter((r) => !isManagerRole(r)) : ROLE_OPTIONS).map((r) => {
                     const isSel = (isManagerRole(r) && isManagerRole(role)) || role === r;
                     return (
                       <TouchableOpacity
@@ -766,7 +786,7 @@ export const AddEmployeeModal = ({
               )}
 
               {/* Manager Delegation Permissions Card (Admin Approval Required) */}
-              {isManagerRole(role) && (
+              {isManagerRole(role) && !isCurrentUserManager && (
                 <View
                   style={{
                     backgroundColor: isDark ? '#1E1B4B' : '#F5F3FF',

@@ -856,7 +856,14 @@ export const updateEmployee = asyncHandler(async (req, res) => {
  */
 export const reviewEmployeeApproval = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { decision, adminRemarks } = req.body; // decision: 'Approved' | 'Rejected'
+  const rawDecision = req.body?.decision || req.body?.action;
+  let decision = rawDecision;
+  if (typeof rawDecision === 'string') {
+    const lower = rawDecision.toLowerCase().trim();
+    if (lower === 'approve' || lower === 'approved') decision = 'Approved';
+    if (lower === 'reject' || lower === 'rejected') decision = 'Rejected';
+  }
+  const adminRemarks = req.body?.adminRemarks || req.body?.rejectionReason || req.body?.remarks || '';
 
   if (!decision || !['Approved', 'Rejected'].includes(decision)) {
     throw ApiError.badRequest('Decision must be either "Approved" or "Rejected".');

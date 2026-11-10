@@ -184,6 +184,13 @@ export const EmployeeManagement = ({
   const gymPartnerId = gym.partnerId || user?.partnerId || (typeof gymId === 'string' && !gymId.match(/^[0-9a-fA-F]{24}$/) ? gymId : '');
   const gymName = gym.name || 'Main Facility';
 
+  const isManager = Boolean(
+    user?.isManager ||
+    user?.role === 'Manager' ||
+    user?.role === 'MANAGER' ||
+    String(user?.role || '').toLowerCase() === 'manager'
+  );
+
   const todayFormatted = useMemo(() => {
     return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }, []);
@@ -214,63 +221,9 @@ export const EmployeeManagement = ({
   };
   const isAddTrainer = isTrainerRole(addRoleWatch || 'Trainer');
 
-  // Map live gym trainers & staff from database fallback
-  const mappedGymStaff = useMemo(() => {
-    const list = [];
-    if (Array.isArray(gym.trainers) && gym.trainers.length > 0) {
-      gym.trainers.forEach((t, index) => {
-        list.push({
-          key: t.id || t._id || `tr-${index}`,
-          id: t.id || t._id || `tr-${index}`,
-          employeeId: `TR00${index + 1}`,
-          name: t.name || 'Trainer',
-          role: 'Trainer',
-          phone: t.phone || gym.phone || '—',
-          specialty: t.specialty || 'Fitness Coach',
-          email: t.email || gym.email || '—',
-          attendance: 'Present',
-          status: 'Active',
-          approvalStatus: 'Approved',
-          type: 'Full-Time',
-          experience: `${t.experienceYears || 2} Years`,
-          avatar: t.image?.fileData || (typeof t.image === 'string' ? t.image : ''),
-          gender: 'All',
-          joinDate: todayFormatted,
-          branch: gymName,
-          gymId,
-          gymPartnerId,
-        });
-      });
-    }
-    if (Array.isArray(gym.staff) && gym.staff.length > 0) {
-      gym.staff.forEach((s, index) => {
-        list.push({
-          key: s.id || s._id || `staff-${index}`,
-          id: s.id || s._id || `staff-${index}`,
-          employeeId: `EMP00${index + 1}`,
-          name: s.name || 'Staff Member',
-          role: s.designation || 'Staff',
-          phone: s.phone || gym.phone || '—',
-          email: s.email || gym.email || '—',
-          attendance: 'Present',
-          status: 'Active',
-          approvalStatus: 'Approved',
-          type: s.type || 'Full-Time',
-          avatar: s.image?.fileData || (typeof s.image === 'string' ? s.image : ''),
-          gender: 'All',
-          joinDate: todayFormatted,
-          branch: gymName,
-          gymId,
-          gymPartnerId,
-        });
-      });
-    }
-    return list;
-  }, [gym.trainers, gym.staff, gym.phone, gym.email, gymName, gymId, gymPartnerId, todayFormatted]);
-
   // Data, Pagination & Filters
-  const [employeesList, setEmployeesList] = useState(mappedGymStaff);
-  const [isLoadingEmployees, setIsLoadingEmployees] = useState(false);
+  const [employeesList, setEmployeesList] = useState([]);
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true);
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [isDeactivating, setIsDeactivating] = useState(false);
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
@@ -328,21 +281,11 @@ export const EmployeeManagement = ({
         branch: emp.branch || emp.gymName || gymName,
       }));
 
-      if (normalized.length > 0) {
-        setEmployeesList(normalized);
-      } else if (mappedGymStaff.length > 0 && !debouncedNamePhoneSearch && roleFilter === 'ALL' && statusFilter === 'ALL' && staffTypeFilter === 'ALL') {
-        setEmployeesList(mappedGymStaff);
-        setTotalServerEmployees(mappedGymStaff.length);
-      } else {
-        setEmployeesList([]);
-      }
+      setEmployeesList(normalized);
     } catch (err) {
       console.error('Failed to load employees:', err);
-      // Graceful fallback to embedded gym trainers/staff
-      if (mappedGymStaff.length > 0) {
-        setEmployeesList(mappedGymStaff);
-        setTotalServerEmployees(mappedGymStaff.length);
-      }
+      setEmployeesList([]);
+      setTotalServerEmployees(0);
     } finally {
       setIsLoadingEmployees(false);
     }
@@ -691,12 +634,19 @@ export const EmployeeManagement = ({
       },
       documents: editEmpDocs && editEmpDocs.length > 0 ? editEmpDocs : (selectedEmployee.documents || []),
       notes: values.notes !== undefined ? values.notes : (selectedEmployee.notes || ''),
-      managerPermissions: {
-        requireStaffApproval: values.requireStaffApproval !== undefined ? values.requireStaffApproval : (selectedEmployee.managerPermissions?.requireStaffApproval ?? true),
-        requirePlanSwitchApproval: values.requirePlanSwitchApproval !== undefined ? values.requirePlanSwitchApproval : (selectedEmployee.managerPermissions?.requirePlanSwitchApproval ?? true),
-        requireCancellationApproval: values.requireCancellationApproval !== undefined ? values.requireCancellationApproval : (selectedEmployee.managerPermissions?.requireCancellationApproval ?? true),
-        requireProfileEditApproval: values.requireProfileEditApproval !== undefined ? values.requireProfileEditApproval : (selectedEmployee.managerPermissions?.requireProfileEditApproval ?? true),
-      },
+      managerPermissions: isManager
+        ? (selectedEmployee.managerPermissions || {
+            requireStaffApproval: true,
+            requirePlanSwitchApproval: true,
+            requireCancellationApproval: true,
+            requireProfileEditApproval: true,
+          })
+        : {
+            requireStaffApproval: values.requireStaffApproval !== undefined ? values.requireStaffApproval : (selectedEmployee.managerPermissions?.requireStaffApproval ?? true),
+            requirePlanSwitchApproval: values.requirePlanSwitchApproval !== undefined ? values.requirePlanSwitchApproval : (selectedEmployee.managerPermissions?.requirePlanSwitchApproval ?? true),
+            requireCancellationApproval: values.requireCancellationApproval !== undefined ? values.requireCancellationApproval : (selectedEmployee.managerPermissions?.requireCancellationApproval ?? true),
+            requireProfileEditApproval: values.requireProfileEditApproval !== undefined ? values.requireProfileEditApproval : (selectedEmployee.managerPermissions?.requireProfileEditApproval ?? true),
+          },
     };
 
     try {
@@ -758,12 +708,24 @@ export const EmployeeManagement = ({
   };
 
   const handleReviewApproval = async (employeeId, action, reason = '') => {
+    const decision = action === 'approve' || action === 'Approved' ? 'Approved' : 'Rejected';
+    const payload = {
+      decision,
+      action,
+      adminRemarks: reason,
+      rejectionReason: reason,
+    };
     try {
-      await apiClient.put(`/employees/${employeeId}/approval`, {
-        action,
-        rejectionReason: reason,
-      });
-      message.success(action === 'approve' ? 'Employee approved successfully!' : 'Employee approval rejected.');
+      try {
+        await apiClient.put(`/employees/${employeeId}/approval`, payload);
+      } catch (putErr) {
+        if (putErr.response?.status === 404 || putErr.response?.status === 405) {
+          await apiClient.patch(`/employees/${employeeId}/approval`, payload);
+        } else {
+          throw putErr;
+        }
+      }
+      message.success(decision === 'Approved' ? 'Employee approved successfully!' : 'Employee approval rejected.');
       await loadEmployees(currentPage, pageSize);
     } catch (err) {
       message.error(err.response?.data?.message || `Failed to ${action} employee.`);
@@ -1029,6 +991,13 @@ export const EmployeeManagement = ({
       key: 'employeeName',
       render: (_, record) => {
         const hasPic = hasValidProfilePic(record.avatar);
+        const isSelf = Boolean(
+          (user?.email && record.email && user.email.toLowerCase() === record.email.toLowerCase()) ||
+          (user?.phone && record.phone && user.phone.replace(/[^0-9]/g, '') === String(record.phone).replace(/[^0-9]/g, '')) ||
+          (user?.employeeId && record.employeeId && user.employeeId === record.employeeId) ||
+          (user?.name && record.name && user.name.toLowerCase() === record.name.toLowerCase()) ||
+          (user?.id && (record._id === user.id || record.id === user.id || record.userId === user.id))
+        );
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Avatar
@@ -1045,8 +1014,25 @@ export const EmployeeManagement = ({
               }}
             />
             <div>
-              <div style={{ fontWeight: 650, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13 }}>
-                {record.name}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontWeight: 650, color: isDarkMode ? '#ffffff' : '#0f172a', fontSize: 13 }}>
+                  {record.name}
+                </span>
+                {isSelf && (
+                  <Tag
+                    color="purple"
+                    style={{
+                      borderRadius: 'var(--radius-base)',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: '0 6px',
+                      lineHeight: '18px',
+                      margin: 0,
+                    }}
+                  >
+                    You
+                  </Tag>
+                )}
               </div>
               {record.role === 'Trainer' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, fontSize: 11, color: '#f59e0b' }}>
@@ -1349,11 +1335,15 @@ export const EmployeeManagement = ({
       title: 'Actions',
       key: 'actions',
       width: 170,
+      fixed: 'right',
       render: (_, record) => {
         const isPendingApproval = record.approvalStatus === 'Pending Approval';
+        // Only Gym Admin / Owner can approve or reject staff; Managers can NEVER approve staff
+        const canApprove = isPendingApproval && !isManager;
+
         return (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {isPendingApproval ? (
+            {canApprove ? (
               <>
                 <Button
                   type="primary"
@@ -1365,7 +1355,10 @@ export const EmployeeManagement = ({
                     fontSize: 11,
                     fontWeight: 600,
                   }}
-                  onClick={() => handleReviewApproval(record.id || record._id, 'approve')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleReviewApproval(record.id || record._id, 'approve');
+                  }}
                 >
                   Approve
                 </Button>
@@ -1377,17 +1370,56 @@ export const EmployeeManagement = ({
                     fontSize: 11,
                     fontWeight: 600,
                   }}
-                  onClick={() => handleReviewApproval(record.id || record._id, 'reject', 'Rejected by Gym Admin')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleReviewApproval(record.id || record._id, 'reject', 'Rejected by Gym Admin');
+                  }}
                 >
                   Reject
                 </Button>
+              </>
+            ) : isPendingApproval && isManager ? (
+              <>
+                <Tag
+                  color="warning"
+                  style={{
+                    borderRadius: 'var(--radius-base)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    margin: 0,
+                  }}
+                >
+                  Awaiting Admin
+                </Tag>
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenDetails(record);
+                  }}
+                  icon={<EyeOutlined style={{ color: '#722ed1', fontSize: 15 }} />}
+                  style={{
+                    backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
+                    borderRadius: 'var(--radius-base)',
+                    width: 32,
+                    height: 32,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                />
               </>
             ) : (
               <>
                 <Button
                   type="text"
                   size="small"
-                  onClick={() => handleOpenDetails(record)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenDetails(record);
+                  }}
                   icon={<EyeOutlined style={{ color: '#722ed1', fontSize: 15 }} />}
                   style={{
                     backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
@@ -1402,7 +1434,10 @@ export const EmployeeManagement = ({
                 <Button
                   type="text"
                   size="small"
-                  onClick={() => handleOpenDetails(record)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenDetails(record);
+                  }}
                   icon={<EditOutlined style={{ color: '#722ed1', fontSize: 15 }} />}
                   style={{
                     backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
@@ -1420,7 +1455,7 @@ export const EmployeeManagement = ({
               menu={{
                 items: [
                   { key: 'view', label: 'View Profile', icon: <EyeOutlined />, onClick: () => handleOpenDetails(record) },
-                  { key: 'edit', label: 'Edit Permissions', icon: <EditOutlined />, onClick: () => handleOpenDetails(record) },
+                  { key: 'edit', label: 'Edit Profile & Details', icon: <EditOutlined />, onClick: () => handleOpenDetails(record) },
                   {
                     key: 'deactivate',
                     label: 'Deactivate',
@@ -1437,6 +1472,7 @@ export const EmployeeManagement = ({
               <Button
                 type="text"
                 size="small"
+                onClick={(e) => e.stopPropagation()}
                 icon={<MoreOutlined style={{ fontSize: 16, color: isDarkMode ? '#888888' : '#64748b' }} />}
                 style={{ width: 28, height: 32 }}
               />
@@ -1867,8 +1903,10 @@ export const EmployeeManagement = ({
                 { key: 'Part-Time', label: 'Part-Time' },
                 { key: 'Temporary', label: 'Temporary' },
               ].map((tab) => {
-                const count = tab.key === 'ALL'
-                  ? employeesList.length
+                const count = isLoadingEmployees
+                  ? 0
+                  : tab.key === 'ALL'
+                  ? totalServerEmployees || employeesList.length
                   : employeesList.filter((e) => (e.type || 'Full-Time') === tab.key).length;
                 const isSelected = staffTypeFilter === tab.key;
                 return (
@@ -1949,8 +1987,12 @@ export const EmployeeManagement = ({
           pagination={false}
           size="middle"
           scroll={{ x: 'max-content' }}
-          dataSource={filteredEmployees}
+          dataSource={isLoadingEmployees ? [] : filteredEmployees}
           columns={columns}
+          onRow={(record) => ({
+            onClick: () => handleOpenDetails(record),
+            style: { cursor: 'pointer' },
+          })}
         />
 
         {/* Custom Table Footer with Pagination & Show Dropdown */}
@@ -2244,6 +2286,7 @@ export const EmployeeManagement = ({
                         <Col xs={24} sm={12}>
                           <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Role / Designation <span style={{ color: '#ef4444' }}>*</span></span>} style={{ marginBottom: 14 }}>
                             <Select
+                              disabled={isManager}
                               value={detailRole}
                               onChange={(newRole) => {
                                 setDetailRole(newRole);
@@ -2270,7 +2313,7 @@ export const EmployeeManagement = ({
                         </Col>
                         <Col xs={24} sm={12}>
                           <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Platform Status</span>} name="status" initialValue="Active" style={{ marginBottom: 14 }}>
-                            <Select style={{ height: 40 }}>
+                            <Select disabled={isManager} style={{ height: 40 }}>
                               <Option value="Active">Active (Live in System)</Option>
                               <Option value="Inactive">Inactive</Option>
                               <Option value="On Leave">On Leave</Option>
@@ -2280,7 +2323,7 @@ export const EmployeeManagement = ({
                         </Col>
                       </Row>
 
-                      {detailRole === 'Manager' && (
+                      {detailRole === 'Manager' && !isManager && (
                         <Card
                           size="small"
                           style={{
@@ -3227,7 +3270,7 @@ export const EmployeeManagement = ({
               <Col xs={24} sm={24}>
                 <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Role <span style={{ color: '#ef4444' }}>*</span></span>} name="role" initialValue="Trainer" rules={[{ required: true }]} style={{ marginBottom: 14 }}>
                   <Select style={{ height: 40 }}>
-                    <Option value="Manager">Manager (Operational Admin)</Option>
+                    {!isManager && <Option value="Manager">Manager (Operational Admin)</Option>}
                     <Option value="Trainer">Trainer</Option>
                     <Option value="Customer Support">Customer Support</Option>
                     <Option value="Housekeeping">Housekeeping</Option>
@@ -3239,7 +3282,7 @@ export const EmployeeManagement = ({
               </Col>
             </Row>
 
-            {addRoleWatch === 'Manager' && (
+            {addRoleWatch === 'Manager' && !isManager && (
               <Card
                 size="small"
                 style={{

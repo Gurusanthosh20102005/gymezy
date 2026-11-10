@@ -158,6 +158,12 @@ export const AppBar = ({
       },
       { type: 'divider' },
       {
+        key: 'staff-profile',
+        icon: <UserOutlined />,
+        label: 'My Staff Profile',
+        onClick: () => navigate('/owner/employees'),
+      },
+      {
         key: 'settings',
         icon: <SettingOutlined />,
         label: 'Gym Settings',
@@ -281,7 +287,7 @@ export const AppBar = ({
             </span>
             <span style={{ color: isDarkMode ? '#444444' : '#cbd5e1', fontSize: 12 }}>|</span>
             <span className="app-bar-subtext" style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', lineHeight: 1.2 }}>
-              Partner ID: {currentGym?.partnerId || 'GYM1'}
+              Partner ID: {(currentGym?.partnerId && !/^[0-9a-fA-F]{24}$/.test(currentGym.partnerId) && currentGym.partnerId !== '-') ? currentGym.partnerId : '-'}
             </span>
           </div>
         </div>

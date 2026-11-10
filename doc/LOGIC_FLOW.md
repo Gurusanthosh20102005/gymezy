@@ -23,7 +23,7 @@
    - 4.2 [Workflow 2: Super Admin Verification & Decision Engine](#42-workflow-2-super-admin-verification--decision-engine)
    - 4.3 [Workflow 3: Application Status Tracking, Section-by-Section Edit & Resubmission](#43-workflow-3-application-status-tracking-section-by-section-edit--resubmission)
    - 4.4 [Workflow 4: Authentication, Token Management & Session Hydration](#44-workflow-4-authentication-token-management--session-hydration)
-   - 4.5 [Workflow 5: Gym Owner Operations & Live Staff/Employee Management](#45-workflow-5-gym-owner-operations--live-staffemployee-management)
+   - 4.5 [Workflow 5: Gym Admin Autonomous Operations & Manager Delegation Architecture](#45-workflow-5-gym-admin-autonomous-operations--manager-delegation-architecture)
    - 4.6 [Workflow 6: Contactless Access Control & Check-in Verification](#46-workflow-6-contactless-access-control--check-in-verification)
 5. [Complete REST API Contract & Endpoint Dictionary](#5-complete-rest-api-contract--endpoint-dictionary)
 6. [Database Schema Specifications & Mongoose Models](#6-database-schema-specifications--mongoose-models)
@@ -341,6 +341,7 @@ sequenceDiagram
         DB-->>API: Saved Record
         API-->>Web: 200 OK (Instant Live Application)
     end
+```
 
 ---
 
