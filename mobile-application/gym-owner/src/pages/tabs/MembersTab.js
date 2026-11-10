@@ -25,6 +25,7 @@ import { apiService } from '../../services/apiService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSafeImageUri } from '../../utils/mediaUtils';
 import { AddWalkInMemberModal } from '../../widgets/AddWalkInMemberModal';
+import { SkeletonMemberRow } from '../../widgets/Skeleton';
 
 
 const MEMBER_FILTER_TABS = ['All', 'Active', 'Expiring Soon', 'Expired', 'Cancelled'];
@@ -1389,113 +1390,11 @@ export const MembersTab = ({ topInset, navigation }) => {
         {activeMode === 'MEMBERS' && (
           <>
             {isInitialMembersLoading ? (
-              <View style={styles.initialLoadingBox}>
-                <View style={styles.loadingSpinnerHeader}>
-                  <ActivityIndicator size="large" color={AppColors.primaryColor} />
-                  <Text
-                    style={[
-                      styles.initialLoadingText,
-                      { color: isDark ? 'rgba(255,255,255,0.7)' : '#64748B' },
-                    ]}
-                  >
-                    Loading members roster...
-                  </Text>
-                </View>
-
-                {[1, 2, 3].map((itemKey) => (
-                  <View
-                    key={`skeleton-member-${itemKey}`}
-                    style={[
-                      styles.memberCard,
-                      {
-                        backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                        opacity: 0.7,
-                      },
-                    ]}
-                  >
-                    <View style={styles.cardTopRow}>
-                      <View style={styles.memberMain}>
-                        <View
-                          style={[
-                            styles.avatarCircle,
-                            { backgroundColor: isDark ? '#334155' : '#E2E8F0' },
-                          ]}
-                        />
-                        <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
-                          <View
-                            style={{
-                              height: 14,
-                              width: '55%',
-                              borderRadius: 4,
-                              backgroundColor: isDark ? '#334155' : '#E2E8F0',
-                            }}
-                          />
-                          <View
-                            style={{
-                              height: 12,
-                              width: '38%',
-                              borderRadius: 4,
-                              backgroundColor: isDark ? '#1E293B' : '#F1F5F9',
-                            }}
-                          />
-                        </View>
-                      </View>
-                      <View
-                        style={{
-                          height: 14,
-                          width: 48,
-                          borderRadius: 4,
-                          backgroundColor: isDark ? '#334155' : '#E2E8F0',
-                        }}
-                      />
-                    </View>
-                    <View
-                      style={[
-                        styles.cardDivider,
-                        { backgroundColor: isDark ? AppColors.darkBorder : '#F1F5F9' },
-                      ]}
-                    />
-                    <View style={styles.cardBottomRow}>
-                      <View style={{ gap: 4 }}>
-                        <View
-                          style={{
-                            height: 10,
-                            width: 60,
-                            borderRadius: 3,
-                            backgroundColor: isDark ? '#334155' : '#E2E8F0',
-                          }}
-                        />
-                        <View
-                          style={{
-                            height: 12,
-                            width: 140,
-                            borderRadius: 4,
-                            backgroundColor: isDark ? '#1E293B' : '#F1F5F9',
-                          }}
-                        />
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <View
-                          style={{
-                            height: 34,
-                            width: 34,
-                            borderRadius: 8,
-                            backgroundColor: isDark ? '#334155' : '#E2E8F0',
-                          }}
-                        />
-                        <View
-                          style={{
-                            height: 34,
-                            width: 34,
-                            borderRadius: 8,
-                            backgroundColor: isDark ? '#334155' : '#E2E8F0',
-                          }}
-                        />
-                      </View>
-                    </View>
-                  </View>
-                ))}
+              <View style={{ paddingTop: 8 }}>
+                <SkeletonMemberRow />
+                <SkeletonMemberRow />
+                <SkeletonMemberRow />
+                <SkeletonMemberRow />
               </View>
             ) : filteredMembers.length === 0 ? (
               <View
@@ -1709,18 +1608,10 @@ export const MembersTab = ({ topInset, navigation }) => {
         {activeMode === 'SWITCHES' && (
           <>
             {isSupportLoading ? (
-              <View style={styles.initialLoadingBox}>
-                <View style={styles.loadingSpinnerHeader}>
-                  <ActivityIndicator size="large" color={AppColors.primaryColor} />
-                  <Text
-                    style={[
-                      styles.initialLoadingText,
-                      { color: isDark ? 'rgba(255,255,255,0.7)' : '#64748B' },
-                    ]}
-                  >
-                    Loading switch requests...
-                  </Text>
-                </View>
+              <View style={{ paddingTop: 8 }}>
+                <SkeletonMemberRow />
+                <SkeletonMemberRow />
+                <SkeletonMemberRow />
               </View>
             ) : filteredSwitches.length === 0 ? (
               <View

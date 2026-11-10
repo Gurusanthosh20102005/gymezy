@@ -19,6 +19,7 @@ import { useToast } from '../widgets/CustomScaffoldMessage';
 import { gymService } from '../services/gymService';
 import { apiService } from '../services/apiService';
 import { bookmarkService } from '../services/bookmarkService';
+import { SkeletonGymDetails } from '../widgets/Skeleton';
 import { getGymTimingStatus, normalizeOpeningHours, TIMING_MODES } from '../utils/gymTimingHelper';
 import { formatTimeAgo } from '../utils/dateUtils';
 import {
@@ -401,6 +402,10 @@ export const GymDetailsScreen = ({ route, navigation }) => {
     if (n.includes('ac') || n.includes('air')) return 'ac-unit';
     return 'star';
   };
+
+  if (!gym?.name && !rawGym?.name) {
+    return <SkeletonGymDetails />;
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

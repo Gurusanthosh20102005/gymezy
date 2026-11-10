@@ -19,6 +19,7 @@ import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { membershipService } from '../services/membershipService';
 import { calculateMembershipProgress } from '../utils/dateUtils';
+import { SkeletonBookingCard } from '../widgets/Skeleton';
 
 const TABS = ['Active', 'Completed', 'Cancelled'];
 
@@ -248,11 +249,9 @@ export const MyMembershipsScreen = ({ navigation }) => {
 
         {/* 3. Memberships List */}
         {isFetching && filteredMemberships.length === 0 ? (
-          <View style={[styles.emptyContainer, { paddingVertical: 40 }]}>
-            <ActivityIndicator size="large" color={primaryNavy} />
-            <Text style={[styles.emptySub, { color: colors.subtitle, marginTop: 12 }]}>
-              Loading memberships...
-            </Text>
+          <View style={{ paddingTop: 8 }}>
+            <SkeletonBookingCard />
+            <SkeletonBookingCard />
           </View>
         ) : filteredMemberships.length === 0 ? (
           <View style={styles.emptyContainer}>

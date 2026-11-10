@@ -14,6 +14,7 @@ import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { bookmarkService } from '../services/bookmarkService';
+import { SkeletonBookmarkRow } from './Skeleton';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -171,11 +172,10 @@ export const BookmarkedGymsModal = ({
             showsVerticalScrollIndicator={false}
           >
             {isLoading && gyms.length === 0 ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={AppColors.primaryColor} />
-                <Text style={[styles.loadingText, { color: colors.subtitle }]}>
-                  Loading your bookmarked gyms...
-                </Text>
+              <View style={{ paddingTop: 8 }}>
+                <SkeletonBookmarkRow />
+                <SkeletonBookmarkRow />
+                <SkeletonBookmarkRow />
               </View>
             ) : gyms.length === 0 ? (
               <View style={styles.emptyContainer}>

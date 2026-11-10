@@ -16,13 +16,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useBookingRepository } from '../data/BookingContext';
+import { SkeletonBookingCard } from '../widgets/Skeleton';
 
 const TABS = ['Upcoming', 'Completed', 'Cancelled'];
 
 export const MyBookingsScreen = ({ navigation }) => {
   const { isDark, colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { bookings, refreshBookings } = useBookingRepository();
+  const { bookings, refreshBookings, isLoadingBookings } = useBookingRepository();
 
   const [selectedTab, setSelectedTab] = useState('Upcoming');
   const [refreshing, setRefreshing] = useState(false);
@@ -176,7 +177,12 @@ export const MyBookingsScreen = ({ navigation }) => {
               />
             }
           >
-            {filteredBookings.length === 0 ? (
+            {isLoadingBookings && bookings.length === 0 ? (
+              <View style={{ paddingTop: 8 }}>
+                <SkeletonBookingCard />
+                <SkeletonBookingCard />
+              </View>
+            ) : filteredBookings.length === 0 ? (
               <View style={styles.emptyStateContainer}>
                 <MaterialIcons name="event-busy" size={54} color={colors.subtitle} />
                 <Text style={[styles.emptyStateTitle, { color: colors.text }]}>

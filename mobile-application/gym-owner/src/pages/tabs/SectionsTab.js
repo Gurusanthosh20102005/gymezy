@@ -26,6 +26,7 @@ import {
   calculateScheduleEndDate,
 } from '../../widgets/CreateSectionModal';
 import { SectionRosterModal } from '../../widgets/SectionRosterModal';
+import { SkeletonSectionCard } from '../../widgets/Skeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -324,7 +325,11 @@ export const SectionsTab = ({ topInset, navigation }) => {
 
         {/* Content Section List */}
         {isLoading && !isRefreshing ? (
-          <ActivityIndicator size="large" color="#003882" style={{ marginTop: 40 }} />
+          <View style={{ paddingTop: 8 }}>
+            <SkeletonSectionCard />
+            <SkeletonSectionCard />
+            <SkeletonSectionCard />
+          </View>
         ) : filteredSections.length === 0 ? (
           <View style={[styles.emptyCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
             <MaterialIcons name="event-busy" size={46} color={subTextCol} />

@@ -41,6 +41,7 @@ import { gymService } from '../services/gymService';
 import { apiService } from '../services/apiService';
 import { bookmarkService } from '../services/bookmarkService';
 import { BookmarkedGymsModal } from '../widgets/BookmarkedGymsModal';
+import { SkeletonGymCard, SkeletonSpotlightCard, SkeletonCategoryChips } from '../widgets/Skeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -1250,18 +1251,15 @@ export const HomeScreen = ({ navigation }) => {
 
         {/* 7. Gym List Cards */}
         {isLoadingGyms ? (
-          <View style={styles.gymsLoadingContainer}>
-            <ActivityIndicator size="large" color={AppColors.primaryColor} />
-            <Text style={[styles.gymsLoadingText, { color: colors.subtitle }]}>
-              Finding nearest gyms in {userLocation.name}...
-            </Text>
+          <View style={{ paddingTop: 4 }}>
+            <SkeletonGymCard />
+            <SkeletonGymCard />
+            <SkeletonGymCard />
           </View>
         ) : filteredGyms.length === 0 && isSearchingGyms ? (
-          <View style={styles.gymsLoadingContainer}>
-            <ActivityIndicator size="small" color={AppColors.primaryColor} />
-            <Text style={[styles.gymsLoadingText, { color: colors.subtitle, marginTop: 8 }]}>
-              Searching gyms...
-            </Text>
+          <View style={{ paddingTop: 4 }}>
+            <SkeletonGymCard />
+            <SkeletonGymCard />
           </View>
         ) : filteredGyms.length === 0 ? (
           <View style={styles.emptyContainer}>
