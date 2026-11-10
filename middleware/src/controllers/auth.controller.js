@@ -241,6 +241,66 @@ export const checkEmailAvailability = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Normalize phone number to 10 digits
+ */
+export const normalizePhoneNumber = (rawPhone) => {
+  if (!rawPhone) return '';
+  let digits = String(rawPhone).trim().replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    digits = digits.slice(2);
+  } else if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+  return digits;
+};
+
+/**
+ * GET / POST /api/v1/auth/check-phone
+ * Check if a mobile phone number is already registered across User or Gym collections
+ */
+export const checkPhoneAvailability = asyncHandler(async (req, res) => {
+  const phoneParam = req.query.phone || req.body.phone || '';
+  const cleanPhone = normalizePhoneNumber(phoneParam);
+
+  if (!cleanPhone) {
+    throw ApiError.badRequest('Phone parameter is required.');
+  }
+
+  if (cleanPhone.length !== 10) {
+    throw ApiError.badRequest('Invalid mobile number format. Expected a 10-digit number.');
+  }
+
+  const phoneQuery = {
+    $or: [
+      { phone: cleanPhone },
+      { phone: `+91${cleanPhone}` },
+      { phone: `91${cleanPhone}` },
+      { phone: new RegExp(`${cleanPhone}$`) },
+    ],
+  };
+
+  const [existingUser, existingGym] = await Promise.all([
+    User.findOne(phoneQuery),
+    Gym.findOne(phoneQuery),
+  ]);
+
+  const isTaken = Boolean(existingUser || existingGym);
+
+  return res.status(200).json(
+    ApiResponse.success(
+      {
+        phone: cleanPhone,
+        isAvailable: !isTaken,
+        isExisting: isTaken,
+      },
+      isTaken
+        ? 'An account with this mobile number already exists.'
+        : 'Mobile number is available.'
+    )
+  );
+});
+
+/**
  * POST /api/v1/auth/register
  * Customer Self-Registration Endpoint
  */

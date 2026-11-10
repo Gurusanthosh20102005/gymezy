@@ -409,10 +409,17 @@ class ApiService {
 
   async reviewEmployeeApproval(id, action, rejectionReason = '') {
     if (!id) throw new Error('Employee ID is required.');
+    const decision = action === 'approve' || action === 'Approved' ? 'Approved' : 'Rejected';
+    const payload = {
+      decision,
+      action,
+      adminRemarks: rejectionReason,
+      rejectionReason,
+    };
     const response = await this.executeFetch(`/employees/${id}/approval`, {
       method: 'PUT',
       headers: this.getHeaders(),
-      body: JSON.stringify({ action, rejectionReason }),
+      body: JSON.stringify(payload),
     });
 
     const result = await response.json();
@@ -479,6 +486,14 @@ class ApiService {
 
   async checkEmail(email) {
     const response = await this.executeFetch(`/auth/check-email?email=${encodeURIComponent(email)}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return await response.json();
+  }
+
+  async checkPhone(phone) {
+    const response = await this.executeFetch(`/auth/check-phone?phone=${encodeURIComponent(phone)}`, {
       method: 'GET',
       headers: this.getHeaders(),
     });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   Row,
@@ -19,6 +19,7 @@ import {
   Switch,
   Tooltip,
   Alert,
+  Popconfirm,
 } from 'antd';
 import {
   ShopOutlined,
@@ -31,6 +32,7 @@ import {
   ExclamationCircleFilled,
   WarningOutlined,
   SaveOutlined,
+  ReloadOutlined,
   ArrowRightOutlined,
   ArrowLeftOutlined,
   InboxOutlined,
@@ -47,8 +49,11 @@ import {
   PlusOutlined,
   FileTextOutlined,
   EyeOutlined,
+  LoadingOutlined,
+  PhoneOutlined,
+  MailOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { addGym } from '../redux/slices/gymSlice';
 import { useTheme } from '../theme/ThemeContext';
@@ -263,8 +268,109 @@ const reverseGeocodeCoordinates = async (lat, lng) => {
   }
 };
 
+const INITIAL_FORM_DATA = {
+  // Step 1: Business
+  gymName: '',
+  tagline: '',
+  businessType: 'Private Limited',
+  ownerName: '',
+  phone: '',
+  email: '',
+  password: '',
+  yearEstablished: '2026',
+  gstNumber: '',
+  panNumber: '',
+  branches: '1',
+  gymId: '',
+  businessCertificate: '',
+  businessCertificateName: '',
+  businessCertificateSize: '',
+  businessCertificateType: '',
+  gstCertificate: '',
+
+  // Step 2: Location & Hours
+  address: '',
+  area: '',
+  city: '',
+  state: 'Tamil Nadu',
+  pincode: '',
+  landmark: '',
+  lat: 13.0827,
+  lng: 80.2707,
+  googleMapsUrl: '',
+  timingMode: 'REGULAR',
+  weekdayOpen: '05:30 AM',
+  weekdayClose: '10:30 PM',
+  weekendOpen: '06:00 AM',
+  weekendClose: '09:00 PM',
+  morningOpen: '05:30 AM',
+  morningClose: '11:30 AM',
+  eveningOpen: '04:30 PM',
+  eveningClose: '10:30 PM',
+  isSplitShift: false,
+  isOpenHolidays: true,
+  is24Hours: false,
+
+  // Step 3: Facilities, Photos & Space
+  floorSpaceSqFt: '',
+  maxFloorCapacity: '',
+  logo: '',
+  coverPhoto: '',
+  galleryPhotos: [],
+  facilities: [],
+  amenities: [],
+  tags: [],
+  badgeText: 'Verified',
+  genderAllowed: 'Unisex',
+  aboutText: '',
+
+  // Step 4: Workouts & Trainers
+  workouts: [],
+  trainers: [],
+
+  // Step 5: Sessions & Pricing
+  singleSessionPrice: '',
+  weeklyPassPrice: '',
+  fiveSessionPrice: '',
+  monthlyPrice: '',
+  quarterlyPrice: '',
+  halfYearlyPrice: '',
+  annualPrice: '',
+  slotDurationMinutes: 60,
+  maxSlotCapacity: 25,
+  slotsMorning: [],
+  slotsEvening: [],
+
+  // Step 6: Rules & Safety
+  rules: [
+    'Carry clean indoor training shoes',
+    'Mandatory personal gym towel on workout benches',
+    'Re-rack dumbbells and plates after set completion',
+  ],
+  safetyMeasures: [
+    'Daily multi-session equipment sanitization',
+    'Certified First Aid & CPR staff available on floor',
+    '24/7 CCTV surveillance coverage',
+  ],
+  freeCancellationHours: 2,
+  refundPercentage: 100,
+  rescheduleAllowedCount: 2,
+
+  // Step 7: Payout & Tier
+  subscriptionType: 'Hybrid',
+  commissionRate: 10,
+  settlementCycle: 'Daily (T+1)',
+  accountHolder: '',
+  bankName: '',
+  accountNumber: '',
+  ifscCode: '',
+  upiId: '',
+  initialApprovalStatus: 'Approved',
+};
+
 export const GymOnboarding = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
   const { isDarkMode } = useTheme();
   const [currentStep, setCurrentStep] = useState(1);
@@ -279,6 +385,41 @@ export const GymOnboarding = () => {
   // Live Validation Errors and Touched State
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
+
+  // Dynamic Rule & Safety Measure input states
+  const [newRuleInput, setNewRuleInput] = useState('');
+  const [newSafetyInput, setNewSafetyInput] = useState('');
+
+  // Comprehensive Form State Data across steps (Clean Zero/Empty Defaults)
+  const [formData, setFormData] = useState(() => ({
+    ...INITIAL_FORM_DATA,
+    gymId: `GYM-${Math.floor(1000 + Math.random() * 9000)}`,
+  }));
+
+  // Clean full reset of all fields, draft values, validation errors, and check statuses
+  const resetForm = () => {
+    setFormData({
+      ...INITIAL_FORM_DATA,
+      gymId: `GYM-${Math.floor(1000 + Math.random() * 9000)}`,
+    });
+    setCurrentStep(1);
+    setErrors({});
+    setTouched({});
+    setNewRuleInput('');
+    setNewSafetyInput('');
+    setPhoneCheckStatus('idle');
+    setPhoneCheckError('');
+    setEmailCheckStatus('idle');
+    setEmailCheckError('');
+    setFilePreview(null);
+  };
+
+  // Auto-reset when requested via navigation state
+  useEffect(() => {
+    if (location.state?.reset) {
+      resetForm();
+    }
+  }, [location.key]);
 
   const handleGetAddressByGps = async () => {
     if (!navigator.geolocation) {
@@ -330,106 +471,119 @@ export const GymOnboarding = () => {
     );
   };
 
-  // Comprehensive Form State Data across steps (Clean Zero/Empty Defaults)
-  const [formData, setFormData] = useState({
-    // Step 1: Business
-    gymName: '',
-    tagline: '',
-    businessType: 'Private Limited',
-    ownerName: '',
-    phone: '',
-    email: '',
-    password: '',
-    yearEstablished: '2026',
-    gstNumber: '',
-    panNumber: '',
-    branches: '1',
-    gymId: '',
-    businessCertificate: '',
-    businessCertificateName: '',
-    businessCertificateSize: '',
-    businessCertificateType: '',
-    gstCertificate: '',
+  // Mobile Phone & Official Email Availability Check States
+  const [phoneCheckStatus, setPhoneCheckStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'exists'
+  const [phoneCheckError, setPhoneCheckError] = useState('');
+  const [emailCheckStatus, setEmailCheckStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'exists'
+  const [emailCheckError, setEmailCheckError] = useState('');
 
-    // Step 2: Location & Hours
-    address: '',
-    area: '',
-    city: '',
-    state: 'Tamil Nadu',
-    pincode: '',
-    landmark: '',
-    lat: 13.0827,
-    lng: 80.2707,
-    googleMapsUrl: '',
-    timingMode: 'REGULAR',
-    weekdayOpen: '05:30 AM',
-    weekdayClose: '10:30 PM',
-    weekendOpen: '06:00 AM',
-    weekendClose: '09:00 PM',
-    morningOpen: '05:30 AM',
-    morningClose: '11:30 AM',
-    eveningOpen: '04:30 PM',
-    eveningClose: '10:30 PM',
-    isSplitShift: false,
-    isOpenHolidays: true,
-    is24Hours: false,
+  // API Call to check phone availability
+  const checkPhoneExistsApi = async (phoneToCheck) => {
+    let digits = String(phoneToCheck || '').replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+    else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
 
-    // Step 3: Facilities, Photos & Space
-    floorSpaceSqFt: '',
-    maxFloorCapacity: '',
-    logo: '',
-    coverPhoto: '',
-    galleryPhotos: [],
-    facilities: [],
-    amenities: [],
-    tags: [],
-    badgeText: 'Verified',
-    genderAllowed: 'Unisex',
-    aboutText: '',
+    if (digits.length !== 10) {
+      setPhoneCheckStatus('idle');
+      setPhoneCheckError('');
+      return null;
+    }
 
-    // Step 4: Workouts & Trainers
-    workouts: [],
-    trainers: [],
+    setPhoneCheckStatus('checking');
+    setPhoneCheckError('');
 
-    // Step 5: Sessions & Pricing
-    singleSessionPrice: '',
-    weeklyPassPrice: '',
-    fiveSessionPrice: '',
-    monthlyPrice: '',
-    quarterlyPrice: '',
-    halfYearlyPrice: '',
-    annualPrice: '',
-    slotDurationMinutes: 60,
-    maxSlotCapacity: 25,
-    slotsMorning: [],
-    slotsEvening: [],
+    try {
+      const response = await apiClient.get(`/auth/check-phone?phone=${encodeURIComponent(digits)}`);
+      const data = response?.data?.data || response?.data;
+      if (data?.isExisting || data?.isAvailable === false) {
+        setPhoneCheckStatus('exists');
+        setPhoneCheckError('An account with this mobile number already exists.');
+        return false;
+      } else {
+        setPhoneCheckStatus('available');
+        setPhoneCheckError('');
+        return true;
+      }
+    } catch (err) {
+      if (err?.response?.data?.message?.includes('already exists')) {
+        setPhoneCheckStatus('exists');
+        setPhoneCheckError('An account with this mobile number already exists.');
+        return false;
+      }
+      setPhoneCheckStatus('idle');
+      return null;
+    }
+  };
 
-    // Step 6: Rules & Safety
-    rules: [
-      'Carry clean indoor training shoes',
-      'Mandatory personal gym towel on workout benches',
-      'Re-rack dumbbells and plates after set completion',
-    ],
-    safetyMeasures: [
-      'Daily multi-session equipment sanitization',
-      'Certified First Aid & CPR staff available on floor',
-      '24/7 CCTV surveillance coverage',
-    ],
-    freeCancellationHours: 2,
-    refundPercentage: 100,
-    rescheduleAllowedCount: 2,
+  // API Call to check email availability
+  const checkEmailExistsApi = async (emailToCheck) => {
+    const trimmed = String(emailToCheck || '').trim().toLowerCase();
+    if (!trimmed || !trimmed.includes('@') || !trimmed.includes('.')) {
+      setEmailCheckStatus('idle');
+      setEmailCheckError('');
+      return null;
+    }
 
-    // Step 7: Payout & Tier
-    subscriptionType: 'Hybrid',
-    commissionRate: 10,
-    settlementCycle: 'Daily (T+1)',
-    accountHolder: '',
-    bankName: '',
-    accountNumber: '',
-    ifscCode: '',
-    upiId: '',
-    initialApprovalStatus: 'Approved',
-  });
+    setEmailCheckStatus('checking');
+    setEmailCheckError('');
+
+    try {
+      const response = await apiClient.get(`/auth/check-email?email=${encodeURIComponent(trimmed)}`);
+      const data = response?.data?.data || response?.data;
+      if (data?.isExisting || data?.isAvailable === false) {
+        setEmailCheckStatus('exists');
+        setEmailCheckError('An account with this email address already exists.');
+        return false;
+      } else {
+        setEmailCheckStatus('available');
+        setEmailCheckError('');
+        return true;
+      }
+    } catch (err) {
+      if (err?.response?.data?.message?.includes('already exists')) {
+        setEmailCheckStatus('exists');
+        setEmailCheckError('An account with this email address already exists.');
+        return false;
+      }
+      setEmailCheckStatus('idle');
+      return null;
+    }
+  };
+
+  // Debounced check for phone number
+  useEffect(() => {
+    let digits = (formData.phone || '').replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+    else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+
+    if (digits.length !== 10) {
+      setPhoneCheckStatus('idle');
+      setPhoneCheckError('');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void checkPhoneExistsApi(digits);
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [formData.phone]);
+
+  // Debounced check for official email
+  useEffect(() => {
+    const trimmed = (formData.email || '').trim();
+    if (!trimmed || !trimmed.includes('@') || !trimmed.includes('.')) {
+      setEmailCheckStatus('idle');
+      setEmailCheckError('');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void checkEmailExistsApi(trimmed);
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [formData.email]);
 
   // Calculate Progress Pct
   const progressPercent = Math.round((currentStep / 6) * 100);
@@ -523,10 +677,12 @@ export const GymOnboarding = () => {
 
       // Step 3: Facilities, Photos & Space
       case 'floorSpaceSqFt':
-        if (!value || Number(value) <= 0) error = 'Floor space (sq. ft.) is required and must be > 0';
+        if (!value || Number(value) < 200) error = 'Floor space must be at least 200 sq. ft.';
+        else if (Number(value) > 100000) error = 'Floor space cannot exceed 100,000 sq. ft.';
         break;
       case 'maxFloorCapacity':
-        if (!value || Number(value) <= 0) error = 'Max floor capacity is required and must be > 0';
+        if (!value || Number(value) < 5) error = 'Max floor capacity must be at least 5 athletes';
+        else if (Number(value) > 2000) error = 'Max floor capacity cannot exceed 2,000 athletes';
         break;
       case 'logo':
       case 'coverPhoto':
@@ -622,6 +778,25 @@ export const GymOnboarding = () => {
 
   // Step Status Inspector
   const getStepValidationStatus = (stepId, currentFormData = formData) => {
+    if (stepId === 6) {
+      // Step 6 (Review & Go Live) is only valid when ALL steps 1-5 are complete and valid
+      let totalPriorMissing = 0;
+      for (let s = 1; s <= 5; s++) {
+        const fields = STEP_REQUIRED_FIELDS[s] || [];
+        for (const { field } of fields) {
+          const err = validateField(field, currentFormData[field], currentFormData);
+          if (err) {
+            totalPriorMissing++;
+          }
+        }
+      }
+      return {
+        isValid: totalPriorMissing === 0,
+        missingCount: totalPriorMissing,
+        missingFields: [],
+      };
+    }
+
     const fields = STEP_REQUIRED_FIELDS[stepId] || [];
     const missing = [];
 
@@ -678,6 +853,46 @@ export const GymOnboarding = () => {
 
   // Helper to render live error feedback underneath inputs
   const renderFieldError = (fieldName) => {
+    if (fieldName === 'phone' && phoneCheckStatus === 'exists' && !errors.phone) {
+      return (
+        <div
+          style={{
+            color: '#ef4444',
+            fontSize: 12,
+            marginTop: 5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            fontWeight: 600,
+            lineHeight: 1.3,
+          }}
+        >
+          <CloseCircleFilled style={{ color: '#ef4444', fontSize: 13, flexShrink: 0 }} />
+          <span>{phoneCheckError || 'An account with this mobile number already exists.'}</span>
+        </div>
+      );
+    }
+
+    if (fieldName === 'email' && emailCheckStatus === 'exists' && !errors.email) {
+      return (
+        <div
+          style={{
+            color: '#ef4444',
+            fontSize: 12,
+            marginTop: 5,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            fontWeight: 600,
+            lineHeight: 1.3,
+          }}
+        >
+          <CloseCircleFilled style={{ color: '#ef4444', fontSize: 13, flexShrink: 0 }} />
+          <span>{emailCheckError || 'An account with this email address already exists.'}</span>
+        </div>
+      );
+    }
+
     if (touched[fieldName] && errors[fieldName]) {
       return (
         <div
@@ -702,6 +917,54 @@ export const GymOnboarding = () => {
 
   // Helper to render success checkmark when valid
   const renderFieldSuccess = (fieldName) => {
+    if (fieldName === 'phone') {
+      if (phoneCheckStatus === 'checking') {
+        return (
+          <Tooltip title="Checking mobile availability...">
+            <LoadingOutlined spin style={{ color: '#6366f1', marginLeft: 6, fontSize: 13 }} />
+          </Tooltip>
+        );
+      }
+      if (phoneCheckStatus === 'exists') {
+        return (
+          <Tooltip title="Mobile number already registered">
+            <CloseCircleFilled style={{ color: '#ef4444', marginLeft: 6, fontSize: 13 }} />
+          </Tooltip>
+        );
+      }
+      if (phoneCheckStatus === 'available' && !errors.phone) {
+        return (
+          <Tooltip title="Mobile number available">
+            <CheckCircleFilled style={{ color: '#16a34a', marginLeft: 6, fontSize: 13 }} />
+          </Tooltip>
+        );
+      }
+    }
+
+    if (fieldName === 'email') {
+      if (emailCheckStatus === 'checking') {
+        return (
+          <Tooltip title="Checking email availability...">
+            <LoadingOutlined spin style={{ color: '#6366f1', marginLeft: 6, fontSize: 13 }} />
+          </Tooltip>
+        );
+      }
+      if (emailCheckStatus === 'exists') {
+        return (
+          <Tooltip title="Email address already registered">
+            <CloseCircleFilled style={{ color: '#ef4444', marginLeft: 6, fontSize: 13 }} />
+          </Tooltip>
+        );
+      }
+      if (emailCheckStatus === 'available' && !errors.email) {
+        return (
+          <Tooltip title="Email address available">
+            <CheckCircleFilled style={{ color: '#16a34a', marginLeft: 6, fontSize: 13 }} />
+          </Tooltip>
+        );
+      }
+    }
+
     const val = formData[fieldName];
     const isPopulated = Array.isArray(val) ? val.length > 0 : Boolean(val);
     if (touched[fieldName] && !errors[fieldName] && isPopulated) {
@@ -715,7 +978,7 @@ export const GymOnboarding = () => {
   };
 
   // Handle Save & Next with Step Live Validation
-  const handleSaveAndNext = () => {
+  const handleSaveAndNext = async () => {
     const { isValid, errors: stepErrors } = validateStep(currentStep);
     if (!isValid) {
       const errorCount = Object.keys(stepErrors).length;
@@ -723,6 +986,44 @@ export const GymOnboarding = () => {
         `Please fix the ${errorCount} required field${errorCount > 1 ? 's' : ''} in Step ${currentStep} before proceeding.`
       );
       return;
+    }
+
+    if (currentStep === 1) {
+      // 1. Mobile Phone Availability Check
+      if (phoneCheckStatus === 'checking') {
+        const isAvail = await checkPhoneExistsApi(formData.phone);
+        if (isAvail === false) {
+          message.error('An account with this mobile number already exists. Please use a different mobile number.');
+          return;
+        }
+      } else if (phoneCheckStatus === 'exists' || phoneCheckError) {
+        message.error('An account with this mobile number already exists. Please use a different mobile number.');
+        return;
+      } else if (phoneCheckStatus === 'idle' && formData.phone) {
+        const isAvail = await checkPhoneExistsApi(formData.phone);
+        if (isAvail === false) {
+          message.error('An account with this mobile number already exists. Please use a different mobile number.');
+          return;
+        }
+      }
+
+      // 2. Email Availability Check
+      if (emailCheckStatus === 'checking') {
+        const isAvail = await checkEmailExistsApi(formData.email);
+        if (isAvail === false) {
+          message.error('An account with this email address already exists. Please use a different email.');
+          return;
+        }
+      } else if (emailCheckStatus === 'exists' || emailCheckError) {
+        message.error('An account with this email address already exists. Please use a different email.');
+        return;
+      } else if (emailCheckStatus === 'idle' && formData.email) {
+        const isAvail = await checkEmailExistsApi(formData.email);
+        if (isAvail === false) {
+          message.error('An account with this email address already exists. Please use a different email.');
+          return;
+        }
+      }
     }
 
     if (currentStep < 6) {
@@ -848,9 +1149,19 @@ export const GymOnboarding = () => {
       const createdGym = response.data?.data?.gym || newGymPayload;
 
       dispatch(addGym(createdGym));
-      setCreatedGymSummary(createdGym);
+      setCreatedGymSummary({
+        ...createdGym,
+        name: createdGym.name || formData.gymName,
+        partnerId: createdGym.partnerId || '-',
+        area: formData.area,
+        city: formData.city,
+        subscriptionType: formData.subscriptionType,
+        approvalStatus: createdGym.approvalStatus || formData.initialApprovalStatus || 'Approved',
+      });
       setIsSuccessModalOpen(true);
       message.success(`Gym "${formData.gymName}" onboarded and live on GYMEZY!`);
+      // Immediately drop/reset all form fields to ensure fresh blank state for future entries
+      resetForm();
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || 'Failed to onboard gym partner.';
       message.error(errMsg);
@@ -894,22 +1205,36 @@ export const GymOnboarding = () => {
             }}
           >
             New Gym Partner Onboarding
-            {validationSummary.isAllValid ? (
-              <Tag color="success" style={{ fontSize: 12, fontWeight: 700, borderRadius: 12, padding: '2px 10px' }}>
-                <CheckCircleFilled /> Ready to Launch
-              </Tag>
-            ) : (
-              <Tag color="warning" style={{ fontSize: 12, fontWeight: 700, borderRadius: 12, padding: '2px 10px' }}>
-                <WarningOutlined /> Live Validation Active
-              </Tag>
-            )}
           </h1>
           <Text style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 13 }}>
             Configure partner business details, location, facilities, trainers, and settlement parameters with live validation.
           </Text>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Popconfirm
+            title="Reset Onboarding Form?"
+            description="Are you sure you want to clear all entered values and start fresh?"
+            onConfirm={() => {
+              resetForm();
+              message.info('Form cleared.');
+            }}
+            okText="Clear All"
+            cancelText="Cancel"
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              icon={<ReloadOutlined />}
+              style={{
+                borderRadius: 'var(--radius-base)',
+                fontWeight: 600,
+                borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+              }}
+            >
+              Reset Form
+            </Button>
+          </Popconfirm>
+
           <Button
             icon={<SaveOutlined />}
             onClick={handleSaveAndExit}
@@ -921,39 +1246,6 @@ export const GymOnboarding = () => {
           >
             Save Draft & Exit
           </Button>
-
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '6px 14px',
-              borderRadius: 20,
-              backgroundColor: isDarkMode ? '#141414' : '#f1f5f9',
-              fontSize: 13,
-              fontWeight: 700,
-              color: isDarkMode ? '#ffffff' : '#0f172a',
-              border: `1px solid ${isDarkMode ? '#333333' : '#e2e8f0'}`,
-            }}
-          >
-            <div
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                backgroundColor: '#4338ca',
-                color: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 800,
-              }}
-            >
-              GYM
-            </div>
-            <span>{formData.gymName || 'New Gym Partner'}</span>
-          </div>
         </div>
       </div>
 
@@ -1174,6 +1466,10 @@ export const GymOnboarding = () => {
                             <Tag color="success" style={{ margin: 0, fontSize: 10, borderRadius: 10, fontWeight: 700 }}>
                               Ready
                             </Tag>
+                          ) : step.id === 6 ? (
+                            <Tag color="default" style={{ margin: 0, fontSize: 10, borderRadius: 10 }}>
+                              Locked
+                            </Tag>
                           ) : stepStatus.missingCount > 0 && (
                             <Tag color="default" style={{ margin: 0, fontSize: 10, borderRadius: 10 }}>
                               {stepStatus.missingCount} pending
@@ -1235,7 +1531,7 @@ export const GymOnboarding = () => {
                 <Row gutter={[16, 16]}>
                   <Col xs={24} md={12}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Gym / Studio Name * {renderFieldSuccess('gymName')}
+                      Gym / Studio Name <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('gymName')}
                     </div>
                     <Input
                       value={formData.gymName}
@@ -1260,24 +1556,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={12}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Business Structure * {renderFieldSuccess('businessType')}
-                    </div>
-                    <Select
-                      value={formData.businessType}
-                      onChange={(v) => handleFieldChange('businessType', v)}
-                      style={{ width: '100%', height: 40 }}
-                    >
-                      <Option value="Private Limited">Private Limited</Option>
-                      <Option value="Partnership">Partnership</Option>
-                      <Option value="Sole Proprietorship">Sole Proprietorship</Option>
-                      <Option value="LLP">LLP</Option>
-                      <Option value="Trust / Society">Trust / Society</Option>
-                    </Select>
-                  </Col>
-
-                  <Col xs={24} md={12}>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Owner / MD Full Name * {renderFieldSuccess('ownerName')}
+                      Owner / MD Full Name <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('ownerName')}
                     </div>
                     <Input
                       value={formData.ownerName}
@@ -1291,13 +1570,13 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={12}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Owner Mobile Number * {renderFieldSuccess('phone')}
+                      Owner Mobile Number <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('phone')}
                     </div>
                     <Input
                       addonBefore="+91"
                       value={formData.phone}
                       maxLength={12}
-                      status={touched.phone && errors.phone ? 'error' : ''}
+                      status={(touched.phone && errors.phone) || phoneCheckStatus === 'exists' ? 'error' : ''}
                       onChange={(e) => {
                         let digits = e.target.value.replace(/\D/g, '');
                         if (digits.length === 12 && digits.startsWith('91')) {
@@ -1315,11 +1594,11 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={12}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Official Email Address * {renderFieldSuccess('email')}
+                      Official Email Address <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('email')}
                     </div>
                     <Input
                       value={formData.email}
-                      status={touched.email && errors.email ? 'error' : ''}
+                      status={(touched.email && errors.email) || emailCheckStatus === 'exists' ? 'error' : ''}
                       onChange={(e) => handleFieldChange('email', e.target.value)}
                       onBlur={() => handleFieldBlur('email')}
                       style={{ height: 40, borderRadius: 'var(--radius-base)' }}
@@ -1329,7 +1608,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={12}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Create Password * {renderFieldSuccess('password')}
+                      Create Password <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('password')}
                     </div>
                     <Input.Password
                       value={formData.password}
@@ -1353,9 +1632,11 @@ export const GymOnboarding = () => {
                       GST Number (Optional) {renderFieldSuccess('gstNumber')}
                     </div>
                     <Input
+                      maxLength={15}
+                      placeholder="e.g. 33AAAAA0000A1Z5"
                       value={formData.gstNumber}
                       status={touched.gstNumber && errors.gstNumber ? 'error' : ''}
-                      onChange={(e) => handleFieldChange('gstNumber', e.target.value)}
+                      onChange={(e) => handleFieldChange('gstNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15))}
                       onBlur={() => handleFieldBlur('gstNumber')}
                       style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                     />
@@ -1367,9 +1648,11 @@ export const GymOnboarding = () => {
                       PAN Number (Optional) {renderFieldSuccess('panNumber')}
                     </div>
                     <Input
+                      maxLength={10}
+                      placeholder="e.g. ABCDE1234F"
                       value={formData.panNumber}
                       status={touched.panNumber && errors.panNumber ? 'error' : ''}
-                      onChange={(e) => handleFieldChange('panNumber', e.target.value)}
+                      onChange={(e) => handleFieldChange('panNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
                       onBlur={() => handleFieldBlur('panNumber')}
                       style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                     />
@@ -1614,7 +1897,7 @@ export const GymOnboarding = () => {
                         justifyContent: 'space-between',
                       }}
                     >
-                      <span>Street Address / Door No. * {renderFieldSuccess('address')}</span>
+                      <span>Street Address / Door No. <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('address')}</span>
                       <Button
                         type="link"
                         size="small"
@@ -1647,7 +1930,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={6}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Area / Locality * {renderFieldSuccess('area')}
+                      Area / Locality <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('area')}
                     </div>
                     <Input
                       value={formData.area}
@@ -1661,7 +1944,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={6}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      City * {renderFieldSuccess('city')}
+                      City <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('city')}
                     </div>
                     <Input
                       value={formData.city}
@@ -1675,7 +1958,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={6}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      State * {renderFieldSuccess('state')}
+                      State <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('state')}
                     </div>
                     <Input
                       value={formData.state}
@@ -1689,7 +1972,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={6}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Pincode * {renderFieldSuccess('pincode')}
+                      Pincode <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('pincode')}
                     </div>
                     <Input
                       value={formData.pincode}
@@ -1919,10 +2202,15 @@ export const GymOnboarding = () => {
 
                 <Row gutter={[16, 16]}>
                   <Col xs={24} md={6}>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Floor Space (sq. ft.) * {renderFieldSuccess('floorSpaceSqFt')}
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, minHeight: 34, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'flex-end' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        Floor Space (sq. ft.) <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('floorSpaceSqFt')}
+                      </span>
                     </div>
                     <InputNumber
+                      min={200}
+                      max={100000}
+                      placeholder="e.g. 3500"
                       value={formData.floorSpaceSqFt}
                       status={touched.floorSpaceSqFt && errors.floorSpaceSqFt ? 'error' : ''}
                       onChange={(v) => handleFieldChange('floorSpaceSqFt', v)}
@@ -1933,10 +2221,15 @@ export const GymOnboarding = () => {
                   </Col>
 
                   <Col xs={24} md={6}>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Max Safe Floor Capacity (Athletes) * {renderFieldSuccess('maxFloorCapacity')}
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, minHeight: 34, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'flex-end' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        Max Safe Capacity <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('maxFloorCapacity')}
+                      </span>
                     </div>
                     <InputNumber
+                      min={5}
+                      max={2000}
+                      placeholder="e.g. 50"
                       value={formData.maxFloorCapacity}
                       status={touched.maxFloorCapacity && errors.maxFloorCapacity ? 'error' : ''}
                       onChange={(v) => handleFieldChange('maxFloorCapacity', v)}
@@ -1947,8 +2240,8 @@ export const GymOnboarding = () => {
                   </Col>
 
                   <Col xs={24} md={6}>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155' }}>
-                      Gender Policy
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, minHeight: 34, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'flex-end' }}>
+                      <span>Gender Policy</span>
                     </div>
                     <Select
                       value={formData.genderAllowed}
@@ -1962,8 +2255,8 @@ export const GymOnboarding = () => {
                   </Col>
 
                   <Col xs={24} md={6}>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155' }}>
-                      Highlight Badge Text
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, minHeight: 34, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'flex-end' }}>
+                      <span>Highlight Badge Text</span>
                     </div>
                     <Select
                       value={formData.badgeText}
@@ -1978,7 +2271,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Gym Logo * {renderFieldSuccess('logo')}
+                      Gym Logo <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('logo')}
                     </div>
 
                     {!formData.logo && !formData.coverPhoto ? (
@@ -2230,7 +2523,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Facilities Multi-Select (Available at Facility) * {renderFieldSuccess('facilities')}
+                      Facilities Multi-Select (Available at Facility) <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('facilities')}
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {FACILITY_OPTIONS.map((fac) => {
@@ -2330,7 +2623,7 @@ export const GymOnboarding = () => {
                 <div style={{ marginBottom: 24, padding: '18px 20px', borderRadius: 10, border: `1px solid ${isDarkMode ? '#333333' : '#e2e8f0'}`, backgroundColor: isDarkMode ? '#141414' : '#fafafa' }}>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <ThunderboltFilled style={{ color: '#EC4899' }} />
-                    Workout Disciplines Offered * {renderFieldSuccess('workouts')}
+                    Workout Disciplines Offered <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('workouts')}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {WORKOUT_OPTIONS.map((w) => {
@@ -2418,22 +2711,22 @@ export const GymOnboarding = () => {
                       <div style={{ display: 'flex', gap: 8 }}>
                         <Input
                           placeholder="Add gym rule..."
-                          id="new-rule-input"
+                          value={newRuleInput}
+                          onChange={(e) => setNewRuleInput(e.target.value)}
                           style={{ height: 36 }}
-                          onPressEnter={(e) => {
-                            if (e.target.value.trim()) {
-                              handleFieldChange('rules', [...(formData.rules || []), e.target.value.trim()]);
-                              e.target.value = '';
+                          onPressEnter={() => {
+                            if (newRuleInput.trim()) {
+                              handleFieldChange('rules', [...(formData.rules || []), newRuleInput.trim()]);
+                              setNewRuleInput('');
                             }
                           }}
                         />
                         <Button
                           icon={<PlusOutlined />}
                           onClick={() => {
-                            const input = document.getElementById('new-rule-input');
-                            if (input?.value?.trim()) {
-                              handleFieldChange('rules', [...(formData.rules || []), input.value.trim()]);
-                              input.value = '';
+                            if (newRuleInput.trim()) {
+                              handleFieldChange('rules', [...(formData.rules || []), newRuleInput.trim()]);
+                              setNewRuleInput('');
                             }
                           }}
                           style={{ flexShrink: 0 }}
@@ -2466,22 +2759,22 @@ export const GymOnboarding = () => {
                       <div style={{ display: 'flex', gap: 8 }}>
                         <Input
                           placeholder="Add safety measure..."
-                          id="new-safety-input"
+                          value={newSafetyInput}
+                          onChange={(e) => setNewSafetyInput(e.target.value)}
                           style={{ height: 36 }}
-                          onPressEnter={(e) => {
-                            if (e.target.value.trim()) {
-                              handleFieldChange('safetyMeasures', [...(formData.safetyMeasures || []), e.target.value.trim()]);
-                              e.target.value = '';
+                          onPressEnter={() => {
+                            if (newSafetyInput.trim()) {
+                              handleFieldChange('safetyMeasures', [...(formData.safetyMeasures || []), newSafetyInput.trim()]);
+                              setNewSafetyInput('');
                             }
                           }}
                         />
                         <Button
                           icon={<PlusOutlined />}
                           onClick={() => {
-                            const input = document.getElementById('new-safety-input');
-                            if (input?.value?.trim()) {
-                              handleFieldChange('safetyMeasures', [...(formData.safetyMeasures || []), input.value.trim()]);
-                              input.value = '';
+                            if (newSafetyInput.trim()) {
+                              handleFieldChange('safetyMeasures', [...(formData.safetyMeasures || []), newSafetyInput.trim()]);
+                              setNewSafetyInput('');
                             }
                           }}
                           style={{ flexShrink: 0 }}
@@ -2508,7 +2801,7 @@ export const GymOnboarding = () => {
                 </div>
 
                 <div style={{ fontSize: 14, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a', marginBottom: 12 }}>
-                  GYMEZY Partner Subscription Plan *
+                  GYMEZY Partner Subscription Plan <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span>
                 </div>
 
                 <Row gutter={[16, 16]}>
@@ -2520,31 +2813,73 @@ export const GymOnboarding = () => {
                   ].map((tier) => {
                     const isSelected = formData.subscriptionType === tier.key;
                     return (
-                      <Col xs={24} sm={12} key={tier.key}>
+                      <Col xs={24} sm={12} key={tier.key} style={{ display: 'flex' }}>
                         <Card
                           onClick={() => handleFieldChange('subscriptionType', tier.key)}
                           style={{
+                            width: '100%',
+                            minHeight: 136,
                             cursor: 'pointer',
-                            backgroundColor: isSelected ? (isDarkMode ? 'rgba(79, 70, 229, 0.15)' : '#eef2ff') : (isDarkMode ? '#141414' : '#ffffff'),
-                            borderColor: isSelected ? '#4338ca' : (isDarkMode ? '#333333' : '#e2e8f0'),
-                            borderWidth: isSelected ? 2 : 1,
+                            backgroundColor: isSelected
+                              ? (isDarkMode ? 'rgba(99, 102, 241, 0.22)' : '#eef2ff')
+                              : (isDarkMode ? '#141414' : '#ffffff'),
+                            borderColor: isSelected
+                              ? (isDarkMode ? '#818cf8' : '#4f46e5')
+                              : (isDarkMode ? '#27272a' : '#e2e8f0'),
+                            borderWidth: 2,
                             borderRadius: 10,
                             position: 'relative',
+                            boxShadow: isSelected
+                              ? (isDarkMode ? '0 0 0 1px #818cf8, 0 4px 16px rgba(129, 140, 248, 0.35)' : '0 0 0 1px #4f46e5, 0 4px 12px rgba(79, 70, 229, 0.2)')
+                              : 'none',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
                           }}
-                          styles={{ body: { padding: '16px' } }}
+                          styles={{
+                            body: {
+                              padding: '16px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              height: '100%',
+                              width: '100%',
+                              boxSizing: 'border-box',
+                            }
+                          }}
                         >
-                          {tier.recommended && (
-                            <Tag color="purple" style={{ position: 'absolute', top: 12, right: 12, fontWeight: 700 }}>
-                              Recommended
-                            </Tag>
-                          )}
-                          <div style={{ fontWeight: 800, fontSize: 15, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                            {tier.title}
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    width: 18,
+                                    height: 18,
+                                    borderRadius: '50%',
+                                    border: isSelected
+                                      ? `5px solid ${isDarkMode ? '#818cf8' : '#4f46e5'}`
+                                      : `2px solid ${isDarkMode ? '#52525b' : '#cbd5e1'}`,
+                                    backgroundColor: isSelected ? '#ffffff' : 'transparent',
+                                    flexShrink: 0,
+                                    transition: 'all 0.2s ease',
+                                    boxSizing: 'border-box',
+                                  }}
+                                />
+                                <div style={{ fontWeight: 800, fontSize: 15, color: isDarkMode ? '#ffffff' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {tier.title}
+                                </div>
+                              </div>
+                              {tier.recommended && (
+                                <Tag color="purple" style={{ margin: 0, fontWeight: 700, borderRadius: 6, flexShrink: 0 }}>
+                                  Recommended
+                                </Tag>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 14, fontWeight: 800, color: isSelected ? (isDarkMode ? '#c7d2fe' : '#4338ca') : (isDarkMode ? '#818cf8' : '#4f46e5'), margin: '4px 0 6px 0', paddingLeft: 28 }}>
+                              {tier.price}
+                            </div>
                           </div>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: '#4338ca', margin: '4px 0' }}>
-                            {tier.price}
-                          </div>
-                          <div style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>
+                          <div style={{ fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b', lineHeight: 1.45, paddingLeft: 28 }}>
                             {tier.desc}
                           </div>
                         </Card>
@@ -2562,7 +2897,7 @@ export const GymOnboarding = () => {
                 <Row gutter={[16, 16]}>
                   <Col xs={24} md={12}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Account Holder Name * {renderFieldSuccess('accountHolder')}
+                      Account Holder Name <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('accountHolder')}
                     </div>
                     <Input
                       placeholder="e.g. FitZone Fitness Pvt Ltd"
@@ -2577,7 +2912,7 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={12}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155' }}>
-                      Bank Name *
+                      Bank Name <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span>
                     </div>
                     <Select
                       value={formData.bankName}
@@ -2600,13 +2935,15 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={12}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      Bank Account Number * {renderFieldSuccess('accountNumber')}
+                      Bank Account Number <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('accountNumber')}
                     </div>
                     <Input
                       placeholder="50200012345678"
                       value={formData.accountNumber}
+                      maxLength={18}
+                      inputMode="numeric"
                       status={touched.accountNumber && errors.accountNumber ? 'error' : ''}
-                      onChange={(e) => handleFieldChange('accountNumber', e.target.value)}
+                      onChange={(e) => handleFieldChange('accountNumber', e.target.value.replace(/\D/g, '').slice(0, 18))}
                       onBlur={() => handleFieldBlur('accountNumber')}
                       style={{ height: 40 }}
                     />
@@ -2615,13 +2952,29 @@ export const GymOnboarding = () => {
 
                   <Col xs={24} md={6}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155', display: 'flex', alignItems: 'center' }}>
-                      IFSC Code * {renderFieldSuccess('ifscCode')}
+                      IFSC Code <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('ifscCode')}
                     </div>
                     <Input
                       placeholder="HDFC0001234"
                       value={formData.ifscCode}
+                      maxLength={11}
                       status={touched.ifscCode && errors.ifscCode ? 'error' : ''}
-                      onChange={(e) => handleFieldChange('ifscCode', e.target.value)}
+                      onChange={(e) => {
+                        const bankPrefix = getBankByName(formData.bankName)?.ifscPrefix || '';
+                        const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        let finalVal = raw;
+                        if (bankPrefix) {
+                          if (!raw.startsWith(bankPrefix)) {
+                            const branchPart = raw.replace(new RegExp(`^${bankPrefix.slice(0, 3)}|^${bankPrefix.slice(0, 2)}|^${bankPrefix.slice(0, 1)}`, 'i'), '');
+                            finalVal = (bankPrefix + branchPart).slice(0, 11);
+                          } else {
+                            finalVal = raw.slice(0, 11);
+                          }
+                        } else {
+                          finalVal = raw.slice(0, 11);
+                        }
+                        handleFieldChange('ifscCode', finalVal);
+                      }}
                       onBlur={() => handleFieldBlur('ifscCode')}
                       style={{ height: 40 }}
                     />
@@ -3034,7 +3387,7 @@ export const GymOnboarding = () => {
         </h2>
 
         <p style={{ fontSize: 14, color: isDarkMode ? '#888888' : '#64748b', marginTop: 8 }}>
-          <strong>{createdGymSummary?.name || formData.gymName}</strong> is now registered on the GYMEZY platform with status{' '}
+          <strong>{createdGymSummary?.name || 'Gym Partner'}</strong> is now registered on the GYMEZY platform with status{' '}
           <Tag color="green" style={{ fontWeight: 700 }}>{createdGymSummary?.approvalStatus || 'Approved'}</Tag>.
         </p>
 
@@ -3054,18 +3407,22 @@ export const GymOnboarding = () => {
           <div>
             <strong>Partner ID:</strong>{' '}
             <Tag color="blue" style={{ fontWeight: 700, fontSize: 13, marginLeft: 4 }}>
-              {createdGymSummary?.partnerId || formData.partnerId || '-'}
+              {createdGymSummary?.partnerId || '-'}
             </Tag>
           </div>
-          <div><strong>Location:</strong> {formData.area ? `${formData.area}, ` : ''}{formData.city}</div>
-          <div><strong>Subscription Tier:</strong> {formData.subscriptionType}</div>
+          <div><strong>Location:</strong> {createdGymSummary?.area ? `${createdGymSummary.area}, ` : ''}{createdGymSummary?.city || '-'}</div>
+          <div><strong>Subscription Tier:</strong> {createdGymSummary?.subscriptionType || 'Hybrid'}</div>
           <div><strong>Membership & Passes:</strong> Configured in Owner Dashboard</div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Button
             type="primary"
-            onClick={() => navigate('/admin/gyms')}
+            onClick={() => {
+              setIsSuccessModalOpen(false);
+              resetForm();
+              navigate('/admin/gyms');
+            }}
             style={{
               backgroundColor: '#4338ca',
               borderColor: '#4338ca',
@@ -3080,12 +3437,7 @@ export const GymOnboarding = () => {
           <Button
             onClick={() => {
               setIsSuccessModalOpen(false);
-              setCurrentStep(1);
-              setFormData((prev) => ({
-                ...prev,
-                gymName: '',
-                gymId: 'GYM-' + Math.floor(1000 + Math.random() * 9000),
-              }));
+              resetForm();
             }}
             style={{ height: 40, fontWeight: 600, borderRadius: 'var(--radius-base)' }}
           >

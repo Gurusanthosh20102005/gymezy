@@ -619,20 +619,14 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                 </Text>
               </View>
               <View style={styles.infoCol}>
-                <Text style={[styles.fieldLabel, { color: textMuted }]}>Business Type</Text>
-                <Text style={[styles.fieldValue, { color: textPrimary }]}>
-                  {currentGym.businessType || 'Private Limited'}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoCol}>
                 <Text style={[styles.fieldLabel, { color: textMuted }]}>Established</Text>
                 <Text style={[styles.fieldValue, { color: textPrimary }]}>
                   {currentGym.yearEstablished || '2024'}
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.infoRow}>
               <View style={styles.infoCol}>
                 <Text style={[styles.fieldLabel, { color: textMuted }]}>Plan Model</Text>
                 <Text style={[styles.fieldValue, { color: textPrimary }]}>
@@ -953,30 +947,15 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                   </View>
                 </View>
 
-                <View style={styles.formTwoCols}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.inputLabel, { color: textSecondary }]}>Business Type</Text>
-                    <TextInput
-                      style={[styles.formInput, { backgroundColor: cardBg, borderColor: borderCol, color: textPrimary }]}
-                      value={formBusinessType}
-                      onChangeText={setFormBusinessType}
-                      placeholder="Private Limited"
-                      placeholderTextColor={textMuted}
-                    />
-                  </View>
-
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.inputLabel, { color: textSecondary }]}>Established Year</Text>
-                    <TextInput
-                      style={[styles.formInput, { backgroundColor: cardBg, borderColor: borderCol, color: textPrimary }]}
-                      value={formYearEstablished}
-                      onChangeText={setFormYearEstablished}
-                      keyboardType="numeric"
-                      placeholder="e.g. 2024"
-                      placeholderTextColor={textMuted}
-                    />
-                  </View>
-                </View>
+                <Text style={[styles.inputLabel, { color: textSecondary }]}>Established Year</Text>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: cardBg, borderColor: borderCol, color: textPrimary }]}
+                  value={formYearEstablished}
+                  onChangeText={setFormYearEstablished}
+                  keyboardType="numeric"
+                  placeholder="e.g. 2024"
+                  placeholderTextColor={textMuted}
+                />
 
                 <View style={styles.formTwoCols}>
                   <View style={{ flex: 1 }}>
@@ -984,7 +963,8 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                     <TextInput
                       style={[styles.formInput, { backgroundColor: cardBg, borderColor: borderCol, color: textPrimary }]}
                       value={formGstNumber}
-                      onChangeText={setFormGstNumber}
+                      maxLength={15}
+                      onChangeText={(val) => setFormGstNumber((val || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15))}
                       autoCapitalize="characters"
                       placeholder="15-digit GSTIN"
                       placeholderTextColor={textMuted}
@@ -996,7 +976,8 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                     <TextInput
                       style={[styles.formInput, { backgroundColor: cardBg, borderColor: borderCol, color: textPrimary }]}
                       value={formPanNumber}
-                      onChangeText={setFormPanNumber}
+                      maxLength={10}
+                      onChangeText={(val) => setFormPanNumber((val || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
                       autoCapitalize="characters"
                       placeholder="10-digit PAN"
                       placeholderTextColor={textMuted}

@@ -444,7 +444,7 @@ export const CheckInScreen = ({ navigation, route }) => {
         <MaterialIcons name="chevron-right" size={24} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
       </TouchableOpacity>
 
-      {/* Option 3: Desk Walk-in Pass */}
+      {/* cmd walk-in button
       <TouchableOpacity
         style={[
           styles.hubActionCard,
@@ -469,6 +469,7 @@ export const CheckInScreen = ({ navigation, route }) => {
         </View>
         <MaterialIcons name="chevron-right" size={24} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
       </TouchableOpacity>
+      cmd walk-in button */}
 
       {/* How it works info card */}
       <View

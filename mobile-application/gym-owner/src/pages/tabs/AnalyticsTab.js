@@ -38,8 +38,15 @@ const PLAN_STATS = [
 export const AnalyticsTab = ({ topInset }) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { gym } = useAuth();
+  const { user, gym } = useAuth();
   const [selectedPeriod, setSelectedPeriod] = useState('This Month');
+
+  const isManager = Boolean(
+    user?.isManager ||
+    user?.role === 'Manager' ||
+    user?.role === 'MANAGER' ||
+    String(user?.role || '').toLowerCase() === 'manager'
+  );
 
   return (
     <ScrollView
@@ -110,106 +117,108 @@ export const AnalyticsTab = ({ topInset }) => {
       </View>
 
       {/* Revenue Highlight Card */}
-      <View
-        style={[
-          styles.revenueCard,
-          {
-            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-          },
-        ]}
-      >
-        <View style={styles.revenueTopRow}>
-          <View>
-            <Text
-              style={[
-                styles.revenueLabel,
-                { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' },
-              ]}
-            >
-              TOTAL REVENUE ({selectedPeriod.toUpperCase()})
-            </Text>
-            <Text
-              style={[
-                styles.revenueAmount,
-                { color: isDark ? '#FFFFFF' : '#0F172A' },
-              ]}
-            >
-              ₹1,85,400
-            </Text>
-          </View>
-          <View style={styles.growthBadge}>
-            <MaterialIcons name="trending-up" size={16} color={AppColors.secondaryColor} />
-            <Text style={styles.growthText}>+14.2%</Text>
-          </View>
-        </View>
-
+      {!isManager && (
         <View
           style={[
-            styles.statDivider,
-            { backgroundColor: isDark ? AppColors.darkBorder : '#F1F5F9' },
+            styles.revenueCard,
+            {
+              backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+              borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+            },
           ]}
-        />
-
-        <View style={styles.miniStatsRow}>
-          <View style={styles.miniStatItem}>
-            <Text
-              style={[
-                styles.miniStatLabel,
-                { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' },
-              ]}
-            >
-              Daily Average
-            </Text>
-            <Text
-              style={[
-                styles.miniStatVal,
-                { color: isDark ? '#FFFFFF' : '#0F172A' },
-              ]}
-            >
-              ₹6,180
-            </Text>
+        >
+          <View style={styles.revenueTopRow}>
+            <View>
+              <Text
+                style={[
+                  styles.revenueLabel,
+                  { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' },
+                ]}
+              >
+                TOTAL REVENUE ({selectedPeriod.toUpperCase()})
+              </Text>
+              <Text
+                style={[
+                  styles.revenueAmount,
+                  { color: isDark ? '#FFFFFF' : '#0F172A' },
+                ]}
+              >
+                ₹1,85,400
+              </Text>
+            </View>
+            <View style={styles.growthBadge}>
+              <MaterialIcons name="trending-up" size={16} color={AppColors.secondaryColor} />
+              <Text style={styles.growthText}>+14.2%</Text>
+            </View>
           </View>
 
-          <View style={styles.miniStatItem}>
-            <Text
-              style={[
-                styles.miniStatLabel,
-                { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' },
-              ]}
-            >
-              Renewal Rate
-            </Text>
-            <Text
-              style={[
-                styles.miniStatVal,
-                { color: isDark ? '#FFFFFF' : '#0F172A' },
-              ]}
-            >
-              92.4%
-            </Text>
-          </View>
+          <View
+            style={[
+              styles.statDivider,
+              { backgroundColor: isDark ? AppColors.darkBorder : '#F1F5F9' },
+            ]}
+          />
 
-          <View style={styles.miniStatItem}>
-            <Text
-              style={[
-                styles.miniStatLabel,
-                { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' },
-              ]}
-            >
-              New Signups
-            </Text>
-            <Text
-              style={[
-                styles.miniStatVal,
-                { color: isDark ? '#FFFFFF' : '#0F172A' },
-              ]}
-            >
-              +28
-            </Text>
+          <View style={styles.miniStatsRow}>
+            <View style={styles.miniStatItem}>
+              <Text
+                style={[
+                  styles.miniStatLabel,
+                  { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' },
+                ]}
+              >
+                Daily Average
+              </Text>
+              <Text
+                style={[
+                  styles.miniStatVal,
+                  { color: isDark ? '#FFFFFF' : '#0F172A' },
+                ]}
+              >
+                ₹6,180
+              </Text>
+            </View>
+
+            <View style={styles.miniStatItem}>
+              <Text
+                style={[
+                  styles.miniStatLabel,
+                  { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' },
+                ]}
+              >
+                Renewal Rate
+              </Text>
+              <Text
+                style={[
+                  styles.miniStatVal,
+                  { color: isDark ? '#FFFFFF' : '#0F172A' },
+                ]}
+              >
+                92.4%
+              </Text>
+            </View>
+
+            <View style={styles.miniStatItem}>
+              <Text
+                style={[
+                  styles.miniStatLabel,
+                  { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' },
+                ]}
+              >
+                New Signups
+              </Text>
+              <Text
+                style={[
+                  styles.miniStatVal,
+                  { color: isDark ? '#FFFFFF' : '#0F172A' },
+                ]}
+              >
+                +28
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Weekly Check-In Activity Graph */}
       <View

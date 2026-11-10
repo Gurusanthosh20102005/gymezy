@@ -81,8 +81,8 @@ export const BookingsManagement = ({
   const [searchParams, setSearchParams] = useSearchParams();
   const [sourceFilter, setSourceFilter] = useState('ALL'); // 'ALL' | 'APP' | 'WALK_IN'
 
-  const [bookings, setBookings] = useState(initialData);
-  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const [bookings, setBookings] = useState([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(true);
   const [nameSearch, setNameSearch] = useState('');
   const [bookingIdSearch, setBookingIdSearch] = useState('');
   const [customerIdSearch, setCustomerIdSearch] = useState('');
@@ -977,7 +977,7 @@ export const BookingsManagement = ({
           </Text>
         </div>
 
-        {/* Add Walk-in Button */}
+        {/* cmd walk-in button
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -994,6 +994,7 @@ export const BookingsManagement = ({
         >
           Add Walk-in
         </Button>
+        cmd walk-in button */}
       </div>
 
       {/* FILTER & SEARCH CARD */}
@@ -1255,10 +1256,11 @@ export const BookingsManagement = ({
         styles={{ body: { padding: '16px 20px' } }}
       >
         <Table
+          loading={isLoadingBookings}
           pagination={false}
           size="middle"
           scroll={{ x: 'max-content' }}
-          dataSource={paginatedBookings}
+          dataSource={isLoadingBookings ? [] : paginatedBookings}
           columns={columns}
         />
 

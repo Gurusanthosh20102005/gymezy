@@ -209,6 +209,7 @@ export const MembersManagement = ({
 
   // Cancellation Requests State
   const [cancellationRequests, setCancellationRequests] = useState(INITIAL_CANCELLATION_REQUESTS);
+  const [isCancelLoading, setIsCancelLoading] = useState(false);
   const [cancelSearch, setCancelSearch] = useState('');
   const debouncedCancelSearch = useDebounce(cancelSearch, 350);
   const [cancelStatusFilter, setCancelStatusFilter] = useState('ALL');
@@ -533,6 +534,7 @@ export const MembersManagement = ({
   const fetchCancellationNegotiations = async () => {
     if (!gymId) return;
     try {
+      setIsCancelLoading(true);
       const res = await apiClient.get(`/memberships/gym/${gymId}/cancellation-negotiations`);
       const negotiations = res.data?.data?.negotiations;
       if (!Array.isArray(negotiations)) return;
@@ -567,6 +569,8 @@ export const MembersManagement = ({
       }));
     } catch (err) {
       console.warn('Failed to fetch cancellation negotiations:', err);
+    } finally {
+      setIsCancelLoading(false);
     }
   };
 
@@ -2164,6 +2168,7 @@ export const MembersManagement = ({
             <Option value="WALK_IN">Walk-in</Option>
           </Select>
 
+          {/* cmd walk-in button
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -2178,6 +2183,7 @@ export const MembersManagement = ({
           >
             New Walk-in Member
           </Button>
+          cmd walk-in button */}
 
           <Dropdown menu={dateRangeMenu} trigger={['click']}>
             <div
@@ -2405,7 +2411,7 @@ export const MembersManagement = ({
               pagination={false}
               size="middle"
               scroll={{ x: 1400 }}
-              dataSource={membersList}
+              dataSource={isMembersLoading ? [] : membersList}
               columns={columns}
               rowKey={(r) => r.key || r.memberId}
             />
@@ -2683,7 +2689,7 @@ export const MembersManagement = ({
               pagination={false}
               size="middle"
               scroll={{ x: 1300 }}
-              dataSource={paginatedSwitchRequests}
+              dataSource={isSwitchLoading ? [] : paginatedSwitchRequests}
               columns={switchColumns}
               rowKey={(r) => r._id || r.requestId}
             />
@@ -3052,10 +3058,11 @@ export const MembersManagement = ({
             styles={{ body: { padding: '16px 20px' } }}
           >
             <Table
+              loading={isCancelLoading}
               pagination={false}
               size="middle"
               scroll={{ x: 1300 }}
-              dataSource={paginatedCancelRequests}
+              dataSource={isCancelLoading ? [] : paginatedCancelRequests}
               columns={cancellationColumns}
               locale={{
                 emptyText: (

@@ -940,7 +940,7 @@ export const Dashboard = () => {
 
         <Row gutter={[16, 16]}>
           {/* Action 1: Member Check-in */}
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={24} sm={12} lg={12}>
             <Card
               hoverable
               onClick={() => navigate('/owner/checkin')}
@@ -985,7 +985,7 @@ export const Dashboard = () => {
             </Card>
           </Col>
 
-          {/* Action 2: New Walk-in Booking */}
+          {/* cmd walk-in buttons
           <Col xs={24} sm={12} lg={6}>
             <Card
               hoverable
@@ -1031,7 +1031,6 @@ export const Dashboard = () => {
             </Card>
           </Col>
 
-          {/* Action 3: New Walk-in Member */}
           <Col xs={24} sm={12} lg={6}>
             <Card
               hoverable
@@ -1076,9 +1075,10 @@ export const Dashboard = () => {
               </div>
             </Card>
           </Col>
+          cmd walk-in buttons */}
 
           {/* Action 4: Add Employee */}
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={24} sm={12} lg={12}>
             <Card
               hoverable
               onClick={() => navigate('/owner/employees')}

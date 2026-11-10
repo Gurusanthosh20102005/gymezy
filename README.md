@@ -24,6 +24,7 @@ For complete architecture, logic flows, database models, and build guides, see t
 | **[MEMBERSHIP_FLOW.md](doc/MEMBERSHIP_FLOW.md)** | Membership lifecycle, ProrationEngine mathematical model for upgrades/downgrades, and cancellations. |
 | **[CI_CD_DEPLOYMENT_WORKFLOW.md](doc/CI_CD_DEPLOYMENT_WORKFLOW.md)** | Automated GitHub Actions CI/CD pipeline for `dev` & `prod` branches, SSH scripts, and VPS deployment. |
 | **[WALLET_FINANCIAL_ARCHITECTURE.md](doc/WALLET_FINANCIAL_ARCHITECTURE.md)** | Gym-specific wallet isolation, compound indexing, split-payment checkout, and financial ledger integrity. |
+| **[RATINGS_AND_REVIEWS_SPECIFICATION.md](doc/RATINGS_AND_REVIEWS_SPECIFICATION.md)** | Dual-entity reputation engine, star distribution histograms (5★ to 1★), and member review sync. |
 | **[AUTHENTICATION_FLOW.md](doc/AUTHENTICATION_FLOW.md)** | End-to-end authentication, Firebase JWT verification, RBAC matrices, and session security. |
 | **[LOGIC_FLOW.md](doc/LOGIC_FLOW.md)** | Master architectural sequence diagrams, state machines, and cross-platform network topography. |
 
@@ -60,7 +61,7 @@ GYMEZY/
 │
 ├── middleware/                   # Node.js + Express REST API Gateway (Port 5001)
 │   ├── src/
-│   │   ├── controllers/          # attendance, booking, membership, gym, auth, wallet controllers
+│   │   ├── controllers/          # attendance, booking, membership, gym, gymReviews, auth, wallet controllers
 │   │   ├── models/               # Mongoose Schemas (User, Gym, Booking, Membership, Attendance)
 │   │   ├── routes/               # Express API v1 Route Definitions
 │   │   ├── services/             # Proration engine, Cron sweepers, Firebase notifications
@@ -98,6 +99,7 @@ GYMEZY/
 | **Push Notifications** | **Firebase Cloud Messaging** (FCM) | • Cloud messaging via `firebase-admin` service accounts.<br/>• Automatic multicast dispatch to member and gym owner device tokens for check-ins, switch approvals, and expiry alerts. |
 | **Financial Engine** | **GYMEZY ProrationEngine** & **Wallet Core** | • Mathematical proration engine with 4 downgrade compensation modes (`WALLET`, `EXTEND`, `REFUND`, `FORFEIT`).<br/>• Split / Hybrid checkout payment: offsets purchases using available gym wallet funds and routes remainder through external gateways. |
 | **DevOps & CI/CD** | **GitHub Actions**<br/>**Appleboy SSH Action** | • Automated multi-branch pipeline ([`deploy.yml`](.github/workflows/deploy.yml)): pushes to `dev` trigger `/var/www/gymezy/deploy-dev.sh`, pushes to `prod` trigger `/var/www/gymezy/deploy-prod.sh`.<br/>• Zero-downtime cluster reloads via PM2 and Nginx reverse proxy on Hostinger VPS. |
+| **Reputation & Ratings** | **GYMEZY Reviews & Metrics Engine** | • **Dual-Entity Engine**: Dedicated endpoints for facility reviews and coach/trainer testimonials.<br/>• **Distribution Histograms**: Dynamic 5★ to 1★ star counts, ratios, and percentages with arithmetic mean scores.<br/>• **Consistency**: Atomic dual synchronization between `Employee` (SSOT) and embedded `gym.trainers`. |
 | **Server & Hosting** | **Hostinger Linux VPS**<br/>**Nginx** & **PM2** | • Ubuntu Linux VPS (`187.127.149.165`) hosting standalone MongoDB on `27017` with direct connection support.<br/>• Reverse proxy routing: Web ports `5173`/`5174`, API port `5001`, and production SSL terminations. |
 | **Testing & Quality** | **Node.js Native Test Runner** (`node --test`) | • Zero-dependency fast test suite in `middleware/test/` verifying proration math, banner geo-sorting, model constraints, Google SSO, and wallet ledger isolation. |
 

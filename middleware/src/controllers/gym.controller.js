@@ -334,10 +334,38 @@ export const onboardGym = asyncHandler(async (req, res) => {
     throw ApiError.badRequest('Gym address is required.');
   }
 
-  // 2. Check for duplicate gym email or owner account
-  const existingUser = await User.findOne({ email: finalEmail });
-  if (existingUser) {
+  // 2. Check for duplicate gym email or owner account (Email & Phone verification across User & Gym)
+  let cleanPhoneDigits = (finalPhone || '').replace(/\D/g, '');
+  if (cleanPhoneDigits.length === 12 && cleanPhoneDigits.startsWith('91')) {
+    cleanPhoneDigits = cleanPhoneDigits.slice(2);
+  } else if (cleanPhoneDigits.length === 11 && cleanPhoneDigits.startsWith('0')) {
+    cleanPhoneDigits = cleanPhoneDigits.slice(1);
+  }
+
+  const phoneQuery = {
+    $or: [
+      { phone: finalPhone },
+      { phone: cleanPhoneDigits },
+      { phone: `+91${cleanPhoneDigits}` },
+      { phone: `91${cleanPhoneDigits}` },
+      { phone: new RegExp(`${cleanPhoneDigits}$`) },
+    ],
+  };
+
+  const [existingUserByEmail, existingGymByEmail, existingUserByPhone, existingGymByPhone] =
+    await Promise.all([
+      User.findOne({ email: finalEmail }),
+      Gym.findOne({ email: finalEmail }),
+      cleanPhoneDigits.length >= 10 ? User.findOne(phoneQuery) : null,
+      cleanPhoneDigits.length >= 10 ? Gym.findOne(phoneQuery) : null,
+    ]);
+
+  if (existingUserByEmail || existingGymByEmail) {
     throw ApiError.conflict('An account with this email address already exists.');
+  }
+
+  if (existingUserByPhone || existingGymByPhone) {
+    throw ApiError.conflict('An account with this mobile number already exists.');
   }
 
   // 3. Compress Media (Images & PDFs) with high quality & {gymname}_{filename} formatting
@@ -1201,7 +1229,9 @@ export const getAdminGymsFleet = asyncHandler(async (req, res) => {
 
   const transformGym = (g) => {
     const media = resolveGymMediaUrls(g);
-    const gymId = g.partnerId || g._id.toString();
+    const hasValidPartnerId = Boolean(g.partnerId && !/^[0-9a-fA-F]{24}$/.test(g.partnerId) && g.partnerId !== '-');
+    const cleanPartnerId = hasValidPartnerId ? g.partnerId : '';
+    const gymId = cleanPartnerId || g._id.toString();
     const displayLocation = g.area ? `${g.area}, ${g.city}` : (g.city || 'Chennai');
     const fullLocation = g.fullAddress || g.address || displayLocation;
 
@@ -1210,7 +1240,7 @@ export const getAdminGymsFleet = asyncHandler(async (req, res) => {
       id: gymId,
       _id: g._id.toString(),
       mongoId: g._id.toString(),
-      partnerId: g.partnerId || gymId,
+      partnerId: cleanPartnerId,
       location: displayLocation,
       fullAddress: fullLocation,
       address: g.address || fullLocation,

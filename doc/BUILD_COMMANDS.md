@@ -11,7 +11,7 @@ This document provides a single-source-of-truth reference for all build, run, bu
 2. [Web Application Portals](#2-web-application-portals)
    - [Gym Owner Web Portal](#a-gym-owner-web-portal-web-applicationgym-owner)
    - [Super Admin Web Portal](#b-super-admin-web-portal-web-applicationsuper-admin)
-3. [Middleware Backend API](#3-middleware-backend-api)
+3. [Middleware Backend API](#3-middleware-backend-api-middleware)
 4. [Environment Switching Guide](#4-environment-switching-guide)
 
 ---

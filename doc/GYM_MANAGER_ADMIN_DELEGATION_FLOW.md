@@ -64,6 +64,12 @@ To maintain commercial privacy, **all financial and revenue metrics are strictly
 3. **Route Guard & Security:** Direct URL navigation to `/owner/transactions` renders an explicit `Result status="403"` restricted access screen and stops transaction API querying.
 4. **Gym Profile Summary:** The Monthly Revenue metric under Gym Profile is omitted for Managers.
 
+### 2.2 Manager Self-Governance & Delegation Guard
+To preserve role integrity and prevent privilege escalation:
+1. **Delegation Permissions Visibility:** The **Manager Delegation Permissions (Admin Approval Required)** configuration card is strictly visible to **Gym Admin (Owner)** only. When a Manager accesses or edits their own employee profile (or any employee view) in both Web and Mobile apps, this permissions card is completely hidden.
+2. **Role & Status Immutability:** When editing their own profile, the `Role / Designation` and `Platform Status` selectors are disabled/locked for managers.
+3. **Payload Sanitization:** When a Manager submits an employee profile update, backend update payloads automatically preserve existing `managerPermissions`, preventing client-side permission injection.
+
 ---
 
 ## 3. Database Schema Specifications

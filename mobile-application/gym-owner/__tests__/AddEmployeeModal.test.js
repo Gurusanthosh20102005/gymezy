@@ -14,6 +14,9 @@ import {
 } from '../src/widgets/AddEmployeeModal';
 
 // Mock dependencies
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 jest.mock('react-native-vector-icons/MaterialIcons', () => 'MaterialIcons');
 jest.mock('react-native-vector-icons/Ionicons', () => 'Ionicons');
 
