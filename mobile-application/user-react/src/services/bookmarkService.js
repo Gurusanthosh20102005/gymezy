@@ -171,6 +171,12 @@ class BookmarkService {
     this.notifyListeners();
 
     // 2. Sync with MongoDB Database if user is authenticated
+    const token = apiService.getAuthToken();
+    if (!token) {
+      // In guest mode, bookmarks remain safely persisted in local storage
+      return nextState;
+    }
+
     try {
       const response = await apiService.toggleBookmark(gymId);
       if (response && Array.isArray(response.bookmarkedGymIds)) {
@@ -179,12 +185,7 @@ class BookmarkService {
         this.persistLocalState();
       }
     } catch (err) {
-      // If unauthorized (e.g. guest mode), we silently keep local bookmark and will sync on login
-      if (err?.message?.includes('log in') || err?.message?.includes('unauthorized') || err?.status === 401) {
-        // Handled gracefully in guest mode
-      } else {
-        console.warn('[BOOKMARK SERVICE] Failed to sync bookmark with DB:', err?.message);
-      }
+      console.warn('[BOOKMARK SERVICE] Notice syncing bookmark with DB:', err?.message);
     }
 
     return nextState;
@@ -210,6 +211,11 @@ class BookmarkService {
    */
   async fetchLiveBookmarks(coords = {}) {
     await this.init();
+    const token = apiService.getAuthToken();
+    if (!token) {
+      return this.cachedGyms;
+    }
+
     try {
       const res = await apiService.getMyBookmarkedGyms(coords);
       if (res && Array.isArray(res.gyms)) {
@@ -246,6 +252,9 @@ class BookmarkService {
     const ids = Array.from(this.bookmarkedIds);
     if (ids.length === 0) return;
 
+    const token = apiService.getAuthToken();
+    if (!token) return;
+
     try {
       const result = await apiService.syncBookmarks(ids);
       if (result && Array.isArray(result.bookmarkedGymIds)) {
@@ -273,3 +282,4 @@ class BookmarkService {
 
 export const bookmarkService = new BookmarkService();
 export default bookmarkService;
+
