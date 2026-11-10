@@ -14,6 +14,44 @@ class BookmarkService {
   }
 
   /**
+   * Rebuilds bookmarkedIds index from cachedGyms to guarantee:
+   * 1. Unique gyms only are tracked in cachedGyms
+   * 2. getCount() always equals the exact number of unique gyms
+   * 3. bookmarkedIds contains all alias strings (mongoId, partnerId, id) for O(1) lookup
+   */
+  rebuildIndices() {
+    const newIds = new Set();
+    const uniqueGyms = [];
+    const seenGymKeys = new Set();
+
+    (this.cachedGyms || []).forEach((gym) => {
+      if (!gym) return;
+      const canonicalKey = String(gym._id || gym.id || gym.partnerId || '');
+      if (!canonicalKey) return;
+
+      const altKey = String(gym.partnerId || gym.id || gym._id || '');
+      if (seenGymKeys.has(canonicalKey) || (altKey && seenGymKeys.has(altKey))) {
+        return; // Skip duplicate gym
+      }
+
+      seenGymKeys.add(canonicalKey);
+      if (altKey) seenGymKeys.add(altKey);
+      if (gym._id) seenGymKeys.add(String(gym._id));
+      if (gym.partnerId) seenGymKeys.add(String(gym.partnerId));
+      if (gym.id) seenGymKeys.add(String(gym.id));
+
+      uniqueGyms.push(gym);
+
+      if (gym._id) newIds.add(String(gym._id));
+      if (gym.partnerId) newIds.add(String(gym.partnerId));
+      if (gym.id) newIds.add(String(gym.id));
+    });
+
+    this.cachedGyms = uniqueGyms;
+    this.bookmarkedIds = newIds;
+  }
+
+  /**
    * Initialize bookmark state from persistent AsyncStorage
    */
   async init() {
@@ -27,18 +65,23 @@ class BookmarkService {
           AsyncStorage.getItem(BOOKMARKED_GYMS_CACHE_KEY).catch(() => null),
         ]);
 
-        if (storedIds) {
-          const parsed = JSON.parse(storedIds);
-          if (Array.isArray(parsed)) {
-            this.bookmarkedIds = new Set(parsed.map(String));
-          }
-        }
-
         if (storedGyms) {
           const parsedGyms = JSON.parse(storedGyms);
           if (Array.isArray(parsedGyms)) {
             this.cachedGyms = parsedGyms;
           }
+        }
+
+        if (storedIds) {
+          const parsed = JSON.parse(storedIds);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((id) => this.bookmarkedIds.add(String(id)));
+          }
+        }
+
+        // Re-align and sanitize indices so cachedGyms & bookmarkedIds are unified
+        if (this.cachedGyms.length > 0) {
+          this.rebuildIndices();
         }
 
         this.isInitialized = true;
@@ -62,7 +105,7 @@ class BookmarkService {
     this.listeners.add(callback);
     // Trigger immediately with current state
     try {
-      callback(new Set(this.bookmarkedIds), this.cachedGyms);
+      callback(new Set(this.bookmarkedIds), this.cachedGyms, this.getCount());
     } catch {
       // Ignore initial callback error
     }
@@ -75,9 +118,10 @@ class BookmarkService {
   notifyListeners() {
     const copy = new Set(this.bookmarkedIds);
     const gymsCopy = [...this.cachedGyms];
+    const count = this.getCount();
     this.listeners.forEach((listener) => {
       try {
-        listener(copy, gymsCopy);
+        listener(copy, gymsCopy, count);
       } catch (e) {
         console.warn('[BOOKMARK SERVICE] Listener notification error:', e?.message);
       }
@@ -89,17 +133,27 @@ class BookmarkService {
    */
   isBookmarked(gymOrId) {
     if (!gymOrId) return false;
-    const id = typeof gymOrId === 'string' ? gymOrId : (gymOrId.id || gymOrId._id || gymOrId.partnerId);
-    if (!id) return false;
-    const strId = String(id);
-    return this.bookmarkedIds.has(strId);
+    if (typeof gymOrId === 'string') {
+      return this.bookmarkedIds.has(gymOrId);
+    }
+    const candidates = [gymOrId.id, gymOrId._id, gymOrId.partnerId, gymOrId.mongoId].filter(Boolean);
+    return candidates.some((cand) => this.bookmarkedIds.has(String(cand)));
   }
 
   /**
-   * Get total count of bookmarked gyms
+   * Get total count of unique bookmarked gyms
    */
   getCount() {
-    return this.bookmarkedIds.size;
+    if (Array.isArray(this.cachedGyms) && this.cachedGyms.length > 0) {
+      return this.cachedGyms.length;
+    }
+    if (this.bookmarkedIds && this.bookmarkedIds.size > 0) {
+      const mongoIdRegex = /^[0-9a-fA-F]{24}$/;
+      const mongoIds = Array.from(this.bookmarkedIds).filter((id) => mongoIdRegex.test(id));
+      if (mongoIds.length > 0) return mongoIds.length;
+      return this.bookmarkedIds.size;
+    }
+    return 0;
   }
 
   /**
@@ -129,44 +183,51 @@ class BookmarkService {
     const mongoId = gym._id ? String(gym._id) : null;
     const partnerId = gym.partnerId ? String(gym.partnerId) : null;
 
-    const currentlyBookmarked = this.bookmarkedIds.has(gymId) ||
-      (mongoId && this.bookmarkedIds.has(mongoId)) ||
-      (partnerId && this.bookmarkedIds.has(partnerId));
-
+    const currentlyBookmarked = this.isBookmarked(gym);
     const nextState = !currentlyBookmarked;
 
     // 1. Optimistic Local State Update
     if (nextState) {
-      this.bookmarkedIds.add(gymId);
-      if (mongoId) this.bookmarkedIds.add(mongoId);
-      if (partnerId) this.bookmarkedIds.add(partnerId);
-
       // Add to cached gyms list if not already present
-      const alreadyInList = this.cachedGyms.some(
-        (g) => String(g.id || g._id) === gymId || (mongoId && String(g._id) === mongoId)
-      );
+      const alreadyInList = this.cachedGyms.some((g) => {
+        const gGymId = String(g.id || g._id || g.partnerId || '');
+        const gMongoId = g._id ? String(g._id) : null;
+        const gPartnerId = g.partnerId ? String(g.partnerId) : null;
+        return (
+          gGymId === gymId ||
+          (mongoId && gMongoId === mongoId) ||
+          (partnerId && gPartnerId === partnerId)
+        );
+      });
+
       if (!alreadyInList) {
         this.cachedGyms = [
           {
             ...gym,
             id: gymId,
             _id: mongoId || gymId,
+            partnerId: partnerId || (gym.partnerId ? String(gym.partnerId) : ''),
             isBookmarked: true,
           },
           ...this.cachedGyms,
         ];
       }
     } else {
-      this.bookmarkedIds.delete(gymId);
-      if (mongoId) this.bookmarkedIds.delete(mongoId);
-      if (partnerId) this.bookmarkedIds.delete(partnerId);
-
-      this.cachedGyms = this.cachedGyms.filter(
-        (g) => String(g.id || g._id) !== gymId && (!mongoId || String(g._id) !== mongoId)
-      );
+      this.cachedGyms = this.cachedGyms.filter((g) => {
+        const gGymId = String(g.id || g._id || g.partnerId || '');
+        const gMongoId = g._id ? String(g._id) : null;
+        const gPartnerId = g.partnerId ? String(g.partnerId) : null;
+        const matches = (
+          gGymId === gymId ||
+          (mongoId && gMongoId === mongoId) ||
+          (partnerId && gPartnerId === partnerId)
+        );
+        return !matches;
+      });
     }
 
-    // Persist to AsyncStorage immediately
+    // Rebuild lookup index from unique cachedGyms
+    this.rebuildIndices();
     this.persistLocalState();
     this.notifyListeners();
 
@@ -180,9 +241,8 @@ class BookmarkService {
     try {
       const response = await apiService.toggleBookmark(gymId);
       if (response && Array.isArray(response.bookmarkedGymIds)) {
-        // Reconcile server bookmarked IDs
-        response.bookmarkedGymIds.forEach((bId) => this.bookmarkedIds.add(String(bId)));
-        this.persistLocalState();
+        // Refresh with latest canonical DB data
+        await this.fetchLiveBookmarks();
       }
     } catch (err) {
       console.warn('[BOOKMARK SERVICE] Notice syncing bookmark with DB:', err?.message);
@@ -221,22 +281,10 @@ class BookmarkService {
       if (res && Array.isArray(res.gyms)) {
         const liveGyms = res.gyms.map((g) => ({ ...g, isBookmarked: true }));
         this.cachedGyms = liveGyms;
-
-        // Update ID set
-        const newIds = new Set();
-        liveGyms.forEach((g) => {
-          if (g._id) newIds.add(String(g._id));
-          if (g.partnerId) newIds.add(String(g.partnerId));
-          if (g.id) newIds.add(String(g.id));
-        });
-
-        // Also merge any offline guest bookmarks
-        this.bookmarkedIds.forEach((id) => newIds.add(id));
-        this.bookmarkedIds = newIds;
-
+        this.rebuildIndices();
         this.persistLocalState();
         this.notifyListeners();
-        return liveGyms;
+        return this.cachedGyms;
       }
     } catch (err) {
       console.warn('[BOOKMARK SERVICE] Notice fetching live bookmarks:', err?.message);

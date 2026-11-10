@@ -243,13 +243,17 @@ export const HomeScreen = ({ navigation }) => {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showBookmarksModal, setShowBookmarksModal] = useState(false);
   const [bookmarkedIds, setBookmarkedIds] = useState(() => new Set(bookmarkService.getBookmarkedIds()));
+  const [bookmarkCount, setBookmarkCount] = useState(() => bookmarkService.getCount());
 
   useEffect(() => {
     bookmarkService.init().then(() => {
       setBookmarkedIds(new Set(bookmarkService.getBookmarkedIds()));
+      setBookmarkCount(bookmarkService.getCount());
+      bookmarkService.fetchLiveBookmarks();
     });
-    const unsubscribe = bookmarkService.subscribe((ids) => {
+    const unsubscribe = bookmarkService.subscribe((ids, gyms, count) => {
       setBookmarkedIds(new Set(ids));
+      setBookmarkCount(typeof count === 'number' ? count : bookmarkService.getCount());
     });
     return unsubscribe;
   }, []);
@@ -693,13 +697,13 @@ export const HomeScreen = ({ navigation }) => {
               activeOpacity={0.7}
             >
               <MaterialIcons
-                name={bookmarkedIds.size > 0 ? 'bookmark' : 'bookmark-border'}
+                name={bookmarkCount > 0 ? 'bookmark' : 'bookmark-border'}
                 size={22}
-                color={bookmarkedIds.size > 0 ? AppColors.secondaryColor : colors.text}
+                color={bookmarkCount > 0 ? AppColors.secondaryColor : colors.text}
               />
-              {bookmarkedIds.size > 0 && (
+              {bookmarkCount > 0 && (
                 <View style={styles.headerBookmarkBadge}>
-                  <Text style={styles.headerBookmarkBadgeText}>{bookmarkedIds.size}</Text>
+                  <Text style={styles.headerBookmarkBadgeText}>{bookmarkCount}</Text>
                 </View>
               )}
             </TouchableOpacity>
