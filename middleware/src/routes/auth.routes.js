@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   logoutUser,
   checkEmailAvailability,
+  checkPhoneAvailability,
   updateProfile,
 } from '../controllers/auth.controller.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
@@ -21,6 +22,8 @@ router.post('/register', registerCustomer);
 router.post('/logout', logoutUser);
 router.get('/check-email', checkEmailAvailability);
 router.post('/check-email', checkEmailAvailability);
+router.get('/check-phone', checkPhoneAvailability);
+router.post('/check-phone', checkPhoneAvailability);
 
 // Protected routes
 router.get('/me', authenticate, getCurrentUser);

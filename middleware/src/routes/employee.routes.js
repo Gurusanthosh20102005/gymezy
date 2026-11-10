@@ -29,6 +29,11 @@ router.patch(
   authorizeRoles(USER_ROLES.GYM_OWNER, USER_ROLES.SUPER_ADMIN),
   reviewEmployeeApproval
 );
+router.put(
+  '/:id/approval',
+  authorizeRoles(USER_ROLES.GYM_OWNER, USER_ROLES.SUPER_ADMIN),
+  reviewEmployeeApproval
+);
 
 // List employees (with gymId / partnerId filtering)
 router.get('/', getEmployees);

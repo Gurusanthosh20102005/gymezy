@@ -35,7 +35,16 @@ const isAllowedOrigin = (origin) => {
   if (allowedOrigins.has(origin)) return true;
   try {
     const { hostname } = new URL(origin);
-    if (hostname === 'gymezy.com' || hostname.endsWith('.gymezy.com')) {
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.startsWith('192.168.') ||
+      hostname.startsWith('10.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      hostname.endsWith('.local') ||
+      hostname === 'gymezy.com' ||
+      hostname.endsWith('.gymezy.com')
+    ) {
       return true;
     }
   } catch {

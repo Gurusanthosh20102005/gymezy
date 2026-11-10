@@ -36,7 +36,14 @@ export const EmployeesTab = ({ topInset, navigation }) => {
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const { showToast } = useToast();
-  const { gym } = useAuth();
+  const { gym, user } = useAuth();
+
+  const isManager = Boolean(
+    user?.isManager ||
+    user?.role === 'Manager' ||
+    user?.role === 'MANAGER' ||
+    String(user?.role || '').toLowerCase() === 'manager'
+  );
 
   // State
   const [employees, setEmployees] = useState([]);
@@ -502,6 +509,14 @@ export const EmployeesTab = ({ topInset, navigation }) => {
             const isPending = emp.approvalStatus === 'Pending Approval';
             const isActive = emp.status === 'Active';
 
+            const isSelf = Boolean(
+              (user?.email && emp.email && user.email.toLowerCase() === emp.email.toLowerCase()) ||
+              (user?.phone && emp.phone && user.phone.replace(/[^0-9]/g, '') === String(emp.phone).replace(/[^0-9]/g, '')) ||
+              (user?.employeeId && emp.employeeId && user.employeeId === emp.employeeId) ||
+              (user?.name && emp.name && user.name.toLowerCase() === emp.name.toLowerCase()) ||
+              (user?.id && (emp._id === user.id || emp.id === user.id || emp.userId === user.id))
+            );
+
             const initials = emp.name
               ? emp.name
                   .split(' ')
@@ -519,7 +534,12 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                   styles.employeeCard,
                   {
                     backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                    borderColor: isSelf
+                      ? '#A855F7'
+                      : isDark
+                      ? AppColors.darkBorder
+                      : '#E2E8F0',
+                    borderWidth: isSelf ? 1.5 : 1,
                   },
                 ]}
                 activeOpacity={0.88}
@@ -549,6 +569,21 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                         >
                           {emp.name}
                         </Text>
+                        {isSelf && (
+                          <View
+                            style={{
+                              backgroundColor: isDark ? 'rgba(168, 85, 247, 0.22)' : '#F3E8FF',
+                              borderColor: isDark ? 'rgba(168, 85, 247, 0.5)' : '#D8B4FE',
+                              borderWidth: 1,
+                              borderRadius: 6,
+                              paddingHorizontal: 6,
+                              paddingVertical: 1,
+                              marginRight: 4,
+                            }}
+                          >
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#9333EA' }}>You</Text>
+                          </View>
+                        )}
                         <View
                           style={[
                             styles.empIdTag,
@@ -882,9 +917,31 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                     </View>
                   )}
                   <View style={{ flex: 1, marginLeft: 14 }}>
-                    <Text style={[styles.modalEmpName, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                      {selectedEmployee.name}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[styles.modalEmpName, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                        {selectedEmployee.name}
+                      </Text>
+                      {Boolean(
+                        (user?.email && selectedEmployee.email && user.email.toLowerCase() === selectedEmployee.email.toLowerCase()) ||
+                        (user?.phone && selectedEmployee.phone && user.phone.replace(/[^0-9]/g, '') === String(selectedEmployee.phone).replace(/[^0-9]/g, '')) ||
+                        (user?.employeeId && selectedEmployee.employeeId && user.employeeId === selectedEmployee.employeeId) ||
+                        (user?.name && selectedEmployee.name && user.name.toLowerCase() === selectedEmployee.name.toLowerCase()) ||
+                        (user?.id && (selectedEmployee._id === user.id || selectedEmployee.id === user.id || selectedEmployee.userId === user.id))
+                      ) && (
+                        <View
+                          style={{
+                            backgroundColor: isDark ? 'rgba(168, 85, 247, 0.22)' : '#F3E8FF',
+                            borderColor: isDark ? 'rgba(168, 85, 247, 0.5)' : '#D8B4FE',
+                            borderWidth: 1,
+                            borderRadius: 6,
+                            paddingHorizontal: 6,
+                            paddingVertical: 1,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: '#9333EA' }}>You</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={[styles.modalEmpRole, { color: AppColors.primaryColor }]}>
                       {selectedEmployee.role === 'Manager' ? 'Manager (Operational Admin)' : selectedEmployee.role}
                     </Text>
@@ -942,7 +999,7 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                   </Text>
                 </View>
 
-                {selectedEmployee.approvalStatus === 'Pending Approval' && (
+                {selectedEmployee.approvalStatus === 'Pending Approval' && !isManager && (
                   <View
                     style={{
                       flexDirection: 'row',
@@ -988,6 +1045,32 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                     >
                       <Text style={{ color: AppColors.dangerRed, fontWeight: '700', fontSize: 12 }}>Reject</Text>
                     </TouchableOpacity>
+                  </View>
+                )}
+
+                {selectedEmployee.approvalStatus === 'Pending Approval' && isManager && (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      gap: 10,
+                      marginBottom: 16,
+                      padding: 12,
+                      backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7',
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(245, 158, 11, 0.3)' : '#FDE68A',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <MaterialIcons name="hourglass-empty" size={20} color={AppColors.warningAmber} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#92400E' }}>
+                        Pending Gym Admin Review
+                      </Text>
+                      <Text style={{ fontSize: 11, color: isDark ? 'rgba(255,255,255,0.7)' : '#B45309' }}>
+                        This staff profile has been submitted and is awaiting approval from the Gym Admin.
+                      </Text>
+                    </View>
                   </View>
                 )}
 
@@ -1203,7 +1286,17 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                     }}
                   >
                     <MaterialIcons name="edit" size={17} color="#FFFFFF" />
-                    <Text style={styles.modalActionBtnText}>Edit</Text>
+                    <Text style={styles.modalActionBtnText}>
+                      {Boolean(
+                        (user?.email && selectedEmployee.email && user.email.toLowerCase() === selectedEmployee.email.toLowerCase()) ||
+                        (user?.phone && selectedEmployee.phone && user.phone.replace(/[^0-9]/g, '') === String(selectedEmployee.phone).replace(/[^0-9]/g, '')) ||
+                        (user?.employeeId && selectedEmployee.employeeId && user.employeeId === selectedEmployee.employeeId) ||
+                        (user?.name && selectedEmployee.name && user.name.toLowerCase() === selectedEmployee.name.toLowerCase()) ||
+                        (user?.id && (selectedEmployee._id === user.id || selectedEmployee.id === user.id || selectedEmployee.userId === user.id))
+                      )
+                        ? 'Edit My Profile'
+                        : 'Edit'}
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity

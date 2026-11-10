@@ -52,16 +52,19 @@ export const detectEnvironment = () => {
  * @returns {string} Fully qualified API Base URL
  */
 export const getApiBaseUrl = () => {
-  const currentEnv = detectEnvironment();
-
-  // If local / on localhost, always target local middleware backend
-  if (currentEnv === ENV_MODES.LOCAL) {
-    return import.meta.env.VITE_API_URL || API_BASE_URLS[ENV_MODES.LOCAL];
-  }
-
-  // Direct environment variable for staging/production builds
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
+  }
+
+  const currentEnv = detectEnvironment();
+
+  // If local / on localhost / LAN IP, target local middleware backend dynamically
+  if (currentEnv === ENV_MODES.LOCAL) {
+    if (typeof window !== 'undefined' && window.location?.hostname) {
+      const { hostname, protocol } = window.location;
+      return `${protocol}//${hostname}:5001/api/v1`;
+    }
+    return API_BASE_URLS[ENV_MODES.LOCAL];
   }
 
   return API_BASE_URLS[currentEnv] || API_BASE_URLS[ENV_MODES.PROD];

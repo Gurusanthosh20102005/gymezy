@@ -550,21 +550,19 @@ export const ApplicationStatus = () => {
                 <span>{getStatusLabel()}</span>
               </div>
 
-              {gym.partnerId && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    padding: '4px 10px',
-                    borderRadius: 20,
-                    backgroundColor: surfaceBg,
-                    border: `1px solid ${borderCol}`,
-                    color: textSecondary,
-                  }}
-                >
-                  ID: {gym.partnerId}
-                </div>
-              )}
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: '4px 10px',
+                  borderRadius: 20,
+                  backgroundColor: surfaceBg,
+                  border: `1px solid ${borderCol}`,
+                  color: textSecondary,
+                }}
+              >
+                ID: {(gym.partnerId && !/^[0-9a-fA-F]{24}$/.test(gym.partnerId) && gym.partnerId !== '-') ? gym.partnerId : '-'}
+              </div>
             </div>
 
             {/* Header Actions */}
@@ -880,11 +878,6 @@ export const ApplicationStatus = () => {
               <div>
                 <div style={{ color: textMuted, fontSize: 11, marginBottom: 2 }}>Phone</div>
                 <div>{gym.phone || user?.phone || '—'}</div>
-              </div>
-
-              <div>
-                <div style={{ color: textMuted, fontSize: 11, marginBottom: 2 }}>Business Type</div>
-                <div>{gym.businessType || 'Private Limited'}</div>
               </div>
 
               <div>
@@ -1398,18 +1391,6 @@ export const ApplicationStatus = () => {
                       </Col>
 
                       <Col xs={24} sm={12}>
-                        <Form.Item label="Business Structure" name="businessType">
-                          <Select>
-                            <Option value="Private Limited">Private Limited (Pvt Ltd)</Option>
-                            <Option value="Partnership">Partnership Firm</Option>
-                            <Option value="Proprietorship">Sole Proprietorship</Option>
-                            <Option value="LLP">Limited Liability Partnership (LLP)</Option>
-                            <Option value="Individual">Individual Fitness Studio</Option>
-                          </Select>
-                        </Form.Item>
-                      </Col>
-
-                      <Col xs={24} sm={12}>
                         <Form.Item label="Partnership Plan" name="subscriptionType">
                           <Select>
                             <Option value="Listing Only">Free Listing (Discovery Only)</Option>
@@ -1421,14 +1402,22 @@ export const ApplicationStatus = () => {
                       </Col>
 
                       <Col xs={24} sm={12}>
-                        <Form.Item label="GST Number (Optional)" name="gstNumber">
-                          <Input placeholder="33AAAAA0000A1Z5" />
+                        <Form.Item
+                          label="GST Number (Optional)"
+                          name="gstNumber"
+                          normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15) : '')}
+                        >
+                          <Input maxLength={15} placeholder="33AAAAA0000A1Z5" />
                         </Form.Item>
                       </Col>
 
                       <Col xs={24} sm={12}>
-                        <Form.Item label="PAN Number (Optional)" name="panNumber">
-                          <Input placeholder="ABCDE1234F" />
+                        <Form.Item
+                          label="PAN Number (Optional)"
+                          name="panNumber"
+                          normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) : '')}
+                        >
+                          <Input maxLength={10} placeholder="ABCDE1234F" />
                         </Form.Item>
                       </Col>
                     </Row>
@@ -1804,14 +1793,14 @@ export const ApplicationStatus = () => {
                       </Col>
 
                       <Col xs={24} sm={12}>
-                        <Form.Item label="Account Number" name="accountNumber">
-                          <Input placeholder="50100000000000" />
+                        <Form.Item label="Account Number" name="accountNumber" normalize={(val) => val ? val.replace(/\D/g, '').slice(0, 18) : ''}>
+                          <Input placeholder="50100000000000" maxLength={18} inputMode="numeric" />
                         </Form.Item>
                       </Col>
 
                       <Col xs={24} sm={12}>
-                        <Form.Item label="IFSC Code" name="ifscCode">
-                          <Input placeholder="HDFC0001234" />
+                        <Form.Item label="IFSC Code" name="ifscCode" normalize={(val) => val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11) : ''}>
+                          <Input placeholder="HDFC0001234" maxLength={11} />
                         </Form.Item>
                       </Col>
 

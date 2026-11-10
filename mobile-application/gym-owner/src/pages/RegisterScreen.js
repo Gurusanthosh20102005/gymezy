@@ -225,10 +225,12 @@ const validateField = (field, value, form) => {
       if (!/^\d{6}$/.test(value.trim())) return 'Pincode must be exactly 6 digits';
       return '';
     case 'floorSpaceSqFt':
-      if (!value || Number(value) < 100) return 'Floor area must be at least 100 sq. ft.';
+      if (!value || Number(value) < 200) return 'Floor area must be at least 200 sq. ft.';
+      if (Number(value) > 100000) return 'Floor area cannot exceed 100,000 sq. ft.';
       return '';
     case 'maxFloorCapacity':
-      if (!value || Number(value) < 1) return 'Max capacity must be at least 1';
+      if (!value || Number(value) < 5) return 'Max capacity must be at least 5 athletes';
+      if (Number(value) > 2000) return 'Max capacity cannot exceed 2,000 athletes';
       return '';
     case 'logo':
       if (!value) return 'Gym brand logo is required';
@@ -268,6 +270,81 @@ const validateField = (field, value, form) => {
   }
 };
 
+const INITIAL_FORM_DATA = {
+  gymName: '',
+  tagline: '',
+  ownerName: '',
+  phone: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  businessType: 'Private Limited',
+  yearEstablished: '',
+  gstNumber: '',
+  panNumber: '',
+  branches: '1',
+  businessCertificate: '',
+  businessCertificateName: '',
+  businessCertificateSize: '',
+
+  // Step 2: Location & GPS
+  address: '',
+  area: '',
+  city: 'Chennai',
+  state: 'Tamil Nadu',
+  pincode: '',
+  landmark: '',
+  lat: 13.0827,
+  lng: 80.2707,
+  googleMapsUrl: '',
+  weekdayOpen: '05:30 AM',
+  weekdayClose: '10:30 PM',
+  weekendOpen: '06:00 AM',
+  weekendClose: '09:00 PM',
+  isSplitShift: false,
+  isOpenHolidays: true,
+  is24Hours: false,
+
+  // Step 3: Facilities, Amenities & Photos
+  floorSpaceSqFt: 3500,
+  maxFloorCapacity: 45,
+  genderAllowed: 'Unisex',
+  logo: '',
+  coverPhoto: '',
+  galleryPhotos: [],
+  facilities: ['AC Gym', 'Locker Facility', 'Shower Available', 'Free Wi-Fi', 'CCTV 24/7'],
+  amenities: ['RO Drinking Water', 'Towel Service', 'Locker Key Padlocks'],
+  aboutText: '',
+
+  // Step 4: Pricing & Workouts
+  workouts: ['GYM / Strength', 'Cardio Fitness', 'HIIT (High Intensity)'],
+  rules: [...DEFAULT_RULES],
+  safetyMeasures: [...DEFAULT_SAFETY],
+  singleSessionPrice: 199,
+  weeklyPassPrice: 799,
+  fiveSessionPrice: 899,
+  monthlyPrice: 1999,
+  quarterlyPrice: 4999,
+  halfYearlyPrice: 8999,
+  annualPrice: 14999,
+  freeCancellationHours: 2,
+  refundPercentage: 100,
+  rescheduleAllowedCount: 2,
+
+  // Step 5: Bank & Submission
+  subscriptionType: 'Hybrid',
+  commissionRate: 10,
+  settlementCycle: 'Daily (T+1)',
+  accountHolder: '',
+  bankName: '',
+  accountNumber: '',
+  confirmAccountNumber: '',
+  ifscCode: '',
+  upiId: '',
+
+  agreedToTerms: false,
+};
+
 export const RegisterScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { isDark, toggleTheme } = useTheme();
@@ -287,80 +364,21 @@ export const RegisterScreen = ({ navigation }) => {
   const [touched, setTouched] = useState({});
 
   // Form State matching web gym exactly
-  const [formData, setFormData] = useState({
-    gymName: '',
-    tagline: '',
-    ownerName: '',
-    phone: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    businessType: 'Private Limited',
-    yearEstablished: '',
-    gstNumber: '',
-    panNumber: '',
-    branches: '1',
-    businessCertificate: '',
-    businessCertificateName: '',
-    businessCertificateSize: '',
+  const [formData, setFormData] = useState(() => ({ ...INITIAL_FORM_DATA }));
 
-    // Step 2: Location & GPS
-    address: '',
-    area: '',
-    city: 'Chennai',
-    state: 'Tamil Nadu',
-    pincode: '',
-    landmark: '',
-    lat: 13.0827,
-    lng: 80.2707,
-    googleMapsUrl: '',
-    weekdayOpen: '05:30 AM',
-    weekdayClose: '10:30 PM',
-    weekendOpen: '06:00 AM',
-    weekendClose: '09:00 PM',
-    isSplitShift: false,
-    isOpenHolidays: true,
-    is24Hours: false,
-
-    // Step 3: Facilities, Amenities & Photos
-    floorSpaceSqFt: 3500,
-    maxFloorCapacity: 45,
-    genderAllowed: 'Unisex',
-    logo: '',
-    coverPhoto: '',
-    galleryPhotos: [],
-    facilities: ['AC Gym', 'Locker Facility', 'Shower Available', 'Free Wi-Fi', 'CCTV 24/7'],
-    amenities: ['RO Drinking Water', 'Towel Service', 'Locker Key Padlocks'],
-    aboutText: '',
-
-    // Step 4: Pricing & Workouts
-    workouts: ['GYM / Strength', 'Cardio Fitness', 'HIIT (High Intensity)'],
-    rules: [...DEFAULT_RULES],
-    safetyMeasures: [...DEFAULT_SAFETY],
-    singleSessionPrice: 199,
-    weeklyPassPrice: 799,
-    fiveSessionPrice: 899,
-    monthlyPrice: 1999,
-    quarterlyPrice: 4999,
-    halfYearlyPrice: 8999,
-    annualPrice: 14999,
-    freeCancellationHours: 2,
-    refundPercentage: 100,
-    rescheduleAllowedCount: 2,
-
-    // Step 5: Bank & Submission
-    subscriptionType: 'Hybrid',
-    commissionRate: 10,
-    settlementCycle: 'Daily (T+1)',
-    accountHolder: '',
-    bankName: '',
-    accountNumber: '',
-    confirmAccountNumber: '',
-    ifscCode: '',
-    upiId: '',
-
-    agreedToTerms: false,
-  });
+  const resetForm = () => {
+    setFormData({ ...INITIAL_FORM_DATA });
+    setCurrentStep(1);
+    setErrors({});
+    setTouched({});
+    setNewRuleInput('');
+    setNewSafetyInput('');
+    setEmailCheckStatus('idle');
+    setEmailCheckError('');
+    setPhoneCheckStatus('idle');
+    setPhoneCheckError('');
+    setIsGpsPinned(false);
+  };
 
   // Rules and Safety dynamic inputs
   const [newRuleInput, setNewRuleInput] = useState('');
@@ -369,6 +387,8 @@ export const RegisterScreen = ({ navigation }) => {
   // Email availability check states
   const [emailCheckStatus, setEmailCheckStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'exists'
   const [emailCheckError, setEmailCheckError] = useState('');
+  const [phoneCheckStatus, setPhoneCheckStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'exists'
+  const [phoneCheckError, setPhoneCheckError] = useState('');
 
   // Password visibility
   const [showPassword, setShowPassword] = useState(false);
@@ -424,6 +444,56 @@ export const RegisterScreen = ({ navigation }) => {
     return () => clearTimeout(timer);
   }, [formData.email]);
 
+  // Check phone availability
+  const checkPhoneExistsApi = async (phoneToCheck) => {
+    const digits = String(phoneToCheck || '').replace(/\D/g, '');
+    if (digits.length !== 10) {
+      setPhoneCheckStatus('idle');
+      setPhoneCheckError('');
+      return null;
+    }
+
+    setPhoneCheckStatus('checking');
+    setPhoneCheckError('');
+
+    try {
+      const response = await apiService.checkPhone(digits);
+      const data = response?.data || response;
+      if (data?.isExisting || data?.isAvailable === false) {
+        setPhoneCheckStatus('exists');
+        setPhoneCheckError('An account with this mobile number already exists. Please log in or use a different number.');
+        return false;
+      } else {
+        setPhoneCheckStatus('available');
+        setPhoneCheckError('');
+        return true;
+      }
+    } catch (err) {
+      if (err?.message?.includes('already exists')) {
+        setPhoneCheckStatus('exists');
+        setPhoneCheckError('An account with this mobile number already exists. Please log in or use a different number.');
+        return false;
+      }
+      setPhoneCheckStatus('idle');
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const digits = (formData.phone || '').replace(/\D/g, '');
+    if (digits.length !== 10) {
+      setPhoneCheckStatus('idle');
+      setPhoneCheckError('');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void checkPhoneExistsApi(digits);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [formData.phone]);
+
   // Compute live validation errors
   const errors = useMemo(() => {
     const errs = {};
@@ -435,8 +505,11 @@ export const RegisterScreen = ({ navigation }) => {
     if (emailCheckError && !errs.email) {
       errs.email = emailCheckError;
     }
+    if (phoneCheckError && !errs.phone) {
+      errs.phone = phoneCheckError;
+    }
     return errs;
-  }, [formData, emailCheckError]);
+  }, [formData, emailCheckError, phoneCheckError]);
 
   const updateField = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -641,6 +714,20 @@ export const RegisterScreen = ({ navigation }) => {
     setTouched(newTouched);
 
     if (currentStep === 1) {
+      if (phoneCheckStatus === 'checking') {
+        const isAvail = await checkPhoneExistsApi(formData.phone);
+        if (isAvail === false) {
+          showToast({ message: 'An account with this mobile number already exists.', isError: true });
+          return;
+        }
+      } else if (phoneCheckStatus === 'exists' || phoneCheckError) {
+        showToast({
+          message: 'An account with this mobile number already exists. Please log in or use a different number.',
+          isError: true,
+        });
+        return;
+      }
+
       if (emailCheckStatus === 'checking') {
         const isAvail = await checkEmailExistsApi(formData.email);
         if (isAvail === false) {
@@ -765,8 +852,13 @@ export const RegisterScreen = ({ navigation }) => {
       const res = await apiService.registerGym(payload);
 
       if (res?.success) {
-        setRegisteredGymData(res.data);
+        setRegisteredGymData({
+          ...res.data,
+          ownerName: formData.ownerName,
+          email: formData.email,
+        });
         setIsSuccess(true);
+        resetForm();
         showToast({ message: 'Registration submitted successfully!', isSuccess: true });
       } else {
         showToast({ message: res?.message || 'Registration failed. Please review your details.', isError: true });
@@ -835,18 +927,25 @@ export const RegisterScreen = ({ navigation }) => {
 
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Owner Name</Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>{formData.ownerName}</Text>
+                <Text style={[styles.detailValue, { color: textColor }]}>
+                  {registeredGymData?.ownerName || '-'}
+                </Text>
               </View>
 
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Login Email</Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>{formData.email}</Text>
+                <Text style={[styles.detailValue, { color: textColor }]}>
+                  {registeredGymData?.email || '-'}
+                </Text>
               </View>
             </View>
 
             <TouchableOpacity
               style={[styles.primaryActionBtn, { backgroundColor: primaryNavy }]}
-              onPress={() => navigation.replace('Login')}
+              onPress={() => {
+                resetForm();
+                navigation.replace('Login');
+              }}
               activeOpacity={0.85}
             >
               <Text style={styles.primaryActionBtnText}>Back to Sign In</Text>
@@ -1001,11 +1100,12 @@ export const RegisterScreen = ({ navigation }) => {
                         style={[
                           styles.planBtn,
                           isSelected && {
-                            backgroundColor: isDark ? primaryNavy : '#FFFFFF',
-                            borderColor: isDark ? primaryNavy : '#CBD5E1',
-                            elevation: 2,
-                            shadowColor: '#000',
-                            shadowOpacity: 0.08,
+                            backgroundColor: isDark ? 'rgba(99, 102, 241, 0.22)' : '#FFFFFF',
+                            borderColor: isDark ? '#818CF8' : '#4F46E5',
+                            borderWidth: 2,
+                            elevation: 3,
+                            shadowColor: isDark ? '#818CF8' : '#000',
+                            shadowOpacity: isDark ? 0.35 : 0.08,
                             shadowRadius: 4,
                           },
                         ]}
@@ -1019,7 +1119,7 @@ export const RegisterScreen = ({ navigation }) => {
                               color: isSelected
                                 ? isDark
                                   ? '#FFFFFF'
-                                  : primaryNavy
+                                  : '#4F46E5'
                                 : isDark
                                 ? '#94A3B8'
                                 : '#475569',
@@ -1079,11 +1179,34 @@ export const RegisterScreen = ({ navigation }) => {
 
               {/* Mobile Phone */}
               <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>
-                  Owner Mobile Number <Text style={styles.requiredStar}>*</Text>
-                </Text>
+                <View style={styles.fieldHeaderRow}>
+                  <Text style={[styles.fieldLabel, { color: textColor }]}>
+                    Owner Mobile Number <Text style={styles.requiredStar}>*</Text>
+                  </Text>
+                  {phoneCheckStatus === 'checking' && (
+                    <ActivityIndicator size="small" color={primaryNavy} />
+                  )}
+                  {phoneCheckStatus === 'available' && !errors.phone && (
+                    <Text style={{ fontSize: 11, color: '#16A34A', fontWeight: '700' }}>✓ Phone Available</Text>
+                  )}
+                  {phoneCheckStatus === 'exists' && (
+                    <Text style={{ fontSize: 11, color: '#EF4444', fontWeight: '700' }}>✕ Already Registered</Text>
+                  )}
+                </View>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: inputBg,
+                      borderColor:
+                        phoneCheckStatus === 'exists' || (touched.phone && errors.phone)
+                          ? '#EF4444'
+                          : phoneCheckStatus === 'available' && !errors.phone
+                          ? '#16A34A'
+                          : inputBorder,
+                      color: textColor,
+                    },
+                  ]}
                   keyboardType="phone-pad"
                   maxLength={10}
                   value={formData.phone}
@@ -1197,8 +1320,11 @@ export const RegisterScreen = ({ navigation }) => {
                   <TextInput
                     style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
                     autoCapitalize="characters"
+                    maxLength={15}
+                    placeholder="e.g. 33AAAAA0000A1Z5"
+                    placeholderTextColor={inputBorder}
                     value={formData.gstNumber}
-                    onChangeText={(val) => updateField('gstNumber', val.toUpperCase())}
+                    onChangeText={(val) => updateField('gstNumber', val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15))}
                     onBlur={() => markFieldTouched('gstNumber')}
                   />
                   {renderFieldError('gstNumber')}
@@ -1209,8 +1335,11 @@ export const RegisterScreen = ({ navigation }) => {
                   <TextInput
                     style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
                     autoCapitalize="characters"
+                    maxLength={10}
+                    placeholder="e.g. ABCDE1234F"
+                    placeholderTextColor={inputBorder}
                     value={formData.panNumber}
-                    onChangeText={(val) => updateField('panNumber', val.toUpperCase())}
+                    onChangeText={(val) => updateField('panNumber', val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
                     onBlur={() => markFieldTouched('panNumber')}
                   />
                   {renderFieldError('panNumber')}
@@ -2157,8 +2286,9 @@ export const RegisterScreen = ({ navigation }) => {
                   placeholder="50100456789012"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
+                  maxLength={18}
                   value={formData.accountNumber}
-                  onChangeText={(val) => updateField('accountNumber', val.replace(/\D/g, ''))}
+                  onChangeText={(val) => updateField('accountNumber', val.replace(/\D/g, '').slice(0, 18))}
                   onBlur={() => markFieldTouched('accountNumber')}
                 />
                 {renderFieldError('accountNumber')}
@@ -2174,8 +2304,9 @@ export const RegisterScreen = ({ navigation }) => {
                   placeholder="Re-enter bank account number"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
+                  maxLength={18}
                   value={formData.confirmAccountNumber}
-                  onChangeText={(val) => updateField('confirmAccountNumber', val.replace(/\D/g, ''))}
+                  onChangeText={(val) => updateField('confirmAccountNumber', val.replace(/\D/g, '').slice(0, 18))}
                   onBlur={() => markFieldTouched('confirmAccountNumber')}
                 />
                 {renderFieldError('confirmAccountNumber')}
@@ -2192,8 +2323,9 @@ export const RegisterScreen = ({ navigation }) => {
                     placeholder="HDFC0001234"
                     placeholderTextColor="#94A3B8"
                     autoCapitalize="characters"
+                    maxLength={11}
                     value={formData.ifscCode}
-                    onChangeText={(val) => updateField('ifscCode', val.toUpperCase())}
+                    onChangeText={(val) => updateField('ifscCode', val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11))}
                     onBlur={() => markFieldTouched('ifscCode')}
                   />
                   {renderFieldError('ifscCode')}
@@ -2566,6 +2698,8 @@ const styles = StyleSheet.create({
   planBtn: {
     flex: 1,
     minWidth: '45%',
+    minHeight: 64,
+    justifyContent: 'center',
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderRadius: 8,

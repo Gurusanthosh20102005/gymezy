@@ -266,10 +266,12 @@ const validateField = (field, value, form) => {
       if (!/^\d{6}$/.test(value.trim())) return 'Pincode must be exactly 6 digits';
       return '';
     case 'floorSpaceSqFt':
-      if (!value || Number(value) < 100) return 'Floor area must be at least 100 sq. ft.';
+      if (!value || Number(value) < 200) return 'Floor area must be at least 200 sq. ft.';
+      if (Number(value) > 100000) return 'Floor area cannot exceed 100,000 sq. ft.';
       return '';
     case 'maxFloorCapacity':
-      if (!value || Number(value) < 1) return 'Max capacity must be at least 1';
+      if (!value || Number(value) < 5) return 'Max capacity must be at least 5 athletes';
+      if (Number(value) > 2000) return 'Max capacity cannot exceed 2,000 athletes';
       return '';
     case 'logo':
       if (!value) return 'Gym brand logo is required';
@@ -309,6 +311,87 @@ const validateField = (field, value, form) => {
   }
 };
 
+const INITIAL_FORM_DATA = {
+  gymName: '',
+  tagline: '',
+  ownerName: '',
+  phone: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  businessType: 'Private Limited',
+  yearEstablished: '2024',
+  gstNumber: '',
+  panNumber: '',
+  branches: '1',
+  businessCertificate: '',
+  businessCertificateName: '',
+  businessCertificateSize: '',
+  businessCertificateType: '',
+
+  // Step 2: Location & GPS
+  address: '',
+  area: '',
+  city: 'Chennai',
+  state: 'Tamil Nadu',
+  pincode: '',
+  landmark: '',
+  lat: null,
+  lng: null,
+  googleMapsUrl: '',
+  weekdayOpen: '05:30 AM',
+  weekdayClose: '10:30 PM',
+  weekendOpen: '06:00 AM',
+  weekendClose: '09:00 PM',
+  isSplitShift: false,
+  isOpenHolidays: true,
+  is24Hours: false,
+
+  floorSpaceSqFt: 3500,
+  maxFloorCapacity: 45,
+  genderAllowed: 'Unisex',
+  logo: '',
+  coverPhoto: '',
+  galleryPhotos: [],
+  facilities: ['AC Gym', 'Locker Facility', 'Shower Available', 'Free Wi-Fi', 'CCTV 24/7'],
+  amenities: ['RO Drinking Water', 'Towel Service', 'Locker Key Padlocks'],
+  aboutText: '',
+
+  workouts: ['GYM / Strength', 'Cardio Fitness', 'HIIT (High Intensity)'],
+  rules: [
+    'Carry clean indoor training shoes',
+    'Mandatory personal gym towel on workout benches',
+    'Re-rack dumbbells and plates after set completion',
+  ],
+  safetyMeasures: [
+    'Daily multi-session equipment sanitization',
+    'Certified First Aid & CPR staff available on floor',
+    '24/7 CCTV surveillance coverage',
+  ],
+  singleSessionPrice: 199,
+  weeklyPassPrice: 799,
+  fiveSessionPrice: 899,
+  monthlyPrice: 1999,
+  quarterlyPrice: 4999,
+  halfYearlyPrice: 8999,
+  annualPrice: 14999,
+  freeCancellationHours: 2,
+  refundPercentage: 100,
+  rescheduleAllowedCount: 2,
+
+  subscriptionType: 'Listing Only',
+  commissionRate: 10,
+  settlementCycle: 'Daily (T+1)',
+  accountHolder: '',
+  bankName: '',
+  accountNumber: '',
+  confirmAccountNumber: '',
+  ifscCode: '',
+  upiId: '',
+
+  agreedToTerms: false,
+};
+
 export const Register = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -331,90 +414,40 @@ export const Register = () => {
   const [touched, setTouched] = useState({});
 
   // Form State
-  const [formData, setFormData] = useState({
-    gymName: '',
-    tagline: '',
-    ownerName: '',
-    phone: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    businessType: 'Private Limited',
-    yearEstablished: '2024',
-    gstNumber: '',
-    panNumber: '',
-    branches: '1',
-    businessCertificate: '',
-    businessCertificateName: '',
-    businessCertificateSize: '',
-    businessCertificateType: '',
+  const [formData, setFormData] = useState(() => ({ ...INITIAL_FORM_DATA }));
 
-    // Step 2: Location & GPS
-    address: '',
-    area: '',
-    city: 'Chennai',
-    state: 'Tamil Nadu',
-    pincode: '',
-    landmark: '',
-    lat: null,
-    lng: null,
-    googleMapsUrl: '',
-    weekdayOpen: '05:30 AM',
-    weekdayClose: '10:30 PM',
-    weekendOpen: '06:00 AM',
-    weekendClose: '09:00 PM',
-    isSplitShift: false,
-    isOpenHolidays: true,
-    is24Hours: false,
+  // Full reset helper to purge state and reset all inputs
+  const resetForm = () => {
+    setFormData({ ...INITIAL_FORM_DATA });
+    setCurrentStep(1);
+    setErrors({});
+    setTouched({});
+    setNewRuleInput('');
+    setNewSafetyInput('');
+    setEmailCheckStatus('idle');
+    setEmailCheckError('');
+    setPhoneCheckStatus('idle');
+    setPhoneCheckError('');
+    setIsGpsPinned(false);
+  };
 
-    floorSpaceSqFt: 3500,
-    maxFloorCapacity: 45,
-    genderAllowed: 'Unisex',
-    logo: '',
-    coverPhoto: '',
-    galleryPhotos: [],
-    facilities: ['AC Gym', 'Locker Facility', 'Shower Available', 'Free Wi-Fi', 'CCTV 24/7'],
-    amenities: ['RO Drinking Water', 'Towel Service', 'Locker Key Padlocks'],
-    aboutText: '',
-
-    workouts: ['GYM / Strength', 'Cardio Fitness', 'HIIT (High Intensity)'],
-    rules: [
-      'Carry clean indoor training shoes',
-      'Mandatory personal gym towel on workout benches',
-      'Re-rack dumbbells and plates after set completion',
-    ],
-    safetyMeasures: [
-      'Daily multi-session equipment sanitization',
-      'Certified First Aid & CPR staff available on floor',
-      '24/7 CCTV surveillance coverage',
-    ],
-    singleSessionPrice: 199,
-    weeklyPassPrice: 799,
-    fiveSessionPrice: 899,
-    monthlyPrice: 1999,
-    quarterlyPrice: 4999,
-    halfYearlyPrice: 8999,
-    annualPrice: 14999,
-    freeCancellationHours: 2,
-    refundPercentage: 100,
-    rescheduleAllowedCount: 2,
-
-    subscriptionType: 'Listing Only',
-    commissionRate: 10,
-    settlementCycle: 'Daily (T+1)',
-    accountHolder: '',
-    bankName: '',
-    accountNumber: '',
-    confirmAccountNumber: '',
-    ifscCode: '',
-    upiId: '',
-
-    agreedToTerms: false,
-  });
+  useEffect(() => {
+    if (location.state?.reset) {
+      resetForm();
+    }
+  }, [location.key]);
 
   // Email availability check states
   const [emailCheckStatus, setEmailCheckStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'exists'
   const [emailCheckError, setEmailCheckError] = useState('');
+
+  // Mobile Phone availability check states
+  const [phoneCheckStatus, setPhoneCheckStatus] = useState('idle'); // 'idle' | 'checking' | 'available' | 'exists'
+  const [phoneCheckError, setPhoneCheckError] = useState('');
+
+  // Dynamic Rule & Safety Measure input states
+  const [newRuleInput, setNewRuleInput] = useState('');
+  const [newSafetyInput, setNewSafetyInput] = useState('');
 
   // Auto-fill Google Profile into form if redirected from Google Sign-In
   useEffect(() => {
@@ -480,6 +513,57 @@ export const Register = () => {
 
     return () => clearTimeout(timer);
   }, [formData.email]);
+
+  // API Call to check phone availability
+  const checkPhoneExistsApi = async (phoneToCheck) => {
+    const digits = String(phoneToCheck || '').replace(/\D/g, '');
+    if (digits.length !== 10) {
+      setPhoneCheckStatus('idle');
+      setPhoneCheckError('');
+      return null;
+    }
+
+    setPhoneCheckStatus('checking');
+    setPhoneCheckError('');
+
+    try {
+      const response = await apiClient.get(`/auth/check-phone?phone=${encodeURIComponent(digits)}`);
+      const data = response?.data?.data || response?.data;
+      if (data?.isExisting || data?.isAvailable === false) {
+        setPhoneCheckStatus('exists');
+        setPhoneCheckError('An account with this mobile number already exists. Please log in or use a different number.');
+        return false;
+      } else {
+        setPhoneCheckStatus('available');
+        setPhoneCheckError('');
+        return true;
+      }
+    } catch (err) {
+      if (err?.response?.data?.message?.includes('already exists')) {
+        setPhoneCheckStatus('exists');
+        setPhoneCheckError('An account with this mobile number already exists. Please log in or use a different number.');
+        return false;
+      }
+      setPhoneCheckStatus('idle');
+      return null;
+    }
+  };
+
+  // Debounced phone check when typing
+  useEffect(() => {
+    const digits = (formData.phone || '').replace(/\D/g, '');
+    if (digits.length !== 10) {
+      setPhoneCheckStatus('idle');
+      setPhoneCheckError('');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void checkPhoneExistsApi(digits);
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [formData.phone]);
 
   // Compute live validation errors reactively
   const errors = useMemo(() => {
@@ -609,6 +693,25 @@ export const Register = () => {
     setTouched(newTouched);
 
     if (currentStep === 1) {
+      // 1. Mobile Phone Availability Check
+      if (phoneCheckStatus === 'checking') {
+        const isAvail = await checkPhoneExistsApi(formData.phone);
+        if (isAvail === false) {
+          message.error('An account with this mobile number already exists. Please log in or use a different number.');
+          return;
+        }
+      } else if (phoneCheckStatus === 'exists' || phoneCheckError) {
+        message.error('An account with this mobile number already exists. Please log in or use a different number.');
+        return;
+      } else if (phoneCheckStatus === 'idle' && formData.phone && formData.phone.trim().length === 10) {
+        const isAvail = await checkPhoneExistsApi(formData.phone);
+        if (isAvail === false) {
+          message.error('An account with this mobile number already exists. Please log in or use a different number.');
+          return;
+        }
+      }
+
+      // 2. Official Email Availability Check
       if (emailCheckStatus === 'checking') {
         const isAvail = await checkEmailExistsApi(formData.email);
         if (isAvail === false) {
@@ -807,8 +910,14 @@ export const Register = () => {
       const res = await apiClient.post('/gyms/register', payload);
 
       if (res.data?.success) {
-        setRegisteredGymData(res.data.data);
+        setRegisteredGymData({
+          ...res.data.data,
+          gymName: formData.gymName,
+          ownerName: formData.ownerName,
+          email: formData.email,
+        });
         setIsSuccess(true);
+        resetForm();
         confetti({
           particleCount: 100,
           spread: 70,
@@ -927,7 +1036,7 @@ export const Register = () => {
           </h2>
 
           <p style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5, margin: '0 0 24px 0' }}>
-            Thank you for registering <strong>{formData.gymName}</strong>. Your gym profile and facility photos have been routed to the GYMEZY Super Admin review desk.
+            Thank you for registering <strong>{registeredGymData?.gymName || 'your gym'}</strong>. Your gym profile and facility photos have been routed to the GYMEZY Super Admin review desk.
           </p>
 
           <div
@@ -964,7 +1073,7 @@ export const Register = () => {
                   Owner Name
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2 }}>
-                  {formData.ownerName}
+                  {registeredGymData?.ownerName || '-'}
                 </div>
               </Col>
               <Col span={12}>
@@ -972,7 +1081,7 @@ export const Register = () => {
                   Login Email
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2 }}>
-                  {formData.email}
+                  {registeredGymData?.email || '-'}
                 </div>
               </Col>
             </Row>
@@ -982,7 +1091,10 @@ export const Register = () => {
             type="primary"
             size="large"
             block
-            onClick={() => navigate('/login')}
+            onClick={() => {
+              resetForm();
+              navigate('/login');
+            }}
             style={{
               height: 46,
               backgroundColor: '#003882',
@@ -1206,22 +1318,26 @@ export const Register = () => {
                           textAlign: 'center',
                           backgroundColor: isSelected
                             ? isDarkMode
-                              ? '#003882'
+                              ? 'rgba(99, 102, 241, 0.22)'
                               : '#ffffff'
                             : 'transparent',
                           color: isSelected
                             ? isDarkMode
                               ? '#ffffff'
-                              : '#0f172a'
+                              : '#4f46e5'
                             : isDarkMode
                             ? '#94a3b8'
                             : '#475569',
                           boxShadow: isSelected
                             ? isDarkMode
-                              ? '0 2px 8px rgba(0,0,0,0.4)'
+                              ? '0 0 0 1px #818cf8, 0 4px 12px rgba(129, 140, 248, 0.25)'
                               : '0 1px 4px rgba(0,0,0,0.08)'
                             : 'none',
-                          border: isSelected && !isDarkMode ? '1px solid #cbd5e1' : '1px solid transparent',
+                          border: isSelected
+                            ? isDarkMode
+                              ? '1.5px solid #818cf8'
+                              : '1.5px solid #4f46e5'
+                            : '1.5px solid transparent',
                           fontWeight: isSelected ? 800 : 700,
                           fontSize: 13,
                           letterSpacing: '-0.2px',
@@ -1231,7 +1347,9 @@ export const Register = () => {
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          gap: 2,
+                          justifyContent: 'center',
+                          minHeight: 68,
+                          gap: 3,
                         }}
                       >
                         <span style={{ fontSize: 13.5, fontWeight: isSelected ? 800 : 700 }}>{plan.label}</span>
@@ -1271,21 +1389,6 @@ export const Register = () => {
                 </Col>
 
                 <Col xs={24} sm={12}>
-                  <label style={labelStyle}>Business Structure</label>
-                  <Select
-                    value={formData.businessType}
-                    onChange={(val) => updateField('businessType', val)}
-                    style={{ width: '100%', height: 44 }}
-                  >
-                    <Option value="Private Limited">Private Limited (Pvt Ltd)</Option>
-                    <Option value="Partnership">Partnership Firm</Option>
-                    <Option value="Proprietorship">Sole Proprietorship</Option>
-                    <Option value="LLP">Limited Liability Partnership (LLP)</Option>
-                    <Option value="Individual">Individual Fitness Studio</Option>
-                  </Select>
-                </Col>
-
-                <Col xs={24} sm={12}>
                   <label style={labelStyle}>Number of Branches</label>
                   <Select
                     value={formData.branches}
@@ -1302,8 +1405,10 @@ export const Register = () => {
                 <Col xs={24} sm={12}>
                   <label style={labelStyle}>GST Number (Optional)</label>
                   <Input
+                    maxLength={15}
+                    placeholder="e.g. 33AAAAA0000A1Z5"
                     value={formData.gstNumber}
-                    onChange={(e) => updateField('gstNumber', e.target.value.toUpperCase())}
+                    onChange={(e) => updateField('gstNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15))}
                     onBlur={() => markFieldTouched('gstNumber')}
                     style={getInputStyle('gstNumber')}
                   />
@@ -1313,8 +1418,10 @@ export const Register = () => {
                 <Col xs={24} sm={12}>
                   <label style={labelStyle}>PAN Number (Optional)</label>
                   <Input
+                    maxLength={10}
+                    placeholder="e.g. ABCDE1234F"
                     value={formData.panNumber}
-                    onChange={(e) => updateField('panNumber', e.target.value.toUpperCase())}
+                    onChange={(e) => updateField('panNumber', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
                     onBlur={() => markFieldTouched('panNumber')}
                     style={getInputStyle('panNumber')}
                   />
@@ -1452,18 +1559,58 @@ export const Register = () => {
                 </Col>
 
                 <Col xs={24} sm={12}>
-                  <label style={labelStyle}>
-                    Mobile / Contact Number <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>
+                      Owner Mobile Number <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    {phoneCheckStatus === 'checking' && (
+                      <span style={{ fontSize: 11, color: '#6366f1', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                        <LoadingOutlined spin /> Checking availability...
+                      </span>
+                    )}
+                    {phoneCheckStatus === 'available' && !errors.phone && (
+                      <span style={{ fontSize: 11, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                        <CheckCircleFilled style={{ fontSize: 11 }} /> Mobile available
+                      </span>
+                    )}
+                    {phoneCheckStatus === 'exists' && (
+                      <span style={{ fontSize: 11, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                        <CloseCircleFilled style={{ fontSize: 11 }} /> Mobile already registered
+                      </span>
+                    )}
+                  </div>
                   <Input
                     prefix={<PhoneOutlined style={{ color: '#94a3b8' }} />}
+                    suffix={
+                      phoneCheckStatus === 'checking' ? (
+                        <LoadingOutlined style={{ color: '#6366f1' }} spin />
+                      ) : phoneCheckStatus === 'available' && !errors.phone ? (
+                        <CheckCircleFilled style={{ color: '#10b981' }} />
+                      ) : (phoneCheckStatus === 'exists' || (touched.phone && errors.phone)) ? (
+                        <CloseCircleFilled style={{ color: '#ef4444' }} />
+                      ) : null
+                    }
                     maxLength={10}
                     value={formData.phone}
                     onChange={(e) => updateField('phone', e.target.value.replace(/\D/g, ''))}
                     onBlur={() => markFieldTouched('phone')}
-                    style={getInputStyle('phone')}
+                    style={{
+                      ...getInputStyle('phone'),
+                      borderColor:
+                        phoneCheckStatus === 'exists' || (touched.phone && errors.phone)
+                          ? '#ef4444'
+                          : phoneCheckStatus === 'available' && !errors.phone
+                          ? '#10b981'
+                          : getInputStyle('phone').borderColor,
+                    }}
                   />
                   {renderFieldError('phone')}
+                  {phoneCheckStatus === 'exists' && !errors.phone && (
+                    <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <CloseCircleFilled style={{ fontSize: 11 }} />
+                      <span>{phoneCheckError || 'An account with this mobile number already exists.'}</span>
+                    </div>
+                  )}
                 </Col>
 
                 <Col xs={24}>
@@ -2510,22 +2657,22 @@ export const Register = () => {
                     <div style={{ display: 'flex', gap: 8 }}>
                       <Input
                         placeholder="Add gym rule..."
-                        id="web-new-rule-input"
+                        value={newRuleInput}
+                        onChange={(e) => setNewRuleInput(e.target.value)}
                         style={{ height: 34, borderRadius: 6 }}
-                        onPressEnter={(e) => {
-                          if (e.target.value.trim()) {
-                            updateField('rules', [...(formData.rules || []), e.target.value.trim()]);
-                            e.target.value = '';
+                        onPressEnter={() => {
+                          if (newRuleInput.trim()) {
+                            updateField('rules', [...(formData.rules || []), newRuleInput.trim()]);
+                            setNewRuleInput('');
                           }
                         }}
                       />
                       <Button
                         icon={<PlusOutlined />}
                         onClick={() => {
-                          const input = document.getElementById('web-new-rule-input');
-                          if (input?.value?.trim()) {
-                            updateField('rules', [...(formData.rules || []), input.value.trim()]);
-                            input.value = '';
+                          if (newRuleInput.trim()) {
+                            updateField('rules', [...(formData.rules || []), newRuleInput.trim()]);
+                            setNewRuleInput('');
                           }
                         }}
                         style={{ flexShrink: 0, height: 34 }}
@@ -2556,22 +2703,22 @@ export const Register = () => {
                     <div style={{ display: 'flex', gap: 8 }}>
                       <Input
                         placeholder="Add safety measure..."
-                        id="web-new-safety-input"
+                        value={newSafetyInput}
+                        onChange={(e) => setNewSafetyInput(e.target.value)}
                         style={{ height: 34, borderRadius: 6 }}
-                        onPressEnter={(e) => {
-                          if (e.target.value.trim()) {
-                            updateField('safetyMeasures', [...(formData.safetyMeasures || []), e.target.value.trim()]);
-                            e.target.value = '';
+                        onPressEnter={() => {
+                          if (newSafetyInput.trim()) {
+                            updateField('safetyMeasures', [...(formData.safetyMeasures || []), newSafetyInput.trim()]);
+                            setNewSafetyInput('');
                           }
                         }}
                       />
                       <Button
                         icon={<PlusOutlined />}
                         onClick={() => {
-                          const input = document.getElementById('web-new-safety-input');
-                          if (input?.value?.trim()) {
-                            updateField('safetyMeasures', [...(formData.safetyMeasures || []), input.value.trim()]);
-                            input.value = '';
+                          if (newSafetyInput.trim()) {
+                            updateField('safetyMeasures', [...(formData.safetyMeasures || []), newSafetyInput.trim()]);
+                            setNewSafetyInput('');
                           }
                         }}
                         style={{ flexShrink: 0, height: 34 }}
@@ -2635,7 +2782,9 @@ export const Register = () => {
                   <Input
                     placeholder="50100456789012"
                     value={formData.accountNumber}
-                    onChange={(e) => updateField('accountNumber', e.target.value.replace(/\D/g, ''))}
+                    maxLength={18}
+                    inputMode="numeric"
+                    onChange={(e) => updateField('accountNumber', e.target.value.replace(/\D/g, '').slice(0, 18))}
                     onBlur={() => markFieldTouched('accountNumber')}
                     style={getInputStyle('accountNumber')}
                   />
@@ -2649,7 +2798,9 @@ export const Register = () => {
                   <Input
                     placeholder="Re-enter bank account number"
                     value={formData.confirmAccountNumber}
-                    onChange={(e) => updateField('confirmAccountNumber', e.target.value.replace(/\D/g, ''))}
+                    maxLength={18}
+                    inputMode="numeric"
+                    onChange={(e) => updateField('confirmAccountNumber', e.target.value.replace(/\D/g, '').slice(0, 18))}
                     onBlur={() => markFieldTouched('confirmAccountNumber')}
                     style={getInputStyle('confirmAccountNumber')}
                   />
@@ -2663,7 +2814,23 @@ export const Register = () => {
                   <Input
                     placeholder="e.g. HDFC0001234"
                     value={formData.ifscCode}
-                    onChange={(e) => updateField('ifscCode', e.target.value.toUpperCase())}
+                    maxLength={11}
+                    onChange={(e) => {
+                      const bankPrefix = getBankByName(formData.bankName)?.ifscPrefix || '';
+                      const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                      let finalVal = raw;
+                      if (bankPrefix) {
+                        if (!raw.startsWith(bankPrefix)) {
+                          const branchPart = raw.replace(new RegExp(`^${bankPrefix.slice(0, 3)}|^${bankPrefix.slice(0, 2)}|^${bankPrefix.slice(0, 1)}`, 'i'), '');
+                          finalVal = (bankPrefix + branchPart).slice(0, 11);
+                        } else {
+                          finalVal = raw.slice(0, 11);
+                        }
+                      } else {
+                        finalVal = raw.slice(0, 11);
+                      }
+                      updateField('ifscCode', finalVal);
+                    }}
                     onBlur={() => markFieldTouched('ifscCode')}
                     style={getInputStyle('ifscCode')}
                   />

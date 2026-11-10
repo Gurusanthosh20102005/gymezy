@@ -15,8 +15,6 @@ import {
   LockOutlined,
   SunOutlined,
   MoonOutlined,
-  ArrowRightOutlined,
-  SafetyCertificateFilled,
 } from '@ant-design/icons';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth, useEnvironment } from '../hooks';
@@ -258,12 +256,6 @@ export const Login = () => {
           </div>
 
           <div style={{ marginBottom: 32 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <SafetyCertificateFilled style={{ color: '#003882', fontSize: 18 }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-primary)', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                Master Access
-              </span>
-            </div>
             <h2
               style={{
                 fontSize: 24,
@@ -281,6 +273,7 @@ export const Login = () => {
             form={form}
             layout="vertical"
             onFinish={handleLogin}
+            autoComplete="off"
             initialValues={{
               email: '',
               password: '',
@@ -297,6 +290,7 @@ export const Login = () => {
               <Input
                 prefix={<UserOutlined style={{ color: '#1677ff' }} />}
                 placeholder="e.g. admin@gymezy.com or +91 9150955071"
+                autoComplete="username"
                 style={{
                   height: 46,
                   borderRadius: 'var(--radius-base)',
@@ -316,6 +310,7 @@ export const Login = () => {
               <Input.Password
                 prefix={<LockOutlined style={{ color: '#1677ff' }} />}
                 placeholder="Enter your password"
+                autoComplete="current-password"
                 style={{
                   height: 46,
                   borderRadius: 'var(--radius-base)',
@@ -346,7 +341,6 @@ export const Login = () => {
                 htmlType="submit"
                 loading={loading}
                 block
-                icon={<ArrowRightOutlined />}
                 style={{
                   height: 48,
                   fontSize: 15,

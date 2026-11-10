@@ -1724,9 +1724,9 @@ export const gymActionReviewSwitchRequest = async (req, res, next) => {
       throw ApiError.notFound('Switch request not found.');
     }
 
-    if (request.status !== 'PENDING_GYM_APPROVAL') {
+    if (!['PENDING_GYM_APPROVAL', 'PENDING_GYM_ADMIN_APPROVAL'].includes(request.status)) {
       throw ApiError.badRequest(
-        `Cannot perform gym action. Request is in status '${request.status}', expected 'PENDING_GYM_APPROVAL'.`
+        `Cannot perform gym action. Request is in status '${request.status}', expected 'PENDING_GYM_APPROVAL' or 'PENDING_GYM_ADMIN_APPROVAL'.`
       );
     }
 

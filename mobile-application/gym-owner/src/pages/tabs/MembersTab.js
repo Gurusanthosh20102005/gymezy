@@ -910,6 +910,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                 : `${cancellations.length} total cancellation requests`}
             </Text>
           </View>
+          {/* cmd walk-in button
           <TouchableOpacity
             style={styles.headerActionBtn}
             onPress={() => setShowWalkInMemberModal(true)}
@@ -918,6 +919,7 @@ export const MembersTab = ({ topInset, navigation }) => {
             <MaterialIcons name="person-add" size={17} color="#FFFFFF" />
             <Text style={styles.headerActionBtnText}>+ Walk-in Member</Text>
           </TouchableOpacity>
+          cmd walk-in button */}
         </View>
 
         {/* 2. TOP PROMINENT SEGMENTED TABS (Exact Web App Top Navigation) */}
