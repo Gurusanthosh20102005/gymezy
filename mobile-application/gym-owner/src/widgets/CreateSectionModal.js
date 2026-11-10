@@ -165,6 +165,7 @@ export const CreateSectionModal = ({
 
   // Available Trainers List
   const [trainers, setTrainers] = useState([]);
+  const [allEvaluatedTrainers, setAllEvaluatedTrainers] = useState([]);
   const [isLoadingTrainers, setIsLoadingTrainers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -188,7 +189,9 @@ export const CreateSectionModal = ({
 
         if (isMounted) {
           const availList = Array.isArray(data?.availableTrainers) ? data.availableTrainers : [];
+          const allEv = Array.isArray(data?.allTrainers) ? data.allTrainers : [];
           setTrainers(availList);
+          setAllEvaluatedTrainers(allEv);
 
           // If current trainerId is no longer in the available list, select first or null
           setTrainerId((currentId) => {
@@ -210,9 +213,11 @@ export const CreateSectionModal = ({
     };
   }, [visible, startDate, durationDays, activeDays, startTime, endTime, initialSection?._id]);
 
-  // Selected Trainer Object
+  // Selected Trainer Object (Checking both available and all evaluated trainers so name is never missing)
   const selectedTrainer = useMemo(() => {
-    return trainers.find((t) => (t._id || t.id) === trainerId) || null;
+    const list = trainers.length > 0 ? trainers : allEvaluatedTrainers;
+    return list.find((t) => (t._id || t.id) === trainerId) || null;
+  }, [trainers, allEvaluatedTrainers, trainerId]);
   }, [trainers, trainerId]);
 
   // Estimated End Date calculation in DD-MM-YYYY taking weekly active days into account
@@ -660,35 +665,51 @@ export const CreateSectionModal = ({
             <ScrollView style={{ maxHeight: 300 }}>
               {isLoadingTrainers ? (
                 <ActivityIndicator size="small" color="#003882" style={{ padding: 20 }} />
-              ) : trainers.length === 0 ? (
+              ) : (allEvaluatedTrainers.length > 0 ? allEvaluatedTrainers : trainers).length === 0 ? (
                 <Text style={{ padding: 20, textAlign: 'center', color: subTextCol }}>
-                  No trainers are available for the selected time, active days, and dates.
+                  No trainers found in gym staff records.
                 </Text>
               ) : (
-                trainers.map((t) => {
+                (allEvaluatedTrainers.length > 0 ? allEvaluatedTrainers : trainers).map((t) => {
+                  const isAvail = t.isAvailable !== false;
                   const isSelected = (t._id || t.id) === trainerId;
                   return (
                     <TouchableOpacity
                       key={t._id || t.id}
+                      disabled={!isAvail}
                       onPress={() => {
-                        setTrainerId(t._id || t.id);
-                        setShowTrainerPicker(false);
+                        if (isAvail) {
+                          setTrainerId(t._id || t.id);
+                          setShowTrainerPicker(false);
+                        }
                       }}
                       style={[
                         styles.pickerItem,
                         {
                           backgroundColor: isSelected ? 'rgba(0, 56, 130, 0.1)' : 'transparent',
                           borderColor: borderCol,
+                          opacity: isAvail ? 1 : 0.5,
                         },
                       ]}
                     >
-                      <View>
+                      <View style={{ flex: 1, marginRight: 8 }}>
                         <Text style={[styles.pickerItemTitle, { color: textCol }]}>{t.name}</Text>
                         <Text style={[styles.pickerItemSub, { color: subTextCol }]}>
-                          {t.role || 'Trainer'} {t.employeeId ? `• ${t.employeeId}` : ''}
+                          {t.specialty || t.role || 'Trainer'} {t.employeeId ? `• ${t.employeeId}` : ''}
                         </Text>
+                        {!isAvail && (
+                          <Text style={{ color: '#EF4444', fontSize: 11, marginTop: 2, fontWeight: '500' }}>
+                            {t.reason || 'Unavailable for this schedule'}
+                          </Text>
+                        )}
                       </View>
-                      {isSelected ? <MaterialIcons name="check" size={18} color="#003882" /> : null}
+                      {isSelected ? (
+                        <MaterialIcons name="check" size={18} color="#003882" />
+                      ) : isAvail ? (
+                        <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                          <Text style={{ color: '#166534', fontSize: 10, fontWeight: '600' }}>Available</Text>
+                        </View>
+                      ) : null}
                     </TouchableOpacity>
                   );
                 })

@@ -7,6 +7,7 @@ import {
   getSectionLifecycle,
   isTrainerAvailableForSchedule,
   checkTrainerSectionConflict,
+  parseFlexibleDate,
 } from '../models/section.model.js';
 import { Employee } from '../models/employee.model.js';
 import { Booking } from '../models/booking.model.js';
@@ -28,14 +29,20 @@ const resolveGymId = async (req, gymIdInput) => {
     return new mongoose.Types.ObjectId(req.user.gymId);
   }
 
-  if (req.user?.userId) {
+  const userId = req.user?.userId || req.user?._id || req.user?.id;
+  if (userId || req.user?.email) {
     const gym = await Gym.findOne({
       $or: [
-        { ownerId: req.user.userId },
-        { userId: req.user.userId },
-        { email: req.user.email },
-      ],
+        userId ? { ownerId: userId } : null,
+        userId ? { userId: userId } : null,
+        req.user?.email ? { email: req.user.email } : null,
+      ].filter(Boolean),
     }).select('_id');
+    if (gym?._id) return gym._id;
+  }
+
+  if (gymIdInput && typeof gymIdInput === 'string') {
+    const gym = await Gym.findOne({ partnerId: gymIdInput }).select('_id');
     if (gym?._id) return gym._id;
   }
 
@@ -71,7 +78,7 @@ export const getAvailableTrainersForSection = asyncHandler(async (req, res) => {
     parsedActiveDays = activeDays.split(',').map((d) => d.trim()).filter(Boolean);
   }
 
-  const pStart = startDate ? new Date(startDate) : new Date();
+  const pStart = startDate ? parseFlexibleDate(startDate) : new Date();
   const pDuration = Math.max(1, Number(durationDays) || 20);
   const pEnd = calculateScheduleEndDate(pStart, pDuration, parsedActiveDays) || pStart;
 
@@ -87,7 +94,7 @@ export const getAvailableTrainersForSection = asyncHandler(async (req, res) => {
 
   // 1. Fetch all gym trainers/coaches who are not deactivated
   const trainers = await Employee.find({
-    gymId: resolvedGymId,
+    gymId: { $in: [resolvedGymId, resolvedGymId.toString()] },
     status: { $ne: 'Deactivated' },
     $or: [
       { role: { $regex: /trainer|coach/i } },
@@ -97,7 +104,7 @@ export const getAvailableTrainersForSection = asyncHandler(async (req, res) => {
 
   // 2. Fetch all active sections for this gym to check conflict
   const existingSections = await Section.find({
-    gymId: resolvedGymId,
+    gymId: { $in: [resolvedGymId, resolvedGymId.toString()] },
     isActive: true,
     ...(excludeSectionId && mongoose.isValidObjectId(excludeSectionId)
       ? { _id: { $ne: new mongoose.Types.ObjectId(excludeSectionId) } }

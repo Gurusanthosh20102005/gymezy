@@ -143,12 +143,30 @@ const sectionSchema = new mongoose.Schema(
 );
 
 /**
+ * Safely parses Date from various string formats (ISO, YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY)
+ */
+export const parseFlexibleDate = (dateInput) => {
+  if (!dateInput) return new Date();
+  if (dateInput instanceof Date && !Number.isNaN(dateInput.getTime())) return dateInput;
+  const str = String(dateInput).trim();
+  const ddmmyyyyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (ddmmyyyyMatch) {
+    const day = parseInt(ddmmyyyyMatch[1], 10);
+    const month = parseInt(ddmmyyyyMatch[2], 10) - 1;
+    const year = parseInt(ddmmyyyyMatch[3], 10);
+    return new Date(year, month, day);
+  }
+  const parsed = new Date(str);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
+/**
  * Calculates the exact end date based on active days of the week in schedule.
  * If 20 sessions are specified on [Mon, Wed, Fri, Sat], it counts 20 occurrences of those days.
  */
 export const calculateScheduleEndDate = (startDateInput, durationDaysInput, activeDaysInput) => {
   if (!startDateInput) return null;
-  const d = new Date(startDateInput);
+  const d = parseFlexibleDate(startDateInput);
   if (Number.isNaN(d.getTime())) return null;
 
   const targetSessions = Math.max(1, Number(durationDaysInput) || 1);

@@ -148,6 +148,7 @@ export const SectionsManagement = () => {
 
   // Available Trainers for the current schedule
   const [availableTrainers, setAvailableTrainers] = useState([]);
+  const [allEvaluatedTrainers, setAllEvaluatedTrainers] = useState([]);
   const [isLoadingAvailableTrainers, setIsLoadingAvailableTrainers] = useState(false);
 
   // Calculates exact completion date by counting occurrences of active weekly days
@@ -284,14 +285,16 @@ export const SectionsManagement = () => {
         const res = await apiClient.get('/sections/available-trainers', { params });
         if (isMounted && res.data?.success) {
           const avail = res.data.data?.availableTrainers || [];
+          const allEv = res.data.data?.allTrainers || [];
           setAvailableTrainers(avail);
+          setAllEvaluatedTrainers(allEv);
 
-          // If current trainer is no longer available, update selection
+          // If current trainer is no longer available, select first available or clear
           const currentTid = form.getFieldValue('trainerId');
           const stillAvail = avail.some((t) => String(t._id || t.id) === String(currentTid));
           if (!stillAvail) {
             form.setFieldsValue({
-              trainerId: avail.length > 0 ? String(avail[0]._id || avail[0].id) : undefined,
+              trainerId: avail.length > 0 ? String(avail[0]._id || avail[0].id) : null,
             });
           }
         }
@@ -317,33 +320,58 @@ export const SectionsManagement = () => {
     form,
   ]);
 
-  // Trainer Select Options (Showing ONLY available trainers for current schedule)
+  // Trainer Select Options (Showing all trainers with live availability status badges)
   const trainerOptions = React.useMemo(() => {
-    return availableTrainers.map((t) => ({
-      value: String(t._id || t.id),
-      label: (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Avatar
-            size="small"
-            src={hasValidProfilePic(t.avatar) ? t.avatar : undefined}
-            icon={<UserOutlined style={{ fontSize: 13 }} />}
+    const list = allEvaluatedTrainers.length > 0 ? allEvaluatedTrainers : trainers;
+    return list.map((t) => {
+      const isAvail = t.isAvailable !== false;
+      return {
+        value: String(t._id || t.id),
+        disabled: !isAvail,
+        label: (
+          <div
             style={{
-              backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
-              color: '#6366f1',
-              flexShrink: 0,
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              gap: 8,
+              opacity: isAvail ? 1 : 0.65,
             }}
-          />
-          <span style={{ fontWeight: 600 }}>{t.name}</span>
-          <span style={{ color: '#94a3b8', fontSize: 12 }}>
-            ({t.specialty || t.role || 'Coach'}{t.employeeId ? ` • ${t.employeeId}` : ''})
-          </span>
-        </div>
-      ),
-    }));
-  }, [availableTrainers, isDarkMode]);
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+              <Avatar
+                size="small"
+                src={hasValidProfilePic(t.avatar) ? t.avatar : undefined}
+                icon={<UserOutlined style={{ fontSize: 13 }} />}
+                style={{
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              />
+              <span style={{ fontWeight: 600 }}>{t.name}</span>
+              <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                ({t.specialty || t.role || 'Coach'}{t.employeeId ? ` • ${t.employeeId}` : ''})
+              </span>
+            </div>
+            {!isAvail ? (
+              <Tag color="error" style={{ fontSize: 11, borderRadius: 10, margin: 0, whiteSpace: 'nowrap' }}>
+                {t.reason || 'Unavailable'}
+              </Tag>
+            ) : (
+              <Tag color="success" style={{ fontSize: 11, borderRadius: 10, margin: 0 }}>
+                Available
+              </Tag>
+            )}
+          </div>
+        ),
+      };
+    });
+  }, [allEvaluatedTrainers, trainers, isDarkMode]);
 
   // Open Create/Edit Modal
   const handleOpenModal = (section = null) => {
@@ -371,13 +399,10 @@ export const SectionsManagement = () => {
         });
       } else {
         form.resetFields();
-        const defaultTrainerId = trainers[0]?._id
-          ? String(trainers[0]._id)
-          : (trainers[0]?.id ? String(trainers[0].id) : undefined);
         form.setFieldsValue({
           title: '',
           category: 'yoga',
-          trainerId: defaultTrainerId,
+          trainerId: undefined,
           cost: 1500,
           startDate: new Date().toISOString().split('T')[0],
           durationDays: 20,
@@ -1068,7 +1093,21 @@ export const SectionsManagement = () => {
               type="warning"
               showIcon
               message="No Trainers Available for this Schedule"
-              description="All trainers either have an overlapping batch or do not work during these hours/days. Please adjust the daily time slot, active days, or date range to assign a trainer."
+              description={
+                <div style={{ marginTop: 6 }}>
+                  <div>All trainers either have an overlapping batch or do not work during these hours/days:</div>
+                  <ul style={{ paddingLeft: 18, marginTop: 6, marginBottom: 4 }}>
+                    {allEvaluatedTrainers.map((t) => (
+                      <li key={t._id || t.id}>
+                        <strong>{t.name}</strong>: {t.reason || 'Schedule conflict or off-duty'}
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
+                    Tip: Adjust the Daily Start/End Time or active days (e.g. Mon, Wed, Fri) to assign a trainer.
+                  </div>
+                </div>
+              }
               style={{ marginBottom: 16, borderRadius: 'var(--radius-base)' }}
             />
           )}
