@@ -9,7 +9,6 @@ import {
   RefreshControl,
   Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,10 +53,6 @@ export const MyBookingsScreen = ({ navigation }) => {
     }
     return b.status === selectedTab;
   });
-
-  const bookNewSession = (_category = 'Gym') => {
-    navigation.navigate('HomeTabs');
-  };
 
   const openBookingDetails = (booking) => {
     navigation.navigate('BookingDetails', { booking });
@@ -386,76 +381,6 @@ export const MyBookingsScreen = ({ navigation }) => {
                 );
               })
             )}
-
-            {/* Creative Inline "Explore More" Banner Card */}
-            <LinearGradient
-              colors={
-                isDark
-                  ? ['#1E293B', '#0F172A']
-                  : ['#F1F5F9', '#E2E8F0']
-              }
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.exploreBanner}
-            >
-              <View style={styles.exploreBannerTopRow}>
-                <View style={styles.boltCircle}>
-                  <MaterialIcons name="bolt" size={20} color={AppColors.secondaryColor} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.exploreBannerTitle, { color: colors.text }]}>
-                    Book Your Next Workout
-                  </Text>
-                  <Text style={[styles.exploreBannerSub, { color: colors.subtitle }]}>
-                    Single passes • Zero lock-in contracts
-                  </Text>
-                </View>
-              </View>
-
-              {/* Quick Action Chips Row */}
-              <View style={styles.quickChipsRow}>
-                {[
-                  {
-                    label: 'Gym',
-                    icon: 'fitness-center',
-                    color: isDark ? '#93C5FD' : AppColors.primaryColor,
-                  },
-                  {
-                    label: 'Yoga',
-                    icon: 'self-improvement',
-                    color: isDark ? '#A78BFA' : '#8B5CF6',
-                  },
-                  {
-                    label: 'Zumba',
-                    icon: 'music-note',
-                    color: isDark ? '#F472B6' : '#EC4899',
-                  },
-                ].map((item) => (
-                  <TouchableOpacity
-                    key={item.label}
-                    onPress={() => bookNewSession(item.label)}
-                    style={[
-                      styles.quickChipBtn,
-                      {
-                        backgroundColor: isDark ? '#262626' : '#FFFFFF',
-                        borderColor: colors.border,
-                      },
-                    ]}
-                    activeOpacity={0.8}
-                  >
-                    <MaterialIcons
-                      name={item.icon}
-                      size={16}
-                      color={item.color}
-                      style={styles.quickChipIcon}
-                    />
-                    <Text style={[styles.quickChipText, { color: colors.text }]}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </LinearGradient>
           </ScrollView>
         </View>
       </View>
@@ -679,55 +604,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     marginHorizontal: 4,
-  },
-
-  /* Explore Banner */
-  exploreBanner: {
-    borderRadius: 24,
-    padding: 20,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  exploreBannerTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  boltCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 191, 98, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exploreBannerTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  exploreBannerSub: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  quickChipsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
-  },
-  quickChipBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickChipIcon: {
-    marginRight: 6,
-  },
-  quickChipText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
 });
