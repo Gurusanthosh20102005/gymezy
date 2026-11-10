@@ -835,6 +835,21 @@ export const getGyms = asyncHandler(async (req, res) => {
   const maxRadius = Number(radius_km || radius);
   const gymSearch = getSearchTerm(req.query);
 
+  // Normalize multi-select filter parameters for consistent cache keys
+  const rawTypes = type || req.query.types || genderAllowed;
+  const normalizedTypes = (Array.isArray(rawTypes) ? rawTypes : (typeof rawTypes === 'string' ? rawTypes.split(',') : []))
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0 && t !== 'All' && t !== 'All Gyms')
+    .sort()
+    .join(',');
+
+  const rawFacilities = facility || req.query.facilities;
+  const normalizedFacilities = (Array.isArray(rawFacilities) ? rawFacilities : (typeof rawFacilities === 'string' ? rawFacilities.split(',') : []))
+    .map((f) => f.trim())
+    .filter((f) => f.length > 0 && f !== 'All' && f !== 'All Facilities')
+    .sort()
+    .join(',');
+
   // Fast in-memory cache lookup for public customer queries
   const cacheKey = JSON.stringify({
     role: req.user?.role || 'public',
@@ -843,9 +858,8 @@ export const getGyms = asyncHandler(async (req, res) => {
     city: city || '',
     area: area || '',
     category: category || '',
-    type: type || '',
-    genderAllowed: genderAllowed || '',
-    facility: facility || '',
+    type: normalizedTypes,
+    facility: normalizedFacilities,
     workout: workout || '',
     search: gymSearch.toLowerCase(),
     lat: hasCoordinates ? userLat.toFixed(2) : '',
@@ -863,100 +877,190 @@ export const getGyms = asyncHandler(async (req, res) => {
     return res.status(200).json(cached.payload);
   }
 
-  const query = {};
+  const andClauses = [];
 
   // Status filtering: Public customers discovery gets all Active verified gyms (even if edits are pending review)
   if (!isSuperAdmin) {
-    query.status = 'Active';
-    query.isActive = true;
-    query.$or = [
-      { approvalStatus: 'Approved' },
-      { partnerId: { $exists: true, $ne: null } },
-    ];
+    andClauses.push({
+      status: 'Active',
+      isActive: true,
+      $or: [
+        { approvalStatus: 'Approved' },
+        { partnerId: { $exists: true, $ne: null } },
+      ],
+    });
   } else {
-    if (status && status !== 'All') query.status = status;
-    if (approvalStatus && approvalStatus !== 'All') query.approvalStatus = approvalStatus;
+    if (status && status !== 'All') andClauses.push({ status });
+    if (approvalStatus && approvalStatus !== 'All') andClauses.push({ approvalStatus });
   }
 
   if (subscriptionType && subscriptionType !== 'All') {
-    query.subscriptionType = subscriptionType;
+    andClauses.push({ subscriptionType });
   }
 
   // City & Area Filters
   if (city && city !== 'All') {
-    query.city = new RegExp(city.trim(), 'i');
+    andClauses.push({ city: new RegExp(city.trim(), 'i') });
   }
   if (area && area !== 'All') {
-    query.area = new RegExp(area.trim(), 'i');
+    andClauses.push({ area: new RegExp(area.trim(), 'i') });
   }
 
   // Category Filter
   if (category && category !== 'All') {
     const cat = category.trim().toLowerCase();
     if (cat === 'ac gym') {
-      query.facilities = { $regex: /ac|air condition/i };
+      andClauses.push({
+        $or: [
+          { facilities: { $regex: /ac|air condition/i } },
+          { amenities: { $regex: /ac|air condition/i } },
+          { tags: { $regex: /ac gym|air condition/i } },
+        ],
+      });
     } else if (cat === 'women only') {
-      query.$or = [
-        { tags: { $regex: /women only/i } },
-        { name: { $regex: /women|female/i } },
-        { genderAllowed: { $regex: /women/i } },
-      ];
+      andClauses.push({
+        $or: [
+          { tags: { $regex: /women only/i } },
+          { name: { $regex: /women|female/i } },
+          { genderAllowed: { $regex: /women/i } },
+          { businessType: { $regex: /women/i } },
+        ],
+      });
     } else if (cat === 'strength') {
-      query.$or = [
-        { tags: { $regex: /strength|bodybuilding|weights/i } },
-        { workouts: { $regex: /strength|bodybuilding/i } },
-      ];
+      andClauses.push({
+        $or: [
+          { tags: { $regex: /strength|bodybuilding|weights/i } },
+          { workouts: { $regex: /strength|bodybuilding/i } },
+        ],
+      });
     } else if (cat === 'hiit') {
-      query.$or = [
-        { tags: { $regex: /hiit|cardio/i } },
-        { workouts: { $regex: /hiit|cardio/i } },
-      ];
+      andClauses.push({
+        $or: [
+          { tags: { $regex: /hiit|cardio/i } },
+          { workouts: { $regex: /hiit|cardio/i } },
+        ],
+      });
     } else if (cat === 'yoga') {
-      query.$or = [
-        { tags: { $regex: /yoga|pilates/i } },
-        { workouts: { $regex: /yoga|pilates/i } },
-      ];
+      andClauses.push({
+        $or: [
+          { tags: { $regex: /yoga|pilates/i } },
+          { workouts: { $regex: /yoga|pilates/i } },
+        ],
+      });
     } else if (cat === 'boxing') {
-      query.$or = [
-        { tags: { $regex: /boxing|mma|kickboxing/i } },
-        { workouts: { $regex: /boxing|mma/i } },
-      ];
+      andClauses.push({
+        $or: [
+          { tags: { $regex: /boxing|mma|kickboxing/i } },
+          { workouts: { $regex: /boxing|mma/i } },
+        ],
+      });
     } else if (cat === 'zumba') {
-      query.$or = [
-        { tags: { $regex: /zumba|dance|aerobics/i } },
-        { workouts: { $regex: /zumba|dance/i } },
-      ];
+      andClauses.push({
+        $or: [
+          { tags: { $regex: /zumba|dance|aerobics/i } },
+          { workouts: { $regex: /zumba|dance/i } },
+        ],
+      });
     } else if (cat === 'crossfit') {
-      query.$or = [
-        { tags: { $regex: /crossfit|functional/i } },
-        { workouts: { $regex: /crossfit|functional/i } },
-      ];
+      andClauses.push({
+        $or: [
+          { tags: { $regex: /crossfit|functional/i } },
+          { workouts: { $regex: /crossfit|functional/i } },
+        ],
+      });
     } else {
-      query.$or = [
-        { tags: { $regex: new RegExp(cat, 'i') } },
-        { workouts: { $regex: new RegExp(cat, 'i') } },
-      ];
+      andClauses.push({
+        $or: [
+          { tags: { $regex: new RegExp(cat, 'i') } },
+          { workouts: { $regex: new RegExp(cat, 'i') } },
+        ],
+      });
     }
   }
 
-  // Type / Gender Filter
-  const gymType = type || genderAllowed;
-  if (gymType && gymType !== 'All Gyms' && gymType !== 'All') {
-    query.$or = [
-      { tags: { $regex: new RegExp(gymType, 'i') } },
-      { genderAllowed: { $regex: new RegExp(gymType, 'i') } },
-    ];
+  // Multi-Select Gym Types Filter (Matches ANY selected gym type e.g. Unisex OR Women Only)
+  const typeList = normalizedTypes ? normalizedTypes.split(',') : [];
+  if (typeList.length > 0) {
+    const typeConditions = [];
+    typeList.forEach((t) => {
+      if (/unisex/i.test(t)) {
+        typeConditions.push({
+          $or: [
+            { tags: { $regex: /unisex/i } },
+            { genderAllowed: { $regex: /unisex|all/i } },
+            {
+              $and: [
+                { genderAllowed: { $nin: ['Women Only', 'Men Only'] } },
+                { tags: { $nin: ['Women Only', 'Men Only'] } },
+              ],
+            },
+          ],
+        });
+      } else if (/women/i.test(t)) {
+        typeConditions.push({
+          $or: [
+            { tags: { $regex: /women/i } },
+            { genderAllowed: { $regex: /women/i } },
+            { name: { $regex: /women|female/i } },
+          ],
+        });
+      } else if (/men/i.test(t)) {
+        typeConditions.push({
+          $or: [
+            { tags: { $regex: /men only/i } },
+            { genderAllowed: { $regex: /men/i } },
+          ],
+        });
+      } else {
+        const rx = new RegExp(t, 'i');
+        typeConditions.push({
+          $or: [
+            { tags: { $regex: rx } },
+            { genderAllowed: { $regex: rx } },
+            { businessType: { $regex: rx } },
+          ],
+        });
+      }
+    });
+    andClauses.push({ $or: typeConditions });
   }
 
-  // Specific Facility Filter
-  if (facility && facility !== 'All Facilities' && facility !== 'All') {
-    query.facilities = { $regex: new RegExp(facility.trim(), 'i') };
+  // Multi-Select Facilities Filter (Requires EACH selected facility e.g. AC AND Parking)
+  const facilityList = normalizedFacilities ? normalizedFacilities.split(',') : [];
+  if (facilityList.length > 0) {
+    facilityList.forEach((fac) => {
+      let facRx = new RegExp(fac, 'i');
+      if (/^ac$/i.test(fac)) {
+        facRx = /ac|air condition/i;
+      } else if (/locker/i.test(fac)) {
+        facRx = /locker/i;
+      } else if (/shower/i.test(fac)) {
+        facRx = /shower/i;
+      } else if (/parking/i.test(fac)) {
+        facRx = /parking/i;
+      } else if (/steam/i.test(fac)) {
+        facRx = /steam|sauna/i;
+      } else if (/juice/i.test(fac)) {
+        facRx = /juice|shake|cafe|bar/i;
+      } else if (/cardio/i.test(fac)) {
+        facRx = /cardio/i;
+      }
+      andClauses.push({
+        $or: [
+          { facilities: { $regex: facRx } },
+          { amenities: { $regex: facRx } },
+          { tags: { $regex: facRx } },
+        ],
+      });
+    });
   }
 
   // Specific Workout Filter
   if (workout && workout !== 'All') {
-    query.workouts = { $regex: new RegExp(workout.trim(), 'i') };
+    andClauses.push({ workouts: { $regex: new RegExp(workout.trim(), 'i') } });
   }
+
+  const query = andClauses.length > 0 ? { $and: andClauses } : {};
 
   // Optimized lean projection: fetch only essential card fields (exclude heavy photos, gallery, trainers, rules, documents)
   const cardProjection =
@@ -1012,8 +1116,8 @@ export const getGyms = asyncHandler(async (req, res) => {
       enabledSessionCategories: Array.isArray(g.enabledSessionCategories) ? g.enabledSessionCategories : null,
       monthlyPrice: monthlyPrice,
       membershipPrice: monthlyPrice,
-      logo: g.logo || mediaUrls.logoUrl,
-      coverPhoto: g.coverPhoto || mediaUrls.coverPhotoUrl,
+      logo: mediaUrls.logoUrl,
+      coverPhoto: mediaUrls.coverPhotoUrl,
       logoUrl: mediaUrls.logoUrl,
       coverPhotoUrl: mediaUrls.coverPhotoUrl,
       imageUrl: mediaUrls.imageUrl,
@@ -1470,6 +1574,24 @@ export const getGymById = asyncHandler(async (req, res) => {
     } else if (!Array.isArray(sanitized.trainers)) {
       sanitized.trainers = [];
     }
+
+    // Always sanitize trainer images to guaranteed string URIs
+    if (Array.isArray(sanitized.trainers)) {
+      sanitized.trainers = sanitized.trainers.map((t) => {
+        const trImg =
+          (typeof t.imageUrl === 'string' && t.imageUrl.trim()) ||
+          (typeof t.avatar === 'string' && t.avatar.trim()) ||
+          (typeof t.image === 'string' && t.image.trim()) ||
+          t.image?.fileData ||
+          defaultAvatar;
+        return {
+          ...t,
+          image: trImg,
+          avatar: trImg,
+          imageUrl: trImg,
+        };
+      });
+    }
   } catch (err) {
     console.error('[GET_GYM_BY_ID] Error pulling employee trainers from SSOT:', err?.message);
   }
@@ -1504,6 +1626,8 @@ export const getGymById = asyncHandler(async (req, res) => {
         rating: detailRatingMetrics.rating,
         reviewsCount: detailRatingMetrics.reviewsCount,
         isBookmarked: sanitized.isBookmarked,
+        logo: media.logoUrl,
+        coverPhoto: media.coverPhotoUrl,
         logoUrl: media.logoUrl,
         coverPhotoUrl: media.coverPhotoUrl,
         imageUrl: media.imageUrl,

@@ -17,6 +17,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useBookingRepository } from '../data/BookingContext';
 import { SkeletonBookingCard } from '../widgets/Skeleton';
+import { getSafeImageUri, getGymLogoUri } from '../utils/mediaUtils';
 
 const TABS = ['Upcoming', 'Completed', 'Cancelled'];
 
@@ -201,13 +202,9 @@ export const MyBookingsScreen = ({ navigation }) => {
                 const catMeta = getCategoryIcon(booking.type, booking.iconName);
                 const gymLogoUri =
                   !failedLogos[booking.id] &&
-                  (booking.gymLogo ||
-                    (typeof booking.gymId?.logo === 'string' && booking.gymId.logo.trim()) ||
-                    booking.gymId?.logo?.fileData ||
-                    booking.gymId?.logoUrl ||
-                    booking.gymImageUrl ||
-                    booking.gymId?.imageUrl ||
-                    booking.gymId?.images?.[0] ||
+                  (getSafeImageUri(booking.gymLogo) ||
+                    getGymLogoUri(booking.gymId) ||
+                    getSafeImageUri(booking.gymImageUrl) ||
                     null);
 
                 return (

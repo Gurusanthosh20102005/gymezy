@@ -15,6 +15,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { bookmarkService } from '../services/bookmarkService';
 import { SkeletonBookmarkRow } from './Skeleton';
+import { getGymCoverImage } from '../utils/mediaUtils';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -68,66 +69,6 @@ export const BookmarkedGymsModal = ({
     const num = Number(val);
     if (Number.isNaN(num) || num <= 0) return 'No ratings';
     return num.toFixed(1);
-  };
-
-  const getGymCoverImage = (gym) => {
-    const fallback = 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=400&auto=format&fit=crop';
-    if (!gym) return fallback;
-
-    // Direct string URLs
-    if (typeof gym.coverPhotoUrl === 'string' && gym.coverPhotoUrl.trim().length > 0) {
-      return gym.coverPhotoUrl.trim();
-    }
-    if (typeof gym.coverPhoto === 'string' && gym.coverPhoto.trim().length > 0) {
-      return gym.coverPhoto.trim();
-    }
-    if (typeof gym.imageUrl === 'string' && gym.imageUrl.trim().length > 0) {
-      return gym.imageUrl.trim();
-    }
-    if (typeof gym.image === 'string' && gym.image.trim().length > 0) {
-      return gym.image.trim();
-    }
-    if (typeof gym.thumbnailImage === 'string' && gym.thumbnailImage.trim().length > 0) {
-      return gym.thumbnailImage.trim();
-    }
-    if (typeof gym.logoUrl === 'string' && gym.logoUrl.trim().length > 0) {
-      return gym.logoUrl.trim();
-    }
-    if (typeof gym.logo === 'string' && gym.logo.trim().length > 0) {
-      return gym.logo.trim();
-    }
-
-    // Object fields with fileData / url / secure_url
-    if (gym.coverPhoto && typeof gym.coverPhoto === 'object') {
-      if (typeof gym.coverPhoto.fileData === 'string' && gym.coverPhoto.fileData.trim().length > 0) {
-        return gym.coverPhoto.fileData.trim();
-      }
-      if (typeof gym.coverPhoto.url === 'string' && gym.coverPhoto.url.trim().length > 0) {
-        return gym.coverPhoto.url.trim();
-      }
-      if (typeof gym.coverPhoto.secure_url === 'string' && gym.coverPhoto.secure_url.trim().length > 0) {
-        return gym.coverPhoto.secure_url.trim();
-      }
-    }
-
-    if (gym.logo && typeof gym.logo === 'object') {
-      if (typeof gym.logo.fileData === 'string' && gym.logo.fileData.trim().length > 0) {
-        return gym.logo.fileData.trim();
-      }
-      if (typeof gym.logo.url === 'string' && gym.logo.url.trim().length > 0) {
-        return gym.logo.url.trim();
-      }
-      if (typeof gym.logo.secure_url === 'string' && gym.logo.secure_url.trim().length > 0) {
-        return gym.logo.secure_url.trim();
-      }
-    }
-
-    // Images array
-    if (Array.isArray(gym.images) && gym.images.length > 0 && typeof gym.images[0] === 'string' && gym.images[0].trim().length > 0) {
-      return gym.images[0].trim();
-    }
-
-    return fallback;
   };
 
   return (

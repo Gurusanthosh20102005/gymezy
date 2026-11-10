@@ -7,6 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useToast } from './CustomScaffoldMessage';
+import { getSafeImageUri } from '../utils/mediaUtils';
 
 const getStatusTheme = (normStatus) => {
   if (normStatus === 'ACTIVE') {
@@ -168,7 +169,8 @@ export const DigitalQrPassCard = ({
   const { isDark, colors } = useTheme();
   const { showToast } = useToast();
   const [logoFailed, setLogoFailed] = useState(false);
-  const showLogo = gymImageUrl && !logoFailed;
+  const safeGymImageUrl = getSafeImageUri(gymImageUrl);
+  const showLogo = Boolean(safeGymImageUrl && !logoFailed);
 
   const effectiveAccent = isDark
     ? AppColors.darkAccentColor
@@ -241,7 +243,7 @@ export const DigitalQrPassCard = ({
             >
               {showLogo ? (
                 <Image
-                  source={{ uri: gymImageUrl }}
+                  source={{ uri: safeGymImageUrl }}
                   style={styles.gymLogoImg}
                   resizeMode="cover"
                   onError={() => setLogoFailed(true)}

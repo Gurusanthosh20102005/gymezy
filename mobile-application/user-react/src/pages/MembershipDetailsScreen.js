@@ -28,6 +28,7 @@ import { membershipService } from '../services/membershipService';
 import { apiService } from '../services/apiService';
 import { gymService } from '../services/gymService';
 import { useAuth } from '../context/AuthContext';
+import { getSafeImageUri } from '../utils/mediaUtils';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
 const SmoothGradientStar = ({
@@ -825,9 +826,9 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
               },
             ]}
           >
-            {membership.gymImageUrl ? (
+            {getSafeImageUri(membership.gymImageUrl) ? (
               <Image
-                source={{ uri: membership.gymImageUrl }}
+                source={{ uri: getSafeImageUri(membership.gymImageUrl) }}
                 style={styles.gymImage}
                 resizeMode="cover"
               />

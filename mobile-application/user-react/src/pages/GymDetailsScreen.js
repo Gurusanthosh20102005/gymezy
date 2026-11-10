@@ -32,6 +32,12 @@ import {
   RulesPopup,
   SafetyPopup,
 } from '../widgets/DetailsPopups';
+import {
+  getSafeImageUri,
+  DEFAULT_GYM_COVER,
+  DEFAULT_TRAINER_AVATAR,
+  DEFAULT_USER_AVATAR,
+} from '../utils/mediaUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -175,28 +181,28 @@ export const GymDetailsScreen = ({ route, navigation }) => {
   // Compute actual image gallery from DB data
   const photos = useMemo(() => {
     const list = [];
+    const addIfValid = (item) => {
+      const uri = getSafeImageUri(item);
+      if (uri && !list.includes(uri)) {
+        list.push(uri);
+      }
+    };
+
     if (Array.isArray(gym.images) && gym.images.length > 0) {
-      gym.images.forEach((img) => {
-        if (typeof img === 'string' && img.trim().length > 0) list.push(img.trim());
-      });
+      gym.images.forEach(addIfValid);
     }
     if (Array.isArray(gym.galleryPhotos) && gym.galleryPhotos.length > 0) {
-      gym.galleryPhotos.forEach((p) => {
-        if (p?.fileData) list.push(p.fileData);
-      });
+      gym.galleryPhotos.forEach(addIfValid);
     }
-    if (gym.coverPhoto?.fileData) {
-      list.push(gym.coverPhoto.fileData);
-    }
-    if (gym.image && typeof gym.image === 'string' && gym.image.trim().length > 0) {
-      if (!list.includes(gym.image.trim())) list.push(gym.image.trim());
-    }
-    if (gym.imageUrl && typeof gym.imageUrl === 'string' && gym.imageUrl.trim().length > 0) {
-      if (!list.includes(gym.imageUrl.trim())) list.push(gym.imageUrl.trim());
-    }
-    return list.length > 0
-      ? list
-      : ['https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800&auto=format&fit=crop'];
+    addIfValid(gym.coverPhoto);
+    addIfValid(gym.coverPhotoUrl);
+    addIfValid(gym.image);
+    addIfValid(gym.imageUrl);
+    addIfValid(gym.thumbnailImage);
+    addIfValid(gym.logo);
+    addIfValid(gym.logoUrl);
+
+    return list.length > 0 ? list : [DEFAULT_GYM_COVER];
   }, [gym]);
 
   // Real DB Arrays safely normalized to strings
@@ -863,9 +869,10 @@ export const GymDetailsScreen = ({ route, navigation }) => {
                     <Image
                       source={{
                         uri:
-                          tr.imageUrl ||
-                          tr.image?.fileData ||
-                          'https://images.unsplash.com/photo-1567013127542-490d757e51fc?q=80&w=400&auto=format&fit=crop',
+                          getSafeImageUri(tr.imageUrl) ||
+                          getSafeImageUri(tr.avatar) ||
+                          getSafeImageUri(tr.image) ||
+                          DEFAULT_TRAINER_AVATAR,
                       }}
                       style={styles.trainerAvatar}
                       resizeMode="cover"
@@ -983,8 +990,8 @@ export const GymDetailsScreen = ({ route, navigation }) => {
                       <Image
                         source={{
                           uri:
-                            rev.userImageUrl ||
-                            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=150&auto=format&fit=crop',
+                            getSafeImageUri(rev.userImageUrl) ||
+                            DEFAULT_USER_AVATAR,
                         }}
                         style={styles.reviewAvatar}
                       />

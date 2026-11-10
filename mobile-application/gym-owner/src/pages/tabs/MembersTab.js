@@ -1700,9 +1700,9 @@ export const MembersTab = ({ topInset, navigation }) => {
                     {/* Header: User Info & Request ID */}
                     <View style={styles.switchCardHeader}>
                       <View style={styles.switchHeaderLeft}>
-                        {userObj.profilePicture ? (
+                        {getSafeImageUri(userObj.profilePicture) ? (
                           <Image
-                            source={{ uri: userObj.profilePicture }}
+                            source={{ uri: getSafeImageUri(userObj.profilePicture) }}
                             style={styles.switchAvatar}
                           />
                         ) : (
@@ -2138,8 +2138,8 @@ export const MembersTab = ({ topInset, navigation }) => {
                     {/* Header: Member Avatar, Name, IDs & Status */}
                     <View style={styles.cancelCardHeader}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        {req.avatar ? (
-                          <Image source={{ uri: req.avatar }} style={styles.switchAvatar} />
+                        {getSafeImageUri(req.avatar) ? (
+                          <Image source={{ uri: getSafeImageUri(req.avatar) }} style={styles.switchAvatar} />
                         ) : (
                           <View
                             style={[

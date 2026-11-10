@@ -22,6 +22,7 @@ import { TrainerReviewsPopup } from '../widgets/DetailsPopups';
 import { SessionBookingFlow, SESSION_CONFIGS } from '../widgets/SessionBookingFlow';
 import apiService from '../services/apiService';
 import { generateAvailableSlots, generateTrainerAvailableSlots } from '../utils/gymTimingHelper';
+import { getSafeImageUri } from '../utils/mediaUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -420,8 +421,8 @@ export const BookingSessionScreen = ({ route, navigation }) => {
     const trainerData = {
       ...tr,
       name: tr.name || 'Trainer',
-      imageUrl: tr.avatar || tr.imageUrl,
-      avatar: tr.avatar || tr.imageUrl,
+      imageUrl: getSafeImageUri(tr.avatar) || getSafeImageUri(tr.imageUrl),
+      avatar: getSafeImageUri(tr.avatar) || getSafeImageUri(tr.imageUrl),
       specialty: tr.specialty || tr.specialization || 'Trainer',
       specialization: tr.specialization || tr.specialty || 'Head Fitness Instructor',
       experience: tr.experience || (tr.experienceYears ? `${tr.experienceYears}+ Years` : '1+ Years'),
@@ -896,8 +897,8 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                   activeOpacity={0.7}
                   onPress={() => handleOpenTrainerProfile(tr)}
                 >
-                  {tr.avatar ? (
-                    <Image source={{ uri: tr.avatar }} style={styles.trainerAvatarImg} />
+                  {getSafeImageUri(tr.avatar) ? (
+                    <Image source={{ uri: getSafeImageUri(tr.avatar) }} style={styles.trainerAvatarImg} />
                   ) : (
                     <View style={[styles.trainerAvatarFallback, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
                       <Text style={[styles.trainerInitials, { color: textColor }]}>
@@ -1390,8 +1391,8 @@ export const BookingSessionScreen = ({ route, navigation }) => {
 
                     {/* Trainer Row */}
                     <View style={styles.sectionTrainerRow}>
-                      {trainerAvatar ? (
-                        <Image source={{ uri: trainerAvatar }} style={styles.trainerAvatarImg} />
+                      {getSafeImageUri(trainerAvatar) ? (
+                        <Image source={{ uri: getSafeImageUri(trainerAvatar) }} style={styles.trainerAvatarImg} />
                       ) : (
                         <View style={[styles.trainerAvatarFallback, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
                           <Text style={[styles.trainerInitials, { color: textColor }]}>
@@ -1643,8 +1644,8 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                 onPress={handleOpenTrainerProfile}
                 style={[styles.trainerDetailRow, { marginTop: 12 }]}
               >
-                {selectedSection.trainerId?.avatar ? (
-                  <Image source={{ uri: selectedSection.trainerId?.avatar }} style={styles.trainerDetailAvatar} />
+                {getSafeImageUri(selectedSection.trainerId?.avatar) ? (
+                  <Image source={{ uri: getSafeImageUri(selectedSection.trainerId?.avatar) }} style={styles.trainerDetailAvatar} />
                 ) : (
                   <View style={[styles.trainerDetailAvatarFallback, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
                     <Text style={[styles.trainerDetailInitials, { color: textColor }]}>

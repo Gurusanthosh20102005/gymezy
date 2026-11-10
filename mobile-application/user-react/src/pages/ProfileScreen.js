@@ -32,6 +32,7 @@ import { attendanceService } from '../services/attendanceService';
 import { notificationService } from '../services/notificationService';
 import { biometricService } from '../services/biometricService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSafeImageUri } from '../utils/mediaUtils';
 
 // Storage keys for user preferences & security
 const PREF_WORKOUT_REMINDERS_KEY = '@gymezy_pref_workout_reminders';
@@ -157,7 +158,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   const [userEmergencyContact, setUserEmergencyContact] = useState(
     user?.emergencyContact || '+91 98123 45678 (Spouse)'
   );
-  const avatarUrl = user?.avatar || DEFAULT_AVATAR;
+  const avatarUrl = getSafeImageUri(user?.avatar) || DEFAULT_AVATAR;
 
   // Keep local state in sync when auth user updates from DB
   useEffect(() => {

@@ -48,7 +48,14 @@ class GymService {
   getCachedGyms(params = {}) {
     const latKey = typeof params.lat === 'number' ? params.lat.toFixed(2) : (params.lat || '');
     const lngKey = typeof params.lng === 'number' ? params.lng.toFixed(2) : (params.lng || '');
-    const cacheKey = `${latKey}_${lngKey}_${params.city || ''}_${params.area || ''}_${params.category || ''}_${params.type || ''}_${params.facility || ''}_${params.workout || ''}_${params.search || ''}_${params.page || 1}_${params.limit || 15}`;
+    const typeKey = Array.isArray(params.type)
+      ? params.type.filter(t => t && t !== 'All' && t !== 'All Gyms').sort().join(',')
+      : (params.type && params.type !== 'All' && params.type !== 'All Gyms' ? String(params.type).trim() : '');
+    const facilityKey = Array.isArray(params.facility)
+      ? params.facility.filter(f => f && f !== 'All' && f !== 'All Facilities').sort().join(',')
+      : (params.facility && params.facility !== 'All' && params.facility !== 'All Facilities' ? String(params.facility).trim() : '');
+
+    const cacheKey = `${latKey}_${lngKey}_${params.city || ''}_${params.area || ''}_${params.category || ''}_${typeKey}_${facilityKey}_${params.workout || ''}_${params.search || ''}_${params.page || 1}_${params.limit || 15}`;
     const cached = gymsCache.get(cacheKey);
     const now = Date.now();
     if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
@@ -83,7 +90,14 @@ class GymService {
   } = {}) {
     const latKey = typeof lat === 'number' ? lat.toFixed(2) : (lat || '');
     const lngKey = typeof lng === 'number' ? lng.toFixed(2) : (lng || '');
-    const cacheKey = `${latKey}_${lngKey}_${city || ''}_${area || ''}_${category || ''}_${type || ''}_${facility || ''}_${workout || ''}_${search || ''}_${page}_${limit}`;
+    const typeKey = Array.isArray(type)
+      ? type.filter(t => t && t !== 'All' && t !== 'All Gyms').sort().join(',')
+      : (type && type !== 'All' && type !== 'All Gyms' ? String(type).trim() : '');
+    const facilityKey = Array.isArray(facility)
+      ? facility.filter(f => f && f !== 'All' && f !== 'All Facilities').sort().join(',')
+      : (facility && facility !== 'All' && facility !== 'All Facilities' ? String(facility).trim() : '');
+
+    const cacheKey = `${latKey}_${lngKey}_${city || ''}_${area || ''}_${category || ''}_${typeKey}_${facilityKey}_${workout || ''}_${search || ''}_${page}_${limit}`;
 
     // 1. Check in-memory fresh cache for instant loading
     const cached = gymsCache.get(cacheKey);
@@ -103,8 +117,8 @@ class GymService {
     if (city && city !== 'All') params.append('city', city);
     if (area && area !== 'All') params.append('area', area);
     if (category && category !== 'All') params.append('category', category);
-    if (type && type !== 'All Gyms') params.append('type', type);
-    if (facility && facility !== 'All Facilities') params.append('facility', facility);
+    if (typeKey) params.append('type', typeKey);
+    if (facilityKey) params.append('facility', facilityKey);
     if (workout && workout !== 'All') params.append('workout', workout);
     if (search && search.trim().length > 0) params.append('search', search.trim());
     if (sortBy) params.append('sortBy', sortBy);
