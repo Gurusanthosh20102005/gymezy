@@ -76,6 +76,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
   const [editTab, setEditTab] = useState('business');
   const [savingEdit, setSavingEdit] = useState(false);
   const [editResubmitFlag, setEditResubmitFlag] = useState(true);
+  const [editResubmitNotes, setEditResubmitNotes] = useState('');
 
   // Edit Form Fields
   const [formName, setFormName] = useState('');
@@ -153,6 +154,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
   const handleOpenEdit = (tabKey = 'business') => {
     setEditTab(tabKey);
     setEditResubmitFlag(isOnHold || isRejected);
+    setEditResubmitNotes('');
 
     setFormName(currentGym.name || '');
     setFormTagline(currentGym.tagline || '');
@@ -268,6 +270,8 @@ export const ApplicationStatusScreen = ({ navigation }) => {
         },
 
         resubmit: editResubmitFlag,
+        resubmitNotes: editResubmitNotes.trim(),
+        resubmissionNote: editResubmitNotes.trim(),
       };
 
       const updated = await apiService.updateGym(gymId, payload);
@@ -296,7 +300,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
 
     setResubmitting(true);
     try {
-      await apiService.resubmitGym(gymId, resubmitNotes);
+      await apiService.resubmitGym(gymId, resubmitNotes, resubmitNotes);
       showToast({ message: 'Application resubmitted to Super Admin for verification.', isSuccess: true });
       setResubmitModalOpen(false);
       setResubmitNotes('');
@@ -533,30 +537,57 @@ export const ApplicationStatusScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* ADMIN REMARK BANNER */}
-        {!!adminRemark && (
+        {/* 1. ADMIN REJECTION / HOLD FEEDBACK BANNER */}
+        {Boolean(
+          currentGym.rejectionReason ||
+          currentGym.rejectionNote ||
+          isOnHold ||
+          isRejected ||
+          (adminRemark && adminRemark !== 'Approved and published by Super Admin')
+        ) && (
           <View
             style={[
               styles.adminNoteBanner,
               {
-                backgroundColor: isDark ? '#1C1917' : '#FEF2F2',
-                borderColor: isRejected ? '#EF4444' : '#F59E0B',
+                backgroundColor: isDark ? '#1C1917' : (isOnHold ? '#FFFBEB' : '#FEF2F2'),
+                borderColor: isOnHold ? '#F59E0B' : '#EF4444',
               },
             ]}
           >
             <View style={styles.adminNoteHeader}>
-              <Text
-                style={[
-                  styles.adminNoteTitle,
-                  { color: isRejected ? '#EF4444' : '#F59E0B' },
-                ]}
-              >
-                {isOnHold
-                  ? 'ADMINISTRATOR NOTE — ON HOLD'
-                  : isRejected
-                  ? 'ADMINISTRATOR NOTE — CHANGES REQUIRED'
-                  : 'ADMINISTRATOR NOTE'}
-              </Text>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text
+                  style={[
+                    styles.adminNoteTitle,
+                    { color: isOnHold ? '#F59E0B' : '#EF4444' },
+                  ]}
+                >
+                  {isOnHold
+                    ? 'ADMINISTRATOR NOTE — ON HOLD'
+                    : isRejected
+                    ? 'ADMINISTRATOR NOTE — CHANGES REQUIRED'
+                    : 'ADMINISTRATOR NOTE'}
+                </Text>
+
+                {Boolean(currentGym.rejectionReason) && (
+                  <View
+                    style={{
+                      alignSelf: 'flex-start',
+                      backgroundColor: isOnHold ? '#FEF3C7' : '#FEE2E2',
+                      borderColor: isOnHold ? '#FDE68A' : '#FECACA',
+                      borderWidth: 1,
+                      borderRadius: 4,
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      marginTop: 4,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: isOnHold ? '#B45309' : '#DC2626' }}>
+                      Reason: {currentGym.rejectionReason}
+                    </Text>
+                  </View>
+                )}
+              </View>
 
               <View style={styles.adminNoteActions}>
                 <TouchableOpacity
@@ -567,17 +598,80 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                   <Text style={[styles.smallEditBtnText, { color: textPrimary }]}>Edit Info</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[styles.smallResubmitBtn, { backgroundColor: isRejected ? '#2563EB' : '#F59E0B' }]}
-                  onPress={() => setResubmitModalOpen(true)}
-                >
-                  <Icon name="send" size={13} color="#FFFFFF" />
-                  <Text style={styles.smallResubmitBtnText}>Resubmit</Text>
-                </TouchableOpacity>
+                {(isOnHold || isRejected) && (
+                  <TouchableOpacity
+                    style={[styles.smallResubmitBtn, { backgroundColor: isRejected ? '#2563EB' : '#F59E0B' }]}
+                    onPress={() => setResubmitModalOpen(true)}
+                  >
+                    <Icon name="send" size={13} color="#FFFFFF" />
+                    <Text style={styles.smallResubmitBtnText}>Resubmit</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
-            <Text style={[styles.adminNoteBody, { color: textPrimary }]}>{adminRemark}</Text>
+            <View
+              style={{
+                marginTop: 8,
+                padding: 10,
+                borderRadius: 6,
+                backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.7)',
+                borderWidth: 1,
+                borderStyle: 'dashed',
+                borderColor: isOnHold ? '#FDE68A' : '#FECACA',
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: isOnHold ? '#D97706' : '#DC2626', marginBottom: 2 }}>
+                Admin Note & Instructions:
+              </Text>
+              <Text style={[styles.adminNoteBody, { color: textPrimary }]}>
+                {currentGym.rejectionNote || currentGym.remark || adminRemark || 'Please review requested updates and resubmit.'}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* 2. OWNER RESUBMISSION NOTES BANNER */}
+        {Boolean(currentGym.resubmissionNote) && (
+          <View
+            style={[
+              styles.adminNoteBanner,
+              {
+                backgroundColor: isDark ? '#0F172A' : '#EFF6FF',
+                borderColor: '#3B82F6',
+              },
+            ]}
+          >
+            <View style={styles.adminNoteHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name="check-circle" size={16} color="#2563EB" />
+                <Text style={[styles.adminNoteTitle, { color: '#2563EB' }]}>
+                  YOUR RESUBMISSION EXPLANATION
+                </Text>
+              </View>
+              {Boolean(currentGym.resubmittedAt) && (
+                <Text style={{ fontSize: 11, color: textMuted }}>
+                  {new Date(currentGym.resubmittedAt).toLocaleDateString()}
+                </Text>
+              )}
+            </View>
+            <View
+              style={{
+                marginTop: 8,
+                padding: 10,
+                borderRadius: 6,
+                backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                borderWidth: 1,
+                borderColor: '#DBEAFE',
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#2563EB', marginBottom: 2, textTransform: 'uppercase' }}>
+                Changes Submitted by You:
+              </Text>
+              <Text style={[styles.adminNoteBody, { color: textPrimary }]}>
+                {currentGym.resubmissionNote}
+              </Text>
+            </View>
           </View>
         )}
 
@@ -1383,21 +1477,42 @@ export const ApplicationStatusScreen = ({ navigation }) => {
             )}
 
             {/* RESUBMIT TOGGLE ON SAVE */}
-            <View style={[styles.resubmitToggleBox, { backgroundColor: cardBg, borderColor: borderCol }]}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={[styles.toggleTitle, { color: textPrimary }]}>
-                  Save & Resubmit to Super Admin
-                </Text>
-                <Text style={[styles.toggleSubtitle, { color: textMuted }]}>
-                  Instantly sends your updated application back to Super Admin for verification.
-                </Text>
+            <View style={[styles.resubmitToggleBox, { backgroundColor: cardBg, borderColor: borderCol, flexDirection: 'column', alignItems: 'stretch' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={[styles.toggleTitle, { color: textPrimary }]}>
+                    Save & Resubmit to Super Admin
+                  </Text>
+                  <Text style={[styles.toggleSubtitle, { color: textMuted }]}>
+                    Instantly sends your updated application back to Super Admin for verification.
+                  </Text>
+                </View>
+                <Switch
+                  value={editResubmitFlag}
+                  onValueChange={setEditResubmitFlag}
+                  trackColor={{ false: '#475569', true: '#2563EB' }}
+                  thumbColor="#FFFFFF"
+                />
               </View>
-              <Switch
-                value={editResubmitFlag}
-                onValueChange={setEditResubmitFlag}
-                trackColor={{ false: '#475569', true: '#2563EB' }}
-                thumbColor="#FFFFFF"
-              />
+              {editResubmitFlag && (
+                <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: borderCol }}>
+                  <Text style={[styles.inputLabel, { color: textPrimary, marginTop: 0 }]}>
+                    Explanation of Changes / Resubmission Note:
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.resubmitTextArea,
+                      { backgroundColor: pageBg, borderColor: borderCol, color: textPrimary, marginTop: 4 },
+                    ]}
+                    multiline
+                    numberOfLines={3}
+                    value={editResubmitNotes}
+                    onChangeText={setEditResubmitNotes}
+                    placeholder="e.g. Uploaded clear trade license copy and updated morning opening slot..."
+                    placeholderTextColor={textMuted}
+                  />
+                </View>
+              )}
             </View>
 
             {/* SAVE BUTTON AT BOTTOM */}
@@ -1465,7 +1580,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
           <View style={[styles.dialogCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
             <Text style={[styles.dialogTitle, { color: textPrimary }]}>Resubmit Application</Text>
             <Text style={[styles.dialogSubtitle, { color: textSecondary }]}>
-              Add an optional message or clarification for the administrator:
+              Please describe the changes or clarifications made to resolve the administrator's feedback:
             </Text>
 
             <TextInput
@@ -1477,7 +1592,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
               numberOfLines={4}
               value={resubmitNotes}
               onChangeText={setResubmitNotes}
-              placeholder="e.g. Updated GST number and corrected weekend hours..."
+              placeholder="e.g. Uploaded revised license document with seal, updated weekend operating hours..."
               placeholderTextColor={textMuted}
             />
 

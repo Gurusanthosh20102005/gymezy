@@ -2003,8 +2003,28 @@ export const updateGym = asyncHandler(async (req, res) => {
     // Direct edit: apply changes immediately and preserve Approved status
     await applyChangesToGymDocument(gym, updates);
     gym.pendingChanges = null;
-    gym.approvalStatus = 'Approved';
-    gym.status = gym.status || 'Active';
+    const isResubmission =
+      updates.resubmit ||
+      gym.approvalStatus === 'Rejected' ||
+      gym.approvalStatus === 'On Hold' ||
+      gym.approvalStatus === 'Pending Approval';
+
+    if (isResubmission && !isSuperAdmin) {
+      gym.approvalStatus = 'Pending Approval';
+      gym.status = 'Pending';
+      const ownerExplanation =
+        updates.resubmissionNote || updates.resubmitNotes || updates.description || updates.notes;
+      if (ownerExplanation) {
+        gym.resubmissionNote = ownerExplanation;
+        gym.resubmittedAt = new Date();
+      }
+    } else if (!isSuperAdmin && gym.approvalStatus !== 'Approved') {
+      gym.approvalStatus = 'Pending Approval';
+      gym.status = 'Pending';
+    } else {
+      gym.approvalStatus = 'Approved';
+      gym.status = gym.status || 'Active';
+    }
     gym.changesCount = 0;
 
     const changedByName = req.user.fullName || req.user.name || (isSuperAdmin ? 'Super Admin' : 'Gym Admin');
@@ -2156,7 +2176,7 @@ export const updateGymTrainerPricing = asyncHandler(async (req, res) => {
  */
 export const updateGymStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status, approvalStatus, rejectionReason, remark, notes } = req.body;
+  const { status, approvalStatus, rejectionReason, rejectionNote, remark, notes } = req.body;
 
   let gym;
   if (mongoose.Types.ObjectId.isValid(id)) {
@@ -2172,9 +2192,9 @@ export const updateGymStatus = asyncHandler(async (req, res) => {
     throw ApiError.notFound('Gym not found.');
   }
 
-  let finalRemark = rejectionReason;
-  if (notes !== undefined) finalRemark = notes;
-  if (remark !== undefined) finalRemark = remark;
+  const resolvedReason = rejectionReason || (approvalStatus === 'Rejected' ? 'Application Requirements Not Met' : 'Verification On Hold');
+  const resolvedNote = rejectionNote !== undefined ? rejectionNote : (notes !== undefined ? notes : (remark !== undefined ? remark : ''));
+  const finalRemark = resolvedNote || resolvedReason;
   const reviewerName = req.user?.fullName || req.user?.name || req.user?.email || 'Super Admin';
 
   if (approvalStatus === 'Approved') {
@@ -2188,6 +2208,9 @@ export const updateGymStatus = asyncHandler(async (req, res) => {
     gym.status = 'Active';
     gym.changesCount = 0;
     gym.remark = finalRemark || 'Approved and published by Super Admin';
+    gym.rejectionReason = '';
+    gym.rejectionNote = '';
+    gym.resubmissionNote = '';
 
     if (!gym.partnerId) {
       const partnerSeq = await Counter.getNextSequence('gym_partner_id');
@@ -2209,8 +2232,10 @@ export const updateGymStatus = asyncHandler(async (req, res) => {
     // Reject pending changes
     gym.pendingChanges = null;
     gym.changesCount = 0;
-    gym.remark = finalRemark || 'Rejected during Super Admin inspection';
-    gym.rejectionReason = finalRemark || 'Rejected during Super Admin inspection';
+    gym.rejectionReason = resolvedReason;
+    gym.rejectionNote = resolvedNote;
+    gym.remark = finalRemark;
+    gym.resubmissionNote = ''; // Reset resubmission notes on new rejection
 
     if (gym.partnerId) {
       // Existing active partner: keep status active but discard the rejected edits
@@ -2229,16 +2254,16 @@ export const updateGymStatus = asyncHandler(async (req, res) => {
           log.approvalStatus = 'Rejected';
           log.reviewedBy = reviewerName;
           log.reviewedAt = new Date();
-          log.adminRemarks = finalRemark || 'Rejected by Super Administrator';
+          log.adminRemarks = resolvedNote ? `${resolvedReason}: ${resolvedNote}` : resolvedReason;
         }
       });
     }
   } else if (approvalStatus === 'On Hold') {
     gym.approvalStatus = 'On Hold';
     gym.status = 'On Hold';
-    if (finalRemark !== undefined) {
-      gym.remark = finalRemark;
-    }
+    gym.rejectionReason = resolvedReason;
+    gym.rejectionNote = resolvedNote;
+    gym.remark = finalRemark;
   } else if (approvalStatus === 'Pending Approval') {
     gym.approvalStatus = 'Pending Approval';
     gym.status = 'Pending';
@@ -2257,6 +2282,9 @@ export const updateGymStatus = asyncHandler(async (req, res) => {
         if (gym.partnerId) freshDoc.partnerId = gym.partnerId;
         if (gym.remark !== undefined) freshDoc.remark = gym.remark;
         if (gym.rejectionReason !== undefined) freshDoc.rejectionReason = gym.rejectionReason;
+        if (gym.rejectionNote !== undefined) freshDoc.rejectionNote = gym.rejectionNote;
+        if (gym.resubmissionNote !== undefined) freshDoc.resubmissionNote = gym.resubmissionNote;
+        if (gym.resubmittedAt !== undefined) freshDoc.resubmittedAt = gym.resubmittedAt;
         freshDoc.pendingChanges = gym.pendingChanges;
         freshDoc.changesCount = gym.changesCount;
         freshDoc.auditHistory = gym.auditHistory;
@@ -2283,7 +2311,7 @@ export const updateGymStatus = asyncHandler(async (req, res) => {
  */
 export const resubmitGymApplication = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { notes, remark } = req.body;
+  const { notes, remark, description, resubmissionNote } = req.body;
 
   let gym;
   if (mongoose.Types.ObjectId.isValid(id)) {
@@ -2311,9 +2339,10 @@ export const resubmitGymApplication = asyncHandler(async (req, res) => {
 
   gym.approvalStatus = 'Pending Approval';
   gym.status = 'Pending';
-  if (notes !== undefined || remark !== undefined) {
-    gym.remark = notes || remark || '';
-    gym.rejectionReason = notes || remark || '';
+  const ownerExplanation = resubmissionNote || description || notes || remark || '';
+  if (ownerExplanation) {
+    gym.resubmissionNote = ownerExplanation;
+    gym.resubmittedAt = new Date();
   }
 
   await gym.save();

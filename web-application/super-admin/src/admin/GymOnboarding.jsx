@@ -414,6 +414,20 @@ export const GymOnboarding = () => {
     setFilePreview(null);
   };
 
+  // Restrict keyboard input strictly to numeric digits for numeric fields
+  const handleNumericKeyDown = (e) => {
+    if (
+      ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+    }
+  };
+
   // Auto-reset when requested via navigation state
   useEffect(() => {
     if (location.state?.reset) {
@@ -1574,9 +1588,12 @@ export const GymOnboarding = () => {
                     </div>
                     <Input
                       addonBefore="+91"
+                      placeholder="9876543210"
+                      inputMode="numeric"
                       value={formData.phone}
-                      maxLength={12}
+                      maxLength={10}
                       status={(touched.phone && errors.phone) || phoneCheckStatus === 'exists' ? 'error' : ''}
+                      onKeyDown={handleNumericKeyDown}
                       onChange={(e) => {
                         let digits = e.target.value.replace(/\D/g, '');
                         if (digits.length === 12 && digits.startsWith('91')) {
@@ -1664,8 +1681,12 @@ export const GymOnboarding = () => {
                       Number of Branches
                     </div>
                     <Input
+                      placeholder="e.g. 1"
+                      inputMode="numeric"
+                      maxLength={4}
                       value={formData.branches}
-                      onChange={(e) => handleFieldChange('branches', e.target.value)}
+                      onKeyDown={handleNumericKeyDown}
+                      onChange={(e) => handleFieldChange('branches', e.target.value.replace(/\D/g, ''))}
                       style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                     />
                   </Col>
@@ -1975,9 +1996,13 @@ export const GymOnboarding = () => {
                       Pincode <span style={{ color: '#ef4444', marginLeft: 3 }}>*</span> {renderFieldSuccess('pincode')}
                     </div>
                     <Input
+                      placeholder="e.g. 600040"
+                      inputMode="numeric"
+                      maxLength={6}
                       value={formData.pincode}
                       status={touched.pincode && errors.pincode ? 'error' : ''}
-                      onChange={(e) => handleFieldChange('pincode', e.target.value)}
+                      onKeyDown={handleNumericKeyDown}
+                      onChange={(e) => handleFieldChange('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))}
                       onBlur={() => handleFieldBlur('pincode')}
                       style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                     />
@@ -2215,6 +2240,8 @@ export const GymOnboarding = () => {
                       status={touched.floorSpaceSqFt && errors.floorSpaceSqFt ? 'error' : ''}
                       onChange={(v) => handleFieldChange('floorSpaceSqFt', v)}
                       onBlur={() => handleFieldBlur('floorSpaceSqFt')}
+                      onKeyDown={handleNumericKeyDown}
+                      parser={(val) => (val ? String(val).replace(/\D/g, '') : '')}
                       style={{ width: '100%', height: 40 }}
                     />
                     {renderFieldError('floorSpaceSqFt')}
@@ -2234,6 +2261,8 @@ export const GymOnboarding = () => {
                       status={touched.maxFloorCapacity && errors.maxFloorCapacity ? 'error' : ''}
                       onChange={(v) => handleFieldChange('maxFloorCapacity', v)}
                       onBlur={() => handleFieldBlur('maxFloorCapacity')}
+                      onKeyDown={handleNumericKeyDown}
+                      parser={(val) => (val ? String(val).replace(/\D/g, '') : '')}
                       style={{ width: '100%', height: 40 }}
                     />
                     {renderFieldError('maxFloorCapacity')}

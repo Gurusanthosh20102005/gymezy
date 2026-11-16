@@ -304,12 +304,17 @@ class ApiService {
     };
   }
 
-  async resubmitGym(gymId, notes = '') {
+  async resubmitGym(gymId, notes = '', description = '') {
     if (!gymId) throw new Error('Gym ID is required to resubmit application.');
+    const ownerNote = description || notes;
     const response = await this.executeFetch(`/gyms/${gymId}/resubmit`, {
       method: 'POST',
       headers: this.getHeaders(),
-      body: JSON.stringify({ notes }),
+      body: JSON.stringify({
+        notes: ownerNote,
+        resubmissionNote: ownerNote,
+        description: ownerNote,
+      }),
     });
 
     const result = await response.json();

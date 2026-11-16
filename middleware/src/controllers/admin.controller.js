@@ -1285,17 +1285,41 @@ export const getAdminPartnerSubscriptions = asyncHandler(async (req, res) => {
   const activeStatus = statusFilter || status;
   if (activeStatus && activeStatus !== 'all') {
     if (activeStatus === 'Active') {
+      query.$and = [
+        {
+          $or: [
+            { approvalStatus: 'Approved', status: 'Active' },
+            { status: 'Active', approvalStatus: { $nin: ['On Hold', 'Rejected', 'Pending Approval'] } },
+          ],
+        },
+        { subscriptionStatus: { $nin: ['Cancelled', 'Inactive', 'Expired'] } },
+      ];
+    } else if (activeStatus === 'On Hold') {
       query.$or = [
-        { subscriptionStatus: 'Active' },
-        { status: 'Active', subscriptionStatus: { $ne: 'Cancelled' } },
+        { approvalStatus: 'On Hold' },
+        { status: 'On Hold' },
+        { subscriptionStatus: 'On Hold' },
+      ];
+    } else if (activeStatus === 'Pending' || activeStatus === 'Pending Approval') {
+      query.$or = [
+        { approvalStatus: 'Pending Approval' },
+        { status: 'Pending' },
+      ];
+    } else if (activeStatus === 'Rejected') {
+      query.$or = [
+        { approvalStatus: 'Rejected' },
+        { status: 'Rejected' },
       ];
     } else if (activeStatus === 'Cancelled') {
       query.$or = [
         { subscriptionStatus: 'Cancelled' },
-        { status: 'Inactive', subscriptionStatus: 'Inactive' },
+        { status: 'Inactive' },
+        { subscriptionStatus: 'Inactive' },
       ];
     } else if (activeStatus === 'Expiring Soon') {
-      query.subscriptionStatus = { $ne: 'Cancelled' };
+      query.approvalStatus = 'Approved';
+      query.status = 'Active';
+      query.subscriptionStatus = { $nin: ['Cancelled', 'Inactive', 'Expired'] };
     } else {
       query.subscriptionStatus = activeStatus;
     }
@@ -1305,6 +1329,14 @@ export const getAdminPartnerSubscriptions = asyncHandler(async (req, res) => {
   const pageNum = Math.max(1, Number.parseInt(page, 10) || 1);
   const limitNum = isFetchAll ? 0 : Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 10));
   const skip = limitNum > 0 ? (pageNum - 1) * limitNum : 0;
+
+  const activeSubsQuery = {
+    $or: [
+      { approvalStatus: 'Approved', status: 'Active' },
+      { status: 'Active', approvalStatus: { $nin: ['On Hold', 'Rejected', 'Pending Approval'] } },
+    ],
+    subscriptionStatus: { $nin: ['Cancelled', 'Inactive', 'Expired'] },
+  };
 
   // Global KPIs evaluated in parallel
   const [
@@ -1317,20 +1349,16 @@ export const getAdminPartnerSubscriptions = asyncHandler(async (req, res) => {
     cancelledSubs,
   ] = await Promise.all([
     Gym.countDocuments({}),
-    Gym.countDocuments({
-      $or: [
-        { subscriptionStatus: 'Active' },
-        { status: 'Active', subscriptionStatus: { $ne: 'Cancelled' } },
-      ],
-    }),
-    Gym.countDocuments({ subscriptionType: 'Hybrid' }),
-    Gym.countDocuments({ subscriptionType: 'App Only' }),
-    Gym.countDocuments({ subscriptionType: 'GMS' }),
-    Gym.countDocuments({ subscriptionType: 'Listing Only' }),
+    Gym.countDocuments(activeSubsQuery),
+    Gym.countDocuments({ ...activeSubsQuery, subscriptionType: 'Hybrid' }),
+    Gym.countDocuments({ ...activeSubsQuery, subscriptionType: 'App Only' }),
+    Gym.countDocuments({ ...activeSubsQuery, subscriptionType: 'GMS' }),
+    Gym.countDocuments({ ...activeSubsQuery, subscriptionType: 'Listing Only' }),
     Gym.countDocuments({
       $or: [
         { subscriptionStatus: 'Cancelled' },
-        { status: 'Inactive', subscriptionStatus: 'Inactive' },
+        { status: 'Inactive' },
+        { approvalStatus: 'Rejected' },
       ],
     }),
   ]);
@@ -1353,9 +1381,31 @@ export const getAdminPartnerSubscriptions = asyncHandler(async (req, res) => {
   };
 
   const transformPartnerSub = (g) => {
-    const gymId = g.partnerId || g._id.toString();
+    const isPartnerIdGenerated = Boolean(
+      g.partnerId &&
+      typeof g.partnerId === 'string' &&
+      !/^[0-9a-fA-F]{24}$/.test(g.partnerId) &&
+      g.partnerId.trim() !== '-'
+    );
+    const gymId = isPartnerIdGenerated ? g.partnerId : '-';
     const subType = g.subscriptionType || 'Hybrid';
-    const subStatus = g.subscriptionStatus || (g.status === 'Active' ? 'Active' : 'Cancelled');
+
+    // Accurately resolve subscription status from gym approvalStatus and operational status
+    let subStatus = 'Active';
+    if (g.approvalStatus === 'On Hold' || g.status === 'On Hold') {
+      subStatus = 'On Hold';
+    } else if (g.approvalStatus === 'Pending Approval' || g.status === 'Pending') {
+      subStatus = 'Pending Approval';
+    } else if (g.approvalStatus === 'Rejected' || g.status === 'Rejected') {
+      subStatus = 'Rejected';
+    } else if (g.status === 'Inactive' || g.subscriptionStatus === 'Cancelled' || g.subscriptionStatus === 'Inactive') {
+      subStatus = 'Cancelled';
+    } else if (g.approvalStatus === 'Approved') {
+      subStatus = (g.status === 'Active' || !g.status) ? (g.subscriptionStatus || 'Active') : g.status;
+    } else {
+      subStatus = g.status || g.approvalStatus || 'Active';
+    }
+
     const createdDate = g.createdAt ? new Date(g.createdAt) : new Date();
 
     let billingAmt = '₹ 4,999.00 / Month';
@@ -1387,7 +1437,7 @@ export const getAdminPartnerSubscriptions = asyncHandler(async (req, res) => {
       billingAmount: billingAmt,
       paymentMethod: 'UPI / Auto-Debit',
       autoRenewal: subStatus === 'Active' ? 'Enabled' : 'Disabled',
-      status: subStatus === 'Active' ? 'Active' : 'Cancelled',
+      status: subStatus,
       phone: g.phone || '—',
       email: g.email || '—',
       ownerName: g.ownerName || 'Gym Partner',

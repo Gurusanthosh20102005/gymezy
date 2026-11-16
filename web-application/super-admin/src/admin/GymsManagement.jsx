@@ -29,7 +29,6 @@ import {
   EnvironmentOutlined,
   PhoneOutlined,
   FilterOutlined,
-  PlusOutlined,
   DownloadOutlined,
   DownOutlined,
   EditOutlined,
@@ -60,6 +59,9 @@ import {
   CloseOutlined,
   IdcardOutlined,
   ReloadOutlined,
+  ExclamationCircleOutlined,
+  InfoCircleOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
@@ -343,7 +345,11 @@ export const GymsManagement = () => {
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
   const [isProcessingStatus, setIsProcessingStatus] = useState(false);
   const [quickAddForm] = Form.useForm();
-  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('Incomplete / Blurred Documents');
+  const [customRejectionReason, setCustomRejectionReason] = useState('');
+  const [rejectionNote, setRejectionNote] = useState('');
+  const [holdReason, setHoldReason] = useState('Document Verification Pending');
+  const [customHoldReason, setCustomHoldReason] = useState('');
   const [holdNotes, setHoldNotes] = useState('');
   const [adminNote, setAdminNote] = useState('');
 
@@ -402,8 +408,12 @@ export const GymsManagement = () => {
 
   const handleOpenReview = (gym) => {
     setSelectedGym(gym);
-    setHoldNotes(gym.remark || '');
-    setRejectionReason(gym.remark || gym.rejectionReason || '');
+    setHoldNotes(gym.rejectionNote || gym.remark || '');
+    setHoldReason(gym.rejectionReason || 'Document Verification Pending');
+    setCustomHoldReason('');
+    setRejectionNote(gym.rejectionNote || gym.remark || '');
+    setRejectionReason(gym.rejectionReason || 'Incomplete / Blurred Documents');
+    setCustomRejectionReason('');
     setCurrentView('review');
   };
 
@@ -426,9 +436,10 @@ export const GymsManagement = () => {
       try {
         await dispatch(updateGymStatusApi({ id, status: 'Approved', approvalStatus: 'Approved' })).unwrap();
         message.success(`Gym "${target.name}" approved and published to customer app!`);
-        dispatch(fetchGyms());
         setIsApproveModalOpen(false);
         setCurrentView('list');
+        setSearchParams({ tab: 'approved' });
+        loadGyms({ tab: 'approved', force: true });
       } catch (err) {
         message.error(err || 'Failed to approve gym');
       } finally {
@@ -440,19 +451,35 @@ export const GymsManagement = () => {
     }
   };
 
-  const handleHold = async (targetGym, notes) => {
+  const handleHold = async (targetGym, reason, notes) => {
     const target = targetGym || selectedGym;
+    const finalReason = reason !== undefined
+      ? reason
+      : (holdReason === 'Other' ? (customHoldReason.trim() || 'Verification On Hold') : holdReason);
     const finalNotes = notes !== undefined ? notes : holdNotes;
     if (target) {
       const id = target.id || target._id;
       setIsProcessingStatus(true);
       try {
-        await dispatch(updateGymStatusApi({ id, status: 'On Hold', approvalStatus: 'On Hold', remark: finalNotes, notes: finalNotes })).unwrap();
+        await dispatch(
+          updateGymStatusApi({
+            id,
+            status: 'On Hold',
+            approvalStatus: 'On Hold',
+            rejectionReason: finalReason,
+            rejectionNote: finalNotes,
+            remark: finalNotes || finalReason,
+            notes: finalNotes,
+          })
+        ).unwrap();
         message.info(`Gym "${target.name}" put on hold.`);
-        dispatch(fetchGyms());
         setIsHoldModalOpen(false);
+        setHoldReason('Document Verification Pending');
+        setCustomHoldReason('');
         setHoldNotes('');
         setCurrentView('list');
+        setSearchParams({ tab: 'on_hold' });
+        loadGyms({ tab: 'on_hold', force: true });
       } catch (err) {
         message.error(err || 'Failed to put gym on hold');
       } finally {
@@ -465,19 +492,34 @@ export const GymsManagement = () => {
     }
   };
 
-  const handleReject = async (targetGym, notes) => {
+  const handleReject = async (targetGym, reason, notes) => {
     const target = targetGym || selectedGym;
-    const finalNotes = notes !== undefined ? notes : rejectionReason;
+    const finalReason = reason !== undefined
+      ? reason
+      : (rejectionReason === 'Other' ? (customRejectionReason.trim() || 'Application Requirements Not Met') : rejectionReason);
+    const finalNotes = notes !== undefined ? notes : rejectionNote;
     if (target) {
       const id = target.id || target._id;
       setIsProcessingStatus(true);
       try {
-        await dispatch(updateGymStatusApi({ id, status: 'Rejected', approvalStatus: 'Rejected', rejectionReason: finalNotes, remark: finalNotes })).unwrap();
+        await dispatch(
+          updateGymStatusApi({
+            id,
+            status: 'Rejected',
+            approvalStatus: 'Rejected',
+            rejectionReason: finalReason,
+            rejectionNote: finalNotes,
+            remark: finalNotes || finalReason,
+          })
+        ).unwrap();
         message.warning(`Changes for "${target.name}" rejected. Notes sent to partner.`);
-        dispatch(fetchGyms());
         setIsRejectModalOpen(false);
-        setRejectionReason('');
+        setRejectionReason('Incomplete / Blurred Documents');
+        setCustomRejectionReason('');
+        setRejectionNote('');
         setCurrentView('list');
+        setSearchParams({ tab: 'rejected' });
+        loadGyms({ tab: 'rejected', force: true });
       } catch (err) {
         message.error(err || 'Failed to reject gym');
       } finally {
@@ -485,7 +527,7 @@ export const GymsManagement = () => {
       }
     } else {
       setIsRejectModalOpen(false);
-      setRejectionReason('');
+      setRejectionNote('');
       setCurrentView('list');
     }
   };
@@ -901,6 +943,114 @@ export const GymsManagement = () => {
             </Button>
           </div>
         </div>
+
+        {/* 1. REJECTION / HOLD FEEDBACK BANNER */}
+        {Boolean(
+          selectedGym?.rejectionReason ||
+          selectedGym?.rejectionNote ||
+          selectedGym?.approvalStatus === 'Rejected' ||
+          selectedGym?.approvalStatus === 'On Hold' ||
+          (selectedGym?.remark && selectedGym?.remark !== 'Approved and published by Super Admin')
+        ) && (
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: 8,
+              backgroundColor: isDarkMode
+                ? (selectedGym?.approvalStatus === 'On Hold' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(239, 68, 68, 0.08)')
+                : (selectedGym?.approvalStatus === 'On Hold' ? '#fffbe7' : '#fef2f2'),
+              border: `1px solid ${selectedGym?.approvalStatus === 'On Hold' ? '#fde68a' : '#fecaca'}`,
+              borderLeft: `5px solid ${selectedGym?.approvalStatus === 'On Hold' ? '#f59e0b' : '#ef4444'}`,
+              marginBottom: 20,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <ExclamationCircleOutlined style={{ fontSize: 18, color: selectedGym?.approvalStatus === 'On Hold' ? '#f59e0b' : '#ef4444' }} />
+                <span style={{ fontWeight: 700, fontSize: 14, color: isDarkMode ? '#f8fafc' : '#0f172a' }}>
+                  {selectedGym?.approvalStatus === 'On Hold' ? 'Application Put On Hold' : 'Rejection Feedback & Requirements'}
+                </span>
+                <Tag color={selectedGym?.approvalStatus === 'On Hold' ? 'warning' : 'error'} style={{ fontWeight: 700 }}>
+                  {selectedGym?.approvalStatus === 'On Hold' ? 'On Hold' : 'Rejected'}
+                </Tag>
+              </div>
+              {selectedGym?.rejectionReason && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>Reason:</span>
+                  <Tag color="volcano" style={{ fontWeight: 700, fontSize: 12 }}>
+                    {selectedGym.rejectionReason}
+                  </Tag>
+                </div>
+              )}
+            </div>
+            {(selectedGym?.rejectionNote || selectedGym?.remark) && (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: isDarkMode ? '#cbd5e1' : '#334155',
+                  backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.7)',
+                  padding: '10px 14px',
+                  borderRadius: 6,
+                  border: `1px dashed ${selectedGym?.approvalStatus === 'On Hold' ? '#fde68a' : '#fecaca'}`,
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong style={{ color: selectedGym?.approvalStatus === 'On Hold' ? '#d97706' : '#dc2626' }}>
+                  Admin Rejection Note:
+                </strong>{' '}
+                {selectedGym.rejectionNote || selectedGym.remark}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2. PARTNER RESUBMISSION NOTES BANNER */}
+        {Boolean(selectedGym?.resubmissionNote) && (
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: 8,
+              backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.08)' : '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderLeft: '5px solid #2563eb',
+              marginBottom: 20,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CheckCircleOutlined style={{ fontSize: 18, color: '#2563eb' }} />
+                <span style={{ fontWeight: 700, fontSize: 14, color: isDarkMode ? '#f8fafc' : '#0f172a' }}>
+                  Owner Resubmission Description & Clarifications
+                </span>
+                <Tag color="processing" style={{ fontWeight: 700 }}>
+                  Resubmitted by Partner
+                </Tag>
+              </div>
+              {selectedGym?.resubmittedAt && (
+                <span style={{ fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                  Resubmitted on: {new Date(selectedGym.resubmittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                </span>
+              )}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: isDarkMode ? '#cbd5e1' : '#1e3a8a',
+                backgroundColor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#ffffff',
+                padding: '12px 14px',
+                borderRadius: 6,
+                border: '1px solid #dbeafe',
+                lineHeight: 1.6,
+                fontWeight: 500,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#2563eb', marginBottom: 4 }}>
+                Changes & Corrections made by Gym Partner:
+              </div>
+              {selectedGym.resubmissionNote}
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Changes / Verification Container */}
         {(() => {
@@ -1397,27 +1547,61 @@ export const GymsManagement = () => {
           maskClosable={!isProcessingStatus}
           footer={null}
           centered
-          width={480}
+          width={520}
         >
           <div style={{ padding: '12px 0' }}>
-            <p style={{ fontSize: 13, color: isDarkMode ? '#aaaaaa' : '#64748b', marginBottom: 12 }}>
-              Specify the required updates or missing information for <strong>{selectedGym?.name || 'Selected Gym'}</strong>:
+            <p style={{ fontSize: 13, color: isDarkMode ? '#aaaaaa' : '#64748b', marginBottom: 14 }}>
+              Specify the hold reason and required updates for <strong>{selectedGym?.name || 'Selected Gym'}</strong>:
             </p>
-            <TextArea
-              rows={4}
-              disabled={isProcessingStatus}
-              value={holdNotes}
-              onChange={(e) => setHoldNotes(e.target.value)}
-              placeholder="e.g. Please upload trade license with clear stamp, update opening hours..."
-              style={{ marginBottom: 18 }}
-            />
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+                Reason for Hold <span style={{ color: '#fa8c16' }}>*</span>
+              </label>
+              <Select
+                value={holdReason}
+                onChange={(val) => setHoldReason(val)}
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'Document Verification Pending', label: 'Document Verification Pending with Authority' },
+                  { value: 'Field / Physical Inspection Scheduled', label: 'Field / Physical Inspection Scheduled' },
+                  { value: 'Clarification Needed from Partner', label: 'Clarification Needed from Gym Partner' },
+                  { value: 'Bank Settlement Mandate Incomplete', label: 'Bank Settlement Mandate Incomplete' },
+                  { value: 'Other', label: 'Other (Specify below)' },
+                ]}
+              />
+            </div>
+            {holdReason === 'Other' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+                  Custom Reason Title <span style={{ color: '#fa8c16' }}>*</span>
+                </label>
+                <Input
+                  disabled={isProcessingStatus}
+                  value={customHoldReason}
+                  onChange={(e) => setCustomHoldReason(e.target.value)}
+                  placeholder="e.g. Under review by regional compliance team"
+                />
+              </div>
+            )}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+                Hold Instructions / Feedback <span style={{ color: '#fa8c16' }}>*</span>
+              </label>
+              <TextArea
+                rows={4}
+                disabled={isProcessingStatus}
+                value={holdNotes}
+                onChange={(e) => setHoldNotes(e.target.value)}
+                placeholder="e.g. Please upload trade license with clear stamp, update opening hours..."
+              />
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <Button disabled={isProcessingStatus} onClick={() => setIsHoldModalOpen(false)}>Cancel</Button>
               <Button
                 type="primary"
                 loading={isProcessingStatus}
-                disabled={isProcessingStatus}
-                onClick={() => handleHold(selectedGym, holdNotes)}
+                disabled={isProcessingStatus || (!holdNotes.trim() && !holdReason)}
+                onClick={() => handleHold(selectedGym, holdReason === 'Other' ? customHoldReason : holdReason, holdNotes)}
                 style={{ fontWeight: 600, backgroundColor: '#fa8c16', borderColor: '#fa8c16' }}
               >
                 Confirm Hold
@@ -1435,28 +1619,65 @@ export const GymsManagement = () => {
           maskClosable={!isProcessingStatus}
           footer={null}
           centered
-          width={480}
+          width={520}
         >
           <div style={{ padding: '12px 0' }}>
-            <p style={{ fontSize: 13, color: isDarkMode ? '#aaaaaa' : '#64748b', marginBottom: 12 }}>
+            <p style={{ fontSize: 13, color: isDarkMode ? '#aaaaaa' : '#64748b', marginBottom: 14 }}>
               Please specify the reason for rejecting changes submitted by <strong>{selectedGym?.requestedBy || selectedGym?.ownerName || 'Gym Partner'}</strong>:
             </p>
-            <TextArea
-              rows={4}
-              disabled={isProcessingStatus}
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-              placeholder="e.g. Photo resolution too low, pricing does not adhere to platform standard..."
-              style={{ marginBottom: 18 }}
-            />
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+                Reason for Rejection <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <Select
+                value={rejectionReason}
+                onChange={(val) => setRejectionReason(val)}
+                style={{ width: '100%' }}
+                options={[
+                  { value: 'Incomplete / Blurred Documents', label: 'Incomplete / Blurred Documents (Trade License, PAN, GST)' },
+                  { value: 'Facility Photos Inadequate or Low Resolution', label: 'Facility Photos Inadequate or Low Resolution' },
+                  { value: 'Pricing & Package Discrepancy', label: 'Pricing & Package Discrepancy' },
+                  { value: 'Bank Account & Settlement Verification Failed', label: 'Bank Account & Settlement Verification Failed' },
+                  { value: 'Location / Geolocation Coordinates Mismatch', label: 'Location / Geolocation Coordinates Mismatch' },
+                  { value: 'Safety & Compliance Standards Not Met', label: 'Safety & Compliance Standards Not Met' },
+                  { value: 'Inaccurate Business Information', label: 'Inaccurate Business Information' },
+                  { value: 'Other', label: 'Other (Specify below)' },
+                ]}
+              />
+            </div>
+            {rejectionReason === 'Other' && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+                  Custom Reason Title <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <Input
+                  disabled={isProcessingStatus}
+                  value={customRejectionReason}
+                  onChange={(e) => setCustomRejectionReason(e.target.value)}
+                  placeholder="e.g. Missing fire clearance certificate"
+                />
+              </div>
+            )}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+                Rejection Note / Feedback for Gym Partner <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <TextArea
+                rows={4}
+                disabled={isProcessingStatus}
+                value={rejectionNote}
+                onChange={(e) => setRejectionNote(e.target.value)}
+                placeholder="e.g. Photo resolution too low, pricing does not adhere to platform standard..."
+              />
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <Button disabled={isProcessingStatus} onClick={() => setIsRejectModalOpen(false)}>Cancel</Button>
               <Button
                 danger
                 type="primary"
                 loading={isProcessingStatus}
-                disabled={isProcessingStatus}
-                onClick={() => handleReject(selectedGym, rejectionReason)}
+                disabled={isProcessingStatus || (!rejectionNote.trim() && !rejectionReason)}
+                onClick={() => handleReject(selectedGym, rejectionReason === 'Other' ? customRejectionReason : rejectionReason, rejectionNote)}
                 style={{ fontWeight: 600 }}
               >
                 Confirm Rejection
@@ -1560,26 +1781,6 @@ export const GymsManagement = () => {
             {getHeaderSubtitle()}
           </Text>
         </div>
-
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate('/admin/onboarding', { state: { reset: true } })}
-            style={{
-              height: 40,
-              padding: '0 18px',
-              borderRadius: 'var(--radius-base)',
-              backgroundColor: '#4338ca',
-              borderColor: '#4338ca',
-              fontWeight: 700,
-              fontSize: 14,
-              boxShadow: '0 4px 14px rgba(67, 56, 202, 0.35)',
-            }}
-          >
-            Add New Gym
-          </Button>
-        </div>
       </div>
 
       {/* 2. Filter Bar */}
@@ -1593,7 +1794,7 @@ export const GymsManagement = () => {
         styles={{ body: { padding: '18px 20px' } }}
       >
         <Row gutter={[14, 14]}>
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={24} sm={12} lg={7}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
               Gym Name
             </div>
@@ -1605,19 +1806,6 @@ export const GymsManagement = () => {
               style={{ height: 38, borderRadius: 'var(--radius-base)' }}
               allowClear
             />
-          </Col>
-
-          <Col xs={24} sm={12} lg={4}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
-              Approval Status
-            </div>
-            <Select value={searchStatus} onChange={setSearchStatus} style={{ width: '100%', height: 38 }}>
-              <Option value="All">All Status</Option>
-              <Option value="Approved">Approved</Option>
-              <Option value="Pending Approval">Pending Approval</Option>
-              <Option value="Rejected">Rejected</Option>
-              <Option value="On Hold">On Hold</Option>
-            </Select>
           </Col>
 
           <Col xs={24} sm={12} lg={5}>
@@ -1633,7 +1821,7 @@ export const GymsManagement = () => {
             </Select>
           </Col>
 
-          <Col xs={24} sm={12} lg={5}>
+          <Col xs={24} sm={12} lg={6}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
               Location / City
             </div>
@@ -1647,7 +1835,7 @@ export const GymsManagement = () => {
             />
           </Col>
 
-          <Col xs={24} sm={12} lg={4}>
+          <Col xs={24} sm={12} lg={6}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#334155', marginBottom: 6 }}>
               Phone Number
             </div>
