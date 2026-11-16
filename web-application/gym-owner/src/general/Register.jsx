@@ -13,6 +13,9 @@ import {
   InputNumber,
   Switch,
   Checkbox,
+  Radio,
+  Alert,
+  Card,
 } from 'antd';
 import {
   PictureOutlined,
@@ -38,6 +41,15 @@ import {
   FilePdfOutlined,
   FileTextOutlined,
   SafetyCertificateOutlined,
+  ShopOutlined,
+  CreditCardOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleFilled,
+  FileProtectOutlined,
+  MobileOutlined,
+  StarFilled,
+  ThunderboltFilled,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import confetti from 'canvas-confetti';
@@ -131,11 +143,17 @@ const reverseGeocodeCoordinates = async (lat, lng) => {
 
 const STEPS = [
   { id: 1, title: 'Basic Info', key: 'basic' },
+  { id: 1, title: 'Business Info', key: 'business' },
   { id: 2, title: 'Location & Geolocation', key: 'location' },
   { id: 3, title: 'Facilities & Photos', key: 'facilities' },
   { id: 4, title: 'Pricing & Plans', key: 'pricing' },
   { id: 5, title: 'Bank & Submit', key: 'bank' },
+  { id: 4, title: 'Workouts & Rules', key: 'workouts' },
+  { id: 5, title: 'Payout & Tier', key: 'payment' },
+  { id: 6, title: 'Review & Submit', key: 'review' },
 ];
+
+const BADGE_OPTIONS = ['Trending', 'Top Rated', 'Verified SuperGym', 'Popular', 'Premium Club', '24/7 Access', 'CrossFit Ready'];
 
 const FACILITY_OPTIONS = [
   'AC Gym',
@@ -197,9 +215,48 @@ const DEFAULT_SAFETY = [
 
 const STEP_FIELDS = {
   1: ['subscriptionType', 'gymName', 'ownerName', 'phone', 'email', 'password', 'confirmPassword', 'gstNumber', 'panNumber'],
+  1: ['gymName', 'ownerName', 'phone', 'email', 'password', 'confirmPassword', 'gstNumber', 'panNumber'],
   2: ['address', 'area', 'city', 'state', 'pincode'],
   4: ['workouts', 'monthlyPrice'],
   5: ['accountHolder', 'bankName', 'accountNumber', 'confirmAccountNumber', 'ifscCode', 'agreedToTerms'],
+  3: ['floorSpaceSqFt', 'maxFloorCapacity', 'logo', 'facilities'],
+  4: ['workouts'],
+  5: ['subscriptionType', 'accountHolder', 'bankName', 'accountNumber', 'confirmAccountNumber', 'ifscCode'],
+  6: ['agreedToTerms'],
+};
+
+const STEP_REQUIRED_FIELDS = {
+  1: [
+    { field: 'gymName', label: 'Gym / Studio Name' },
+    { field: 'ownerName', label: 'Owner / MD Name' },
+    { field: 'phone', label: 'Mobile Number' },
+    { field: 'email', label: 'Official Email' },
+    { field: 'password', label: 'Password' },
+  ],
+  2: [
+    { field: 'address', label: 'Street Address' },
+    { field: 'area', label: 'Area / Locality' },
+    { field: 'city', label: 'City' },
+    { field: 'state', label: 'State' },
+    { field: 'pincode', label: 'Pincode' },
+  ],
+  3: [
+    { field: 'floorSpaceSqFt', label: 'Floor Space' },
+    { field: 'maxFloorCapacity', label: 'Max Capacity' },
+    { field: 'logo', label: 'Gym Logo' },
+    { field: 'facilities', label: 'Facilities (Min 1)' },
+  ],
+  4: [
+    { field: 'workouts', label: 'Workouts (Min 1)' },
+  ],
+  5: [
+    { field: 'subscriptionType', label: 'Subscription Plan' },
+    { field: 'accountHolder', label: 'Account Holder Name' },
+    { field: 'bankName', label: 'Bank Name' },
+    { field: 'accountNumber', label: 'Account Number' },
+    { field: 'confirmAccountNumber', label: 'Confirm Account Number' },
+    { field: 'ifscCode', label: 'IFSC Code' },
+  ],
 };
 
 // Pure validator function
@@ -339,10 +396,15 @@ const INITIAL_FORM_DATA = {
   lat: null,
   lng: null,
   googleMapsUrl: '',
+  timingMode: 'REGULAR',
   weekdayOpen: '05:30 AM',
   weekdayClose: '10:30 PM',
   weekendOpen: '06:00 AM',
   weekendClose: '09:00 PM',
+  morningOpen: '05:30 AM',
+  morningClose: '11:30 AM',
+  eveningOpen: '04:30 PM',
+  eveningClose: '10:30 PM',
   isSplitShift: false,
   isOpenHolidays: true,
   is24Hours: false,
@@ -350,6 +412,7 @@ const INITIAL_FORM_DATA = {
   floorSpaceSqFt: 3500,
   maxFloorCapacity: 45,
   genderAllowed: 'Unisex',
+  badgeText: 'Trending',
   logo: '',
   coverPhoto: '',
   galleryPhotos: [],
@@ -380,6 +443,7 @@ const INITIAL_FORM_DATA = {
   rescheduleAllowedCount: 2,
 
   subscriptionType: 'Listing Only',
+  subscriptionType: 'Hybrid',
   commissionRate: 10,
   settlementCycle: 'Daily (T+1)',
   accountHolder: '',
@@ -390,6 +454,27 @@ const INITIAL_FORM_DATA = {
   upiId: '',
 
   agreedToTerms: false,
+};
+
+const parse12HourTime = (value) => {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return '';
+  let hours = Number(match[1]);
+  const minutes = match[2];
+  const period = match[3].toUpperCase();
+  if (hours === 12) hours = 0;
+  if (period === 'PM') hours += 12;
+  return `${String(hours).padStart(2, '0')}:${minutes}`;
+};
+
+const format24HourTime = (value) => {
+  const [hoursValue, minutes = '00'] = String(value || '').split(':');
+  let hours = Number(hoursValue);
+  if (!Number.isInteger(hours) || hours < 0 || hours > 23) return '';
+  const period = hours >= 12 ? 'PM' : 'AM';
+  hours %= 12;
+  if (hours === 0) hours = 12;
+  return `${String(hours).padStart(2, '0')}:${minutes} ${period}`;
 };
 
 export const Register = () => {
@@ -429,6 +514,20 @@ export const Register = () => {
     setPhoneCheckStatus('idle');
     setPhoneCheckError('');
     setIsGpsPinned(false);
+  };
+
+  // Restrict keyboard input strictly to numeric digits for numeric fields
+  const handleNumericKeyDown = (e) => {
+    if (
+      ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    if (!/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+    }
   };
 
   useEffect(() => {
@@ -584,6 +683,10 @@ export const Register = () => {
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
 
+  const updateFields = (fieldsObj) => {
+    setFormData((prev) => ({ ...prev, ...fieldsObj }));
+  };
+
   const markFieldTouched = (field) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
@@ -673,10 +776,44 @@ export const Register = () => {
     match: formData.password === formData.confirmPassword && formData.confirmPassword.length > 0,
   };
 
+  const getStepValidationStatus = (stepId) => {
+    const required = STEP_REQUIRED_FIELDS[stepId] || [];
+    const missing = required.filter(({ field }) => {
+      if (isGoogleSso && (field === 'password' || field === 'confirmPassword')) return false;
+      const val = formData[field];
+      if (Array.isArray(val)) return !val || val.length === 0;
+      return !val || String(val).trim() === '';
+    });
+    return {
+      isValid: missing.length === 0,
+      missingCount: missing.length,
+      missingFields: missing,
+    };
+  };
+
+  const validationSummary = useMemo(() => {
+    const statusMap = {};
+    let totalMissing = 0;
+    for (let i = 1; i <= 5; i++) {
+      const st = getStepValidationStatus(i);
+      statusMap[i] = st;
+      totalMissing += st.missingCount;
+    }
+    return {
+      statusMap,
+      totalMissing,
+      isAllValid: totalMissing === 0,
+    };
+  }, [formData, isGoogleSso]);
+
   // Check step validity
   const isStepValid = (step) => {
     const fields = STEP_FIELDS[step] || [];
     return fields.every((f) => !errors[f]);
+    if (step <= 5) {
+      return getStepValidationStatus(step).isValid;
+    }
+    return Boolean(formData.agreedToTerms);
   };
 
   const handleNext = async () => {
@@ -737,6 +874,7 @@ export const Register = () => {
     }
 
     setCurrentStep((prev) => Math.min(prev + 1, 5));
+    setCurrentStep((prev) => Math.min(prev + 1, 6));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -820,12 +958,23 @@ export const Register = () => {
     for (const f of step5Fields) {
       newTouched[f] = true;
       if (errors[f]) hasError = true;
+    if (!validationSummary.isAllValid) {
+      for (let i = 1; i <= 5; i++) {
+        if (!validationSummary.statusMap[i]?.isValid) {
+          message.error(`Please complete all required fields in Step ${i}: ${STEPS[i - 1].title}`);
+          setCurrentStep(i);
+          return;
+        }
+      }
     }
     setTouched(newTouched);
 
     if (hasError) {
       const firstError = step5Fields.find((f) => errors[f]);
       message.error(errors[firstError] || 'Please review your bank & agreement details.');
+    if (!formData.agreedToTerms) {
+      message.error('You must accept the terms to proceed');
+      markFieldTouched('agreedToTerms');
       return;
     }
 
@@ -859,17 +1008,37 @@ export const Register = () => {
         lng: Number(formData.lng) || 80.2707,
         googleMapsUrl: formData.googleMapsUrl.trim() || `https://maps.google.com/?q=${formData.lat},${formData.lng}`,
 
+        timingMode: formData.timingMode || 'REGULAR',
         weekdayOpen: formData.weekdayOpen,
         weekdayClose: formData.weekdayClose,
         weekendOpen: formData.weekendOpen,
         weekendClose: formData.weekendClose,
-        isSplitShift: formData.isSplitShift,
-        isOpenHolidays: formData.isOpenHolidays,
-        is24Hours: formData.is24Hours,
+        morningOpen: formData.morningOpen || '05:30 AM',
+        morningClose: formData.morningClose || '11:30 AM',
+        eveningOpen: formData.eveningOpen || '04:30 PM',
+        eveningClose: formData.eveningClose || '10:30 PM',
+        isSplitShift: formData.timingMode === 'SPLIT_SHIFT',
+        isOpenHolidays: formData.isOpenHolidays !== false,
+        is24Hours: formData.timingMode === '24_HOURS',
+        openingHours: {
+          mode: formData.timingMode || 'REGULAR',
+          weekdayOpen: formData.weekdayOpen,
+          weekdayClose: formData.weekdayClose,
+          weekendOpen: formData.weekendOpen,
+          weekendClose: formData.weekendClose,
+          morningOpen: formData.morningOpen || '05:30 AM',
+          morningClose: formData.morningClose || '11:30 AM',
+          eveningOpen: formData.eveningOpen || '04:30 PM',
+          eveningClose: formData.eveningClose || '10:30 PM',
+          isSplitShift: formData.timingMode === 'SPLIT_SHIFT',
+          isOpenHolidays: formData.isOpenHolidays !== false,
+          is24Hours: formData.timingMode === '24_HOURS',
+        },
 
         floorSpaceSqFt: Number(formData.floorSpaceSqFt),
         maxFloorCapacity: Number(formData.maxFloorCapacity),
         genderAllowed: formData.genderAllowed,
+        badgeText: formData.badgeText || 'Trending',
         logo: formData.logo,
         coverPhoto: formData.coverPhoto || formData.logo,
         galleryPhotos: formData.galleryPhotos || [],
@@ -1254,6 +1423,12 @@ export const Register = () => {
             {currentStep === 3 && 'Facilities, Amenities & Photos'}
             {currentStep === 4 && 'Workout Disciplines & Membership Pricing'}
             {currentStep === 5 && 'Bank Account & Review'}
+            {currentStep === 1 && '1. Business & Legal Information'}
+            {currentStep === 2 && '2. Location, Geolocation & Operating Hours'}
+            {currentStep === 3 && '3. Facilities, Amenities & Floor Space'}
+            {currentStep === 4 && '4. Workouts, Amenities, Rules & Safety'}
+            {currentStep === 5 && '5. GYMEZY Subscription Tier & Payout Settlement'}
+            {currentStep === 6 && '6. Final Review & Submit for Approval'}
           </h1>
           <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
             {currentStep === 1 && 'Provide basic business information and create your administrator login credentials.'}
@@ -1261,6 +1436,12 @@ export const Register = () => {
             {currentStep === 3 && 'Upload brand logo, cover photo, and high quality facility & equipment photos.'}
             {currentStep === 4 && 'Set your walk-in single session pass price and optional recurring membership tiers.'}
             {currentStep === 5 && 'Provide your settlement bank account. Your application will be submitted for Super Admin review.'}
+            {currentStep === 1 && 'Provide basic business information, legal registration, and create administrator credentials.'}
+            {currentStep === 2 && 'Pinpoint your exact facility address with live geolocation and configure operating shift timings.'}
+            {currentStep === 3 && 'Define floor area, capacity, highlight badge, brand logo, and facility equipment.'}
+            {currentStep === 4 && 'Configure fitness disciplines, amenities, facility rules, and safety protocols.'}
+            {currentStep === 5 && 'Select your GYMEZY platform partner plan and provide automated payout bank details.'}
+            {currentStep === 6 && 'Review pre-submission compliance checklist, preview your customer app card, and submit for approval.'}
           </p>
         </div>
 
@@ -1390,16 +1571,16 @@ export const Register = () => {
 
                 <Col xs={24} sm={12}>
                   <label style={labelStyle}>Number of Branches</label>
-                  <Select
+                  <Input
+                    placeholder="e.g. 1"
+                    inputMode="numeric"
+                    maxLength={4}
                     value={formData.branches}
-                    onChange={(val) => updateField('branches', val)}
-                    style={{ width: '100%', height: 44 }}
-                  >
-                    <Option value="1">1 (Single Facility)</Option>
-                    <Option value="2-5">2 – 5 Branches</Option>
-                    <Option value="6-10">6 – 10 Branches</Option>
-                    <Option value="10+">10+ Chain Network</Option>
-                  </Select>
+                    onKeyDown={handleNumericKeyDown}
+                    onChange={(e) => updateField('branches', e.target.value.replace(/\D/g, ''))}
+                    onBlur={() => markFieldTouched('branches')}
+                    style={getInputStyle('branches')}
+                  />
                 </Col>
 
                 <Col xs={24} sm={12}>
@@ -1591,7 +1772,9 @@ export const Register = () => {
                       ) : null
                     }
                     maxLength={10}
+                    inputMode="numeric"
                     value={formData.phone}
+                    onKeyDown={handleNumericKeyDown}
                     onChange={(e) => updateField('phone', e.target.value.replace(/\D/g, ''))}
                     onBlur={() => markFieldTouched('phone')}
                     style={{
@@ -1952,7 +2135,9 @@ export const Register = () => {
                   </label>
                   <Input
                     maxLength={6}
+                    inputMode="numeric"
                     value={formData.pincode}
+                    onKeyDown={handleNumericKeyDown}
                     onChange={(e) => updateField('pincode', e.target.value.replace(/\D/g, ''))}
                     onBlur={() => markFieldTouched('pincode')}
                     style={getInputStyle('pincode')}
@@ -1999,90 +2184,152 @@ export const Register = () => {
 
               <Divider style={{ margin: '24px 0 20px 0', borderColor: isDarkMode ? '#27272a' : '#f1f5f9' }} />
 
-              <div style={{ fontSize: 14, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', marginBottom: 16 }}>
-                Regular Operating Hours
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                  Facility Operating Hours & Shift Architecture
+                </div>
+                <Tag color={formData.timingMode === '24_HOURS' ? 'green' : (formData.timingMode === 'SPLIT_SHIFT' ? 'purple' : 'blue')}>
+                  {formData.timingMode === '24_HOURS' ? '24/7 Mode' : (formData.timingMode === 'SPLIT_SHIFT' ? 'Split Shift' : 'Regular Mode')}
+                </Tag>
               </div>
 
-              <Row gutter={[16, 16]}>
-                <Col xs={24} sm={12}>
-                  <label style={labelStyle}>Weekday Open (Mon – Fri)</label>
-                  <Select
-                    value={formData.weekdayOpen}
-                    onChange={(val) => updateField('weekdayOpen', val)}
-                    style={{ width: '100%', height: 44 }}
-                  >
-                    {['05:00 AM', '05:30 AM', '06:00 AM', '06:30 AM', '07:00 AM'].map((t) => (
-                      <Option key={t} value={t}>{t}</Option>
-                    ))}
-                  </Select>
-                </Col>
+              {/* Timing Mode Selector */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: isDarkMode ? '#cccccc' : '#334155' }}>
+                  Select Operational Timing Model
+                </div>
+                <Radio.Group
+                  value={formData.timingMode || 'REGULAR'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateFields({
+                      timingMode: val,
+                      is24Hours: val === '24_HOURS',
+                      isSplitShift: val === 'SPLIT_SHIFT',
+                    });
+                  }}
+                  buttonStyle="solid"
+                  style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}
+                >
+                  <Radio.Button value="REGULAR" style={{ borderRadius: 8, height: 38, lineHeight: '36px' }}>
+                    Single Shift (Continuous 12h/16h)
+                  </Radio.Button>
+                  <Radio.Button value="SPLIT_SHIFT" style={{ borderRadius: 8, height: 38, lineHeight: '36px' }}>
+                    Split Shift (Morning + Evening)
+                  </Radio.Button>
+                  <Radio.Button value="24_HOURS" style={{ borderRadius: 8, height: 38, lineHeight: '36px' }}>
+                    24 Hours (Round-the-clock)
+                  </Radio.Button>
+                </Radio.Group>
+              </div>
 
-                <Col xs={24} sm={12}>
-                  <label style={labelStyle}>Weekday Close (Mon – Fri)</label>
-                  <Select
-                    value={formData.weekdayClose}
-                    onChange={(val) => updateField('weekdayClose', val)}
-                    style={{ width: '100%', height: 44 }}
-                  >
-                    {['09:00 PM', '09:30 PM', '10:00 PM', '10:30 PM', '11:00 PM', '11:30 PM'].map((t) => (
-                      <Option key={t} value={t}>{t}</Option>
-                    ))}
-                  </Select>
-                </Col>
+              {/* Mode-Specific Time Pickers */}
+              {(formData.timingMode === 'REGULAR' || !formData.timingMode) && (
+                <Row gutter={[16, 16]}>
+                  <Col xs={24} sm={12} md={6}>
+                    <label style={labelStyle}>Weekday Open (Mon – Fri)</label>
+                    <Input
+                      type="time"
+                      value={parse12HourTime(formData.weekdayOpen)}
+                      onChange={(e) => updateField('weekdayOpen', format24HourTime(e.target.value))}
+                      style={{ height: 40, borderRadius: 8 }}
+                    />
+                  </Col>
+                  <Col xs={24} sm={12} md={6}>
+                    <label style={labelStyle}>Weekday Close (Mon – Fri)</label>
+                    <Input
+                      type="time"
+                      value={parse12HourTime(formData.weekdayClose)}
+                      onChange={(e) => updateField('weekdayClose', format24HourTime(e.target.value))}
+                      style={{ height: 40, borderRadius: 8 }}
+                    />
+                  </Col>
+                  <Col xs={24} sm={12} md={6}>
+                    <label style={labelStyle}>Weekend Open (Sat – Sun)</label>
+                    <Input
+                      type="time"
+                      value={parse12HourTime(formData.weekendOpen)}
+                      onChange={(e) => updateField('weekendOpen', format24HourTime(e.target.value))}
+                      style={{ height: 40, borderRadius: 8 }}
+                    />
+                  </Col>
+                  <Col xs={24} sm={12} md={6}>
+                    <label style={labelStyle}>Weekend Close (Sat – Sun)</label>
+                    <Input
+                      type="time"
+                      value={parse12HourTime(formData.weekendClose)}
+                      onChange={(e) => updateField('weekendClose', format24HourTime(e.target.value))}
+                      style={{ height: 40, borderRadius: 8 }}
+                    />
+                  </Col>
+                </Row>
+              )}
 
-                <Col xs={24} sm={12}>
-                  <label style={labelStyle}>Weekend Open (Sat – Sun)</label>
-                  <Select
-                    value={formData.weekendOpen}
-                    onChange={(val) => updateField('weekendOpen', val)}
-                    style={{ width: '100%', height: 44 }}
-                  >
-                    {['05:30 AM', '06:00 AM', '06:30 AM', '07:00 AM', '08:00 AM'].map((t) => (
-                      <Option key={t} value={t}>{t}</Option>
-                    ))}
-                  </Select>
-                </Col>
+              {formData.timingMode === 'SPLIT_SHIFT' && (
+                <div>
+                  <div style={{ padding: '10px 14px', borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(168,85,247,0.1)' : '#faf5ff', border: '1px solid #d8b4fe', marginBottom: 14, fontSize: 13, color: isDarkMode ? '#e9d5ff' : '#6b21a8' }}>
+                    <strong>Split Shift Model:</strong> Common for fitness studios in India. Gym opens for early morning routines, closes during the afternoon for sanitization/break, and reopens for evening workouts. Bookable slots are generated only during active shifts.
+                  </div>
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} sm={12} md={6}>
+                      <label style={labelStyle}>Morning Shift Open</label>
+                      <Input
+                        type="time"
+                        value={parse12HourTime(formData.morningOpen || '05:30 AM')}
+                        onChange={(e) => updateField('morningOpen', format24HourTime(e.target.value))}
+                        style={{ height: 40, borderRadius: 8 }}
+                      />
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                      <label style={labelStyle}>Morning Shift Close</label>
+                      <Input
+                        type="time"
+                        value={parse12HourTime(formData.morningClose || '11:30 AM')}
+                        onChange={(e) => updateField('morningClose', format24HourTime(e.target.value))}
+                        style={{ height: 40, borderRadius: 8 }}
+                      />
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                      <label style={labelStyle}>Evening Shift Open</label>
+                      <Input
+                        type="time"
+                        value={parse12HourTime(formData.eveningOpen || '04:30 PM')}
+                        onChange={(e) => updateField('eveningOpen', format24HourTime(e.target.value))}
+                        style={{ height: 40, borderRadius: 8 }}
+                      />
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                      <label style={labelStyle}>Evening Shift Close</label>
+                      <Input
+                        type="time"
+                        value={parse12HourTime(formData.eveningClose || '10:30 PM')}
+                        onChange={(e) => updateField('eveningClose', format24HourTime(e.target.value))}
+                        style={{ height: 40, borderRadius: 8 }}
+                      />
+                    </Col>
+                  </Row>
+                </div>
+              )}
 
-                <Col xs={24} sm={12}>
-                  <label style={labelStyle}>Weekend Close (Sat – Sun)</label>
-                  <Select
-                    value={formData.weekendClose}
-                    onChange={(val) => updateField('weekendClose', val)}
-                    style={{ width: '100%', height: 44 }}
-                  >
-                    {['08:00 PM', '08:30 PM', '09:00 PM', '09:30 PM', '10:00 PM'].map((t) => (
-                      <Option key={t} value={t}>{t}</Option>
-                    ))}
-                  </Select>
+              {formData.timingMode === '24_HOURS' && (
+                <div style={{ padding: '14px 18px', borderRadius: 8, backgroundColor: isDarkMode ? 'rgba(34,197,94,0.1)' : '#f0fdf4', border: '1px solid #86efac', marginBottom: 14, fontSize: 13, color: isDarkMode ? '#86efac' : '#166534' }}>
+                  <strong>24/7 Round-the-clock Facility:</strong> This gym operates continuously 24 hours a day, 7 days a week. Dynamic customer booking slots will be available around the clock.
+                </div>
+              )}
+
+              <Row gutter={[16, 16]} style={{ marginTop: 14 }}>
+                <Col xs={24} md={12}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Switch
+                      checked={formData.isOpenHolidays !== false}
+                      onChange={(chk) => updateField('isOpenHolidays', chk)}
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                      Facility Remains Open on Public Holidays
+                    </span>
+                  </div>
                 </Col>
               </Row>
-
-              <div
-                style={{
-                  marginTop: 18,
-                  display: 'flex',
-                  gap: 24,
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>Open on Public Holidays</span>
-                  <Switch
-                    size="small"
-                    checked={formData.isOpenHolidays}
-                    onChange={(checked) => updateField('isOpenHolidays', checked)}
-                  />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>24/7 Facility Access</span>
-                  <Switch
-                    size="small"
-                    checked={formData.is24Hours}
-                    onChange={(checked) => updateField('is24Hours', checked)}
-                  />
-                </div>
-              </div>
             </div>
           )}
 
@@ -2095,6 +2342,7 @@ export const Register = () => {
 
               <Row gutter={[16, 16]}>
                 <Col xs={24} sm={8}>
+                <Col xs={24} sm={6}>
                   <label style={labelStyle}>
                     Floor Area (Sq. Ft.) <span style={{ color: '#ef4444' }}>*</span>
                   </label>
@@ -2103,12 +2351,15 @@ export const Register = () => {
                     max={50000}
                     value={formData.floorSpaceSqFt}
                     onChange={(val) => updateField('floorSpaceSqFt', val)}
+                    onKeyDown={handleNumericKeyDown}
+                    parser={(val) => (val ? String(val).replace(/\D/g, '') : '')}
                     style={{ width: '100%', height: 44, borderRadius: 8 }}
                   />
                   {renderFieldError('floorSpaceSqFt')}
                 </Col>
 
                 <Col xs={24} sm={8}>
+                <Col xs={24} sm={6}>
                   <label style={labelStyle}>
                     Max Slot Capacity <span style={{ color: '#ef4444' }}>*</span>
                   </label>
@@ -2117,12 +2368,15 @@ export const Register = () => {
                     max={300}
                     value={formData.maxFloorCapacity}
                     onChange={(val) => updateField('maxFloorCapacity', val)}
+                    onKeyDown={handleNumericKeyDown}
+                    parser={(val) => (val ? String(val).replace(/\D/g, '') : '')}
                     style={{ width: '100%', height: 44, borderRadius: 8 }}
                   />
                   {renderFieldError('maxFloorCapacity')}
                 </Col>
 
                 <Col xs={24} sm={8}>
+                <Col xs={24} sm={6}>
                   <label style={labelStyle}>Gender Policy</label>
                   <Select
                     value={formData.genderAllowed}
@@ -2132,6 +2386,19 @@ export const Register = () => {
                     <Option value="Unisex">Unisex (All Welcome)</Option>
                     <Option value="Men Only">Men Only</Option>
                     <Option value="Women Only">Women Only</Option>
+                  </Select>
+                </Col>
+
+                <Col xs={24} sm={6}>
+                  <label style={labelStyle}>Highlight Badge</label>
+                  <Select
+                    value={formData.badgeText || 'Trending'}
+                    onChange={(val) => updateField('badgeText', val)}
+                    style={{ width: '100%', height: 44 }}
+                  >
+                    {BADGE_OPTIONS.map((b) => (
+                      <Option key={b} value={b}>{b}</Option>
+                    ))}
                   </Select>
                 </Col>
               </Row>

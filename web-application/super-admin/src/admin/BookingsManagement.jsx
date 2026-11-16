@@ -162,11 +162,6 @@ export const BookingsManagement = () => {
     return () => window.removeEventListener('app:refresh', handleRefresh);
   }, [fetchBookings, currentPage, activeTab, statusFilter, gymFilter, debouncedSearch]);
 
-  const handleTabChange = (key) => {
-    setActiveTab(key);
-    setCurrentPage(1);
-    setSearchParams(key === 'all' ? {} : { type: key });
-  };
 
   const handleOpenDetails = (record) => {
     setSelectedBooking(record);
@@ -719,45 +714,6 @@ export const BookingsManagement = () => {
         }}
         styles={{ body: { padding: '16px 20px' } }}
       >
-        {/* Navigation Tabs for All / Session Bookings / Group Classes */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, borderBottom: `1px solid ${isDarkMode ? '#1e293b' : '#e2e8f0'}`, paddingBottom: 12 }}>
-          <Button
-            type={activeTab === 'all' ? 'primary' : 'text'}
-            onClick={() => handleTabChange('all')}
-            style={{
-              borderRadius: 20,
-              fontWeight: 700,
-              backgroundColor: activeTab === 'all' ? '#4f46e5' : 'transparent',
-            }}
-          >
-            All Bookings ({summary.totalCount || 0})
-          </Button>
-
-          <Button
-            type={activeTab === 'session' ? 'primary' : 'text'}
-            onClick={() => handleTabChange('session')}
-            style={{
-              borderRadius: 20,
-              fontWeight: 700,
-              backgroundColor: activeTab === 'session' ? '#4f46e5' : 'transparent',
-            }}
-          >
-            Session Bookings ({summary.sessionCount || 0})
-          </Button>
-
-          <Button
-            type={activeTab === 'group_class' ? 'primary' : 'text'}
-            onClick={() => handleTabChange('group_class')}
-            style={{
-              borderRadius: 20,
-              fontWeight: 700,
-              backgroundColor: activeTab === 'group_class' ? '#4f46e5' : 'transparent',
-            }}
-          >
-            Group Classes ({summary.groupClassCount || 0})
-          </Button>
-        </div>
-
         {/* Filter controls row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1 }}>

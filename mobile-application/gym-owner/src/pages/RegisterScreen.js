@@ -297,10 +297,15 @@ const INITIAL_FORM_DATA = {
   lat: 13.0827,
   lng: 80.2707,
   googleMapsUrl: '',
+  timingMode: 'REGULAR',
   weekdayOpen: '05:30 AM',
   weekdayClose: '10:30 PM',
   weekendOpen: '06:00 AM',
   weekendClose: '09:00 PM',
+  morningOpen: '05:30 AM',
+  morningClose: '11:30 AM',
+  eveningOpen: '04:30 PM',
+  eveningClose: '10:30 PM',
   isSplitShift: false,
   isOpenHolidays: true,
   is24Hours: false,
@@ -514,6 +519,10 @@ export const RegisterScreen = ({ navigation }) => {
   const updateField = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setTouched((prev) => ({ ...prev, [field]: true }));
+  };
+
+  const updateFields = (fieldsObj) => {
+    setFormData((prev) => ({ ...prev, ...fieldsObj }));
   };
 
   const markFieldTouched = (field) => {
@@ -801,13 +810,32 @@ export const RegisterScreen = ({ navigation }) => {
         lng: Number(formData.lng) || 80.2707,
         googleMapsUrl: formData.googleMapsUrl.trim() || `https://maps.google.com/?q=${formData.lat},${formData.lng}`,
 
+        timingMode: formData.timingMode || 'REGULAR',
         weekdayOpen: formData.weekdayOpen,
         weekdayClose: formData.weekdayClose,
         weekendOpen: formData.weekendOpen,
         weekendClose: formData.weekendClose,
-        isSplitShift: formData.isSplitShift,
-        isOpenHolidays: formData.isOpenHolidays,
-        is24Hours: formData.is24Hours,
+        morningOpen: formData.morningOpen || '05:30 AM',
+        morningClose: formData.morningClose || '11:30 AM',
+        eveningOpen: formData.eveningOpen || '04:30 PM',
+        eveningClose: formData.eveningClose || '10:30 PM',
+        isSplitShift: formData.timingMode === 'SPLIT_SHIFT',
+        isOpenHolidays: formData.isOpenHolidays !== false,
+        is24Hours: formData.timingMode === '24_HOURS',
+        openingHours: {
+          mode: formData.timingMode || 'REGULAR',
+          weekdayOpen: formData.weekdayOpen,
+          weekdayClose: formData.weekdayClose,
+          weekendOpen: formData.weekendOpen,
+          weekendClose: formData.weekendClose,
+          morningOpen: formData.morningOpen || '05:30 AM',
+          morningClose: formData.morningClose || '11:30 AM',
+          eveningOpen: formData.eveningOpen || '04:30 PM',
+          eveningClose: formData.eveningClose || '10:30 PM',
+          isSplitShift: formData.timingMode === 'SPLIT_SHIFT',
+          isOpenHolidays: formData.isOpenHolidays !== false,
+          is24Hours: formData.timingMode === '24_HOURS',
+        },
 
         floorSpaceSqFt: Number(formData.floorSpaceSqFt),
         maxFloorCapacity: Number(formData.maxFloorCapacity),
@@ -1603,69 +1631,269 @@ export const RegisterScreen = ({ navigation }) => {
 
               {/* Operating Hours Divider */}
               <View style={[styles.divider, { backgroundColor: cardBorder }]} />
-              <Text style={[styles.sectionHeading, { color: textColor, marginBottom: 14 }]}>
-                Regular Operating Hours
-              </Text>
 
-              <View style={styles.rowTwoCols}>
-                <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
-                  <Text style={[styles.fieldLabel, { color: textColor }]}>Weekday Open (Mon – Fri)</Text>
-                  <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
-                    value={formData.weekdayOpen}
-                    onChangeText={(val) => updateField('weekdayOpen', val)}
-                  />
-                </View>
-                <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={[styles.fieldLabel, { color: textColor }]}>Weekday Close (Mon – Fri)</Text>
-                  <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
-                    value={formData.weekdayClose}
-                    onChangeText={(val) => updateField('weekdayClose', val)}
-                  />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <Text style={[styles.sectionHeading, { color: textColor, marginBottom: 0, fontSize: 14 }]}>
+                  Facility Operating Hours & Shift Architecture
+                </Text>
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 6,
+                    backgroundColor:
+                      formData.timingMode === '24_HOURS'
+                        ? isDark ? 'rgba(34,197,94,0.15)' : '#F0FDF4'
+                        : formData.timingMode === 'SPLIT_SHIFT'
+                        ? isDark ? 'rgba(168,85,247,0.15)' : '#FAF5FF'
+                        : isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF',
+                    borderWidth: 1,
+                    borderColor:
+                      formData.timingMode === '24_HOURS'
+                        ? '#86EFAC'
+                        : formData.timingMode === 'SPLIT_SHIFT'
+                        ? '#D8B4FE'
+                        : '#BFDBFE',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color:
+                        formData.timingMode === '24_HOURS'
+                          ? '#16A34A'
+                          : formData.timingMode === 'SPLIT_SHIFT'
+                          ? '#9333EA'
+                          : '#2563EB',
+                    }}
+                  >
+                    {formData.timingMode === '24_HOURS'
+                      ? '24/7 Mode'
+                      : formData.timingMode === 'SPLIT_SHIFT'
+                      ? 'Split Shift'
+                      : 'Regular Mode'}
+                  </Text>
                 </View>
               </View>
 
-              <View style={styles.rowTwoCols}>
-                <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
-                  <Text style={[styles.fieldLabel, { color: textColor }]}>Weekend Open (Sat – Sun)</Text>
-                  <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
-                    value={formData.weekendOpen}
-                    onChangeText={(val) => updateField('weekendOpen', val)}
-                  />
-                </View>
-                <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={[styles.fieldLabel, { color: textColor }]}>Weekend Close (Sat – Sun)</Text>
-                  <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
-                    value={formData.weekendClose}
-                    onChangeText={(val) => updateField('weekendClose', val)}
-                  />
+              {/* Timing Mode Selector */}
+              <View style={{ marginBottom: 16 }}>
+                <Text style={[styles.fieldLabel, { color: textColor, marginBottom: 8 }]}>
+                  Select Operational Timing Model
+                </Text>
+                <View style={{ flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { label: 'Single Shift (Continuous 12h/16h)', value: 'REGULAR' },
+                    { label: 'Split Shift (Morning + Evening)', value: 'SPLIT_SHIFT' },
+                    { label: '24 Hours (Round-the-clock)', value: '24_HOURS' },
+                  ].map((modeItem) => {
+                    const isSelected = (formData.timingMode || 'REGULAR') === modeItem.value;
+                    return (
+                      <TouchableOpacity
+                        key={modeItem.value}
+                        style={{
+                          paddingVertical: 10,
+                          paddingHorizontal: 14,
+                          borderRadius: 8,
+                          borderWidth: 1.5,
+                          borderColor: isSelected ? primaryNavy : inputBorder,
+                          backgroundColor: isSelected ? (isDark ? 'rgba(30,58,138,0.2)' : '#EFF6FF') : inputBg,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                        onPress={() => {
+                          updateFields({
+                            timingMode: modeItem.value,
+                            is24Hours: modeItem.value === '24_HOURS',
+                            isSplitShift: modeItem.value === 'SPLIT_SHIFT',
+                          });
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <View
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 9,
+                            borderWidth: 2,
+                            borderColor: isSelected ? primaryNavy : '#94A3B8',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: 10,
+                          }}
+                        >
+                          {isSelected && (
+                            <View
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: 5,
+                                backgroundColor: primaryNavy,
+                              }}
+                            />
+                          )}
+                        </View>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: isSelected ? '700' : '600',
+                            color: isSelected ? (isDark ? '#60A5FA' : primaryNavy) : textColor,
+                          }}
+                        >
+                          {modeItem.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
 
-              {/* Holiday & 24/7 Switches */}
+              {/* Mode-Specific Time Pickers */}
+              {(formData.timingMode === 'REGULAR' || !formData.timingMode) && (
+                <View>
+                  <View style={styles.rowTwoCols}>
+                    <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Weekday Open (Mon – Fri)</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                        value={formData.weekdayOpen}
+                        onChangeText={(val) => updateField('weekdayOpen', val)}
+                        placeholder="05:30 AM"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                    <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Weekday Close (Mon – Fri)</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                        value={formData.weekdayClose}
+                        onChangeText={(val) => updateField('weekdayClose', val)}
+                        placeholder="10:30 PM"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.rowTwoCols}>
+                    <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Weekend Open (Sat – Sun)</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                        value={formData.weekendOpen}
+                        onChangeText={(val) => updateField('weekendOpen', val)}
+                        placeholder="06:00 AM"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                    <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Weekend Close (Sat – Sun)</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                        value={formData.weekendClose}
+                        onChangeText={(val) => updateField('weekendClose', val)}
+                        placeholder="09:00 PM"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {formData.timingMode === 'SPLIT_SHIFT' && (
+                <View style={{ marginBottom: 4 }}>
+                  <View
+                    style={{
+                      padding: 12,
+                      borderRadius: 8,
+                      backgroundColor: isDark ? 'rgba(168,85,247,0.1)' : '#FAF5FF',
+                      borderWidth: 1,
+                      borderColor: '#D8B4FE',
+                      marginBottom: 14,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: isDark ? '#E9D5FF' : '#6B21A8', lineHeight: 18 }}>
+                      <Text style={{ fontWeight: '700' }}>Split Shift Model: </Text>
+                      Common for fitness studios in India. Gym opens for early morning routines, closes during the afternoon for sanitization/break, and reopens for evening workouts. Bookable slots are generated only during active shifts.
+                    </Text>
+                  </View>
+
+                  <View style={styles.rowTwoCols}>
+                    <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Morning Shift Open</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                        value={formData.morningOpen || '05:30 AM'}
+                        onChangeText={(val) => updateField('morningOpen', val)}
+                        placeholder="05:30 AM"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                    <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Morning Shift Close</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                        value={formData.morningClose || '11:30 AM'}
+                        onChangeText={(val) => updateField('morningClose', val)}
+                        placeholder="11:30 AM"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.rowTwoCols}>
+                    <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Evening Shift Open</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                        value={formData.eveningOpen || '04:30 PM'}
+                        onChangeText={(val) => updateField('eveningOpen', val)}
+                        placeholder="04:30 PM"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                    <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+                      <Text style={[styles.fieldLabel, { color: textColor }]}>Evening Shift Close</Text>
+                      <TextInput
+                        style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                        value={formData.eveningClose || '10:30 PM'}
+                        onChangeText={(val) => updateField('eveningClose', val)}
+                        placeholder="10:30 PM"
+                        placeholderTextColor="#94A3B8"
+                      />
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {formData.timingMode === '24_HOURS' && (
+                <View
+                  style={{
+                    padding: 14,
+                    borderRadius: 8,
+                    backgroundColor: isDark ? 'rgba(34,197,94,0.1)' : '#F0FDF4',
+                    borderWidth: 1,
+                    borderColor: '#86EFAC',
+                    marginBottom: 14,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: isDark ? '#86EFAC' : '#166534', lineHeight: 18 }}>
+                    <Text style={{ fontWeight: '700' }}>24/7 Round-the-clock Facility: </Text>
+                    This gym operates continuously 24 hours a day, 7 days a week. Dynamic customer booking slots will be available around the clock.
+                  </Text>
+                </View>
+              )}
+
+              {/* Holiday Switch */}
               <View style={styles.switchesContainer}>
                 <View style={styles.switchRow}>
-                  <Text style={[styles.switchRowText, { color: textColor }]}>Open on Public Holidays</Text>
+                  <Text style={[styles.switchRowText, { color: textColor }]}>Facility Remains Open on Public Holidays</Text>
                   <Switch
                     trackColor={{ false: isDark ? '#3F3F46' : '#CBD5E1', true: primaryNavy }}
                     thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
                     ios_backgroundColor={isDark ? '#3F3F46' : '#CBD5E1'}
                     onValueChange={(val) => updateField('isOpenHolidays', val)}
-                    value={!!formData.isOpenHolidays}
-                  />
-                </View>
-
-                <View style={[styles.switchRow, { marginTop: 14 }]}>
-                  <Text style={[styles.switchRowText, { color: textColor }]}>24/7 Facility Access</Text>
-                  <Switch
-                    trackColor={{ false: isDark ? '#3F3F46' : '#CBD5E1', true: primaryNavy }}
-                    thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
-                    ios_backgroundColor={isDark ? '#3F3F46' : '#CBD5E1'}
-                    onValueChange={(val) => updateField('is24Hours', val)}
-                    value={!!formData.is24Hours}
+                    value={formData.isOpenHolidays !== false}
                   />
                 </View>
               </View>

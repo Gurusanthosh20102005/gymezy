@@ -34,20 +34,17 @@ export const fetchGyms = createAsyncThunk(
 
 export const updateGymStatusApi = createAsyncThunk(
   'gyms/updateGymStatusApi',
-  async ({ id, status, approvalStatus, remark, notes, rejectionReason }, { rejectWithValue, dispatch }) => {
+  async ({ id, status, approvalStatus, remark, notes, rejectionReason, rejectionNote }, { rejectWithValue }) => {
     try {
       const payload = {};
       if (status) payload.status = status;
       if (approvalStatus) payload.approvalStatus = approvalStatus;
-      const finalRemark = remark !== undefined ? remark : (notes !== undefined ? notes : rejectionReason);
-      if (finalRemark !== undefined) {
-        payload.remark = finalRemark;
-        payload.notes = finalRemark;
-        payload.rejectionReason = finalRemark;
-      }
+      if (rejectionReason !== undefined) payload.rejectionReason = rejectionReason;
+      if (rejectionNote !== undefined) payload.rejectionNote = rejectionNote;
+      if (remark !== undefined) payload.remark = remark;
+      if (notes !== undefined) payload.notes = notes;
       const response = await apiClient.patch(`/gyms/${id}/status`, payload);
       const updatedGym = response.data?.data;
-      dispatch(fetchGyms({ force: true }));
       return updatedGym;
     } catch (err) {
       return rejectWithValue(

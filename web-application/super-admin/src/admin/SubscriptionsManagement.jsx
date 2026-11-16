@@ -328,9 +328,15 @@ export const SubscriptionsManagement = () => {
     if (status === 'Expiring Soon') {
       bg = isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#fef4e8';
       color = '#d97706';
-    } else if (status === 'Cancelled') {
+    } else if (status === 'Cancelled' || status === 'Rejected' || status === 'Inactive') {
       bg = isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed';
       color = '#e11d48';
+    } else if (status === 'On Hold') {
+      bg = isDarkMode ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff';
+      color = '#3b82f6';
+    } else if (status === 'Pending' || status === 'Pending Approval') {
+      bg = isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#fef4e8';
+      color = '#d97706';
     }
     return (
       <span
@@ -395,14 +401,30 @@ export const SubscriptionsManagement = () => {
       dataIndex: 'gymId',
       key: 'gymId',
       width: 120,
-      render: (text, record) => (
-        <span
-          onClick={() => handleView(record)}
-          style={{ fontWeight: 700, color: '#4f46e5', letterSpacing: '0.2px', cursor: 'pointer' }}
-        >
-          {text}
-        </span>
-      ),
+      render: (text, record) => {
+        const rawId = text || record.gymId || record.partnerId;
+        const isGenerated = Boolean(
+          rawId &&
+          typeof rawId === 'string' &&
+          !/^[0-9a-fA-F]{24}$/.test(rawId) &&
+          rawId.trim() !== '-'
+        );
+        if (!isGenerated) {
+          return (
+            <span style={{ color: isDarkMode ? '#888888' : '#94a3b8', fontWeight: 600, paddingLeft: 4 }}>
+              -
+            </span>
+          );
+        }
+        return (
+          <span
+            onClick={() => handleView(record)}
+            style={{ fontWeight: 700, color: '#4f46e5', letterSpacing: '0.2px', cursor: 'pointer' }}
+          >
+            {rawId}
+          </span>
+        );
+      },
     },
     {
       title: 'Subscription Type',
@@ -776,6 +798,8 @@ export const SubscriptionsManagement = () => {
           >
             <Option value="all">All Status</Option>
             <Option value="Active">Active</Option>
+            <Option value="On Hold">On Hold</Option>
+            <Option value="Pending Approval">Pending Approval</Option>
             <Option value="Expiring Soon">Expiring Soon</Option>
             <Option value="Cancelled">Cancelled</Option>
           </Select>
@@ -954,9 +978,19 @@ export const SubscriptionsManagement = () => {
                       fontSize: 11,
                       fontWeight: 700,
                       backgroundColor: selectedPartner.status === 'Active'
-                        ? isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#eaf8ef'
-                        : isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed',
-                      color: selectedPartner.status === 'Active' ? '#00bf62' : '#e11d48',
+                        ? (isDarkMode ? 'rgba(34, 197, 94, 0.15)' : '#eaf8ef')
+                        : selectedPartner.status === 'On Hold'
+                          ? (isDarkMode ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff')
+                          : selectedPartner.status === 'Pending Approval' || selectedPartner.status === 'Pending'
+                            ? (isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#fef4e8')
+                            : (isDarkMode ? 'rgba(239, 68, 68, 0.15)' : '#fdeeed'),
+                      color: selectedPartner.status === 'Active'
+                        ? '#00bf62'
+                        : selectedPartner.status === 'On Hold'
+                          ? '#3b82f6'
+                          : selectedPartner.status === 'Pending Approval' || selectedPartner.status === 'Pending'
+                            ? '#d97706'
+                            : '#e11d48',
                     }}
                   >
                     ● {selectedPartner.status}
@@ -965,7 +999,11 @@ export const SubscriptionsManagement = () => {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '3px 0' }}>
                   <span style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b' }}>Gym ID</span>
-                  <span style={{ fontWeight: 700, color: '#4f46e5', fontSize: 13 }}>{selectedPartner.gymId}</span>
+                  <span style={{ fontWeight: 700, color: '#4f46e5', fontSize: 13 }}>
+                    {Boolean(selectedPartner.gymId && !/^[0-9a-fA-F]{24}$/.test(selectedPartner.gymId) && selectedPartner.gymId !== '-')
+                      ? selectedPartner.gymId
+                      : '-'}
+                  </span>
                 </div>
 
                 <div style={{ fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#334155', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1202,7 +1240,10 @@ export const SubscriptionsManagement = () => {
       >
         <div style={{ paddingTop: 12 }}>
           <p style={{ color: isDarkMode ? '#cbd5e1' : '#334155' }}>
-            Select the new tier to upgrade <strong>{selectedPartner?.gymName}</strong> ({selectedPartner?.gymId}):
+            Select the new tier to upgrade <strong>{selectedPartner?.gymName}</strong>
+            {Boolean(selectedPartner?.gymId && !/^[0-9a-fA-F]{24}$/.test(selectedPartner?.gymId) && selectedPartner?.gymId !== '-')
+              ? ` (${selectedPartner.gymId})`
+              : ''}:
           </p>
 
           <Radio.Group
