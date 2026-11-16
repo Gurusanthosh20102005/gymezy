@@ -952,12 +952,6 @@ export const Register = () => {
   };
 
   const handleSubmitRegistration = async () => {
-    const step5Fields = STEP_FIELDS[5];
-    const newTouched = { ...touched };
-    let hasError = false;
-    for (const f of step5Fields) {
-      newTouched[f] = true;
-      if (errors[f]) hasError = true;
     if (!validationSummary.isAllValid) {
       for (let i = 1; i <= 5; i++) {
         if (!validationSummary.statusMap[i]?.isValid) {
@@ -967,11 +961,7 @@ export const Register = () => {
         }
       }
     }
-    setTouched(newTouched);
 
-    if (hasError) {
-      const firstError = step5Fields.find((f) => errors[f]);
-      message.error(errors[firstError] || 'Please review your bank & agreement details.');
     if (!formData.agreedToTerms) {
       message.error('You must accept the terms to proceed');
       markFieldTouched('agreedToTerms');
@@ -2341,7 +2331,6 @@ export const Register = () => {
               </div>
 
               <Row gutter={[16, 16]}>
-                <Col xs={24} sm={8}>
                 <Col xs={24} sm={6}>
                   <label style={labelStyle}>
                     Floor Area (Sq. Ft.) <span style={{ color: '#ef4444' }}>*</span>
@@ -2358,7 +2347,6 @@ export const Register = () => {
                   {renderFieldError('floorSpaceSqFt')}
                 </Col>
 
-                <Col xs={24} sm={8}>
                 <Col xs={24} sm={6}>
                   <label style={labelStyle}>
                     Max Slot Capacity <span style={{ color: '#ef4444' }}>*</span>
@@ -2375,7 +2363,6 @@ export const Register = () => {
                   {renderFieldError('maxFloorCapacity')}
                 </Col>
 
-                <Col xs={24} sm={8}>
                 <Col xs={24} sm={6}>
                   <label style={labelStyle}>Gender Policy</label>
                   <Select
