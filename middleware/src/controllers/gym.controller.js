@@ -1736,6 +1736,7 @@ const applyChangesToGymDocument = async (gym, changes) => {
   if (changes.commissionRate !== undefined) gym.commissionRate = Number(changes.commissionRate);
   if (changes.settlementCycle) gym.settlementCycle = changes.settlementCycle;
   if (changes.branches) gym.branches = changes.branches;
+  if (changes.aboutText !== undefined) gym.aboutText = changes.aboutText;
 
   // Location & Address
   if (changes.address) gym.address = changes.address.trim();
@@ -1772,6 +1773,14 @@ const applyChangesToGymDocument = async (gym, changes) => {
     }));
   } else if (changes.customFacilities !== undefined) {
     gym.customFacilities = changes.customFacilities;
+  }
+  if (changes.amenities !== undefined) gym.amenities = Array.isArray(changes.amenities) ? changes.amenities : [];
+  if (changes.workouts !== undefined) gym.workouts = Array.isArray(changes.workouts) ? changes.workouts : [];
+  if (changes.rules !== undefined) gym.rules = Array.isArray(changes.rules) ? changes.rules : [];
+  if (changes.safetyMeasures !== undefined) gym.safetyMeasures = Array.isArray(changes.safetyMeasures) ? changes.safetyMeasures : [];
+  if (changes.safety !== undefined) {
+    gym.safety = Array.isArray(changes.safety) ? changes.safety : [];
+    if (!changes.safetyMeasures) gym.safetyMeasures = gym.safety;
   }
   if (changes.slotDurationMinutes !== undefined) gym.slotDurationMinutes = Number(changes.slotDurationMinutes);
   if (changes.maxSlotCapacity !== undefined) gym.maxSlotCapacity = Number(changes.maxSlotCapacity);

@@ -142,16 +142,35 @@ const reverseGeocodeCoordinates = async (lat, lng) => {
 };
 
 const STEPS = [
-  { id: 1, title: 'Basic Info', key: 'basic' },
   { id: 1, title: 'Business Info', key: 'business' },
-  { id: 2, title: 'Location & Geolocation', key: 'location' },
+  { id: 2, title: 'Location & Operating Hours', key: 'location' },
   { id: 3, title: 'Facilities & Photos', key: 'facilities' },
-  { id: 4, title: 'Pricing & Plans', key: 'pricing' },
-  { id: 5, title: 'Bank & Submit', key: 'bank' },
-  { id: 4, title: 'Workouts & Rules', key: 'workouts' },
-  { id: 5, title: 'Payout & Tier', key: 'payment' },
-  { id: 6, title: 'Review & Submit', key: 'review' },
+  { id: 4, title: 'Workouts, Pricing & Rules', key: 'workouts' },
+  { id: 5, title: 'Bank Account & Review', key: 'bank' },
 ];
+
+const STEP_HEADERS = {
+  1: {
+    title: '1. Business & Legal Information',
+    desc: 'Provide basic business information, legal registration, and create administrator credentials.',
+  },
+  2: {
+    title: '2. Location, Geolocation & Operating Hours',
+    desc: 'Pinpoint your exact facility address with live geolocation and configure operating shift timings.',
+  },
+  3: {
+    title: '3. Facilities, Amenities & Floor Space',
+    desc: 'Define floor area, capacity, highlight badge, brand logo, and facility equipment.',
+  },
+  4: {
+    title: '4. Workouts, Pricing, Rules & Safety',
+    desc: 'Configure fitness disciplines, membership tiers, facility guidelines, and safety protocols.',
+  },
+  5: {
+    title: '5. Bank Account & Final Review',
+    desc: 'Provide settlement bank account details, review registration overview, and submit for Super Admin approval.',
+  },
+};
 
 const BADGE_OPTIONS = ['Trending', 'Top Rated', 'Verified SuperGym', 'Popular', 'Premium Club', '24/7 Access', 'CrossFit Ready'];
 
@@ -215,18 +234,15 @@ const DEFAULT_SAFETY = [
 
 const STEP_FIELDS = {
   1: ['subscriptionType', 'gymName', 'ownerName', 'phone', 'email', 'password', 'confirmPassword', 'gstNumber', 'panNumber'],
-  1: ['gymName', 'ownerName', 'phone', 'email', 'password', 'confirmPassword', 'gstNumber', 'panNumber'],
   2: ['address', 'area', 'city', 'state', 'pincode'],
+  3: ['floorSpaceSqFt', 'maxFloorCapacity', 'logo', 'facilities'],
   4: ['workouts', 'monthlyPrice'],
   5: ['accountHolder', 'bankName', 'accountNumber', 'confirmAccountNumber', 'ifscCode', 'agreedToTerms'],
-  3: ['floorSpaceSqFt', 'maxFloorCapacity', 'logo', 'facilities'],
-  4: ['workouts'],
-  5: ['subscriptionType', 'accountHolder', 'bankName', 'accountNumber', 'confirmAccountNumber', 'ifscCode'],
-  6: ['agreedToTerms'],
 };
 
 const STEP_REQUIRED_FIELDS = {
   1: [
+    { field: 'subscriptionType', label: 'Subscription Plan' },
     { field: 'gymName', label: 'Gym / Studio Name' },
     { field: 'ownerName', label: 'Owner / MD Name' },
     { field: 'phone', label: 'Mobile Number' },
@@ -248,14 +264,15 @@ const STEP_REQUIRED_FIELDS = {
   ],
   4: [
     { field: 'workouts', label: 'Workouts (Min 1)' },
+    { field: 'monthlyPrice', label: 'Monthly Pass Price' },
   ],
   5: [
-    { field: 'subscriptionType', label: 'Subscription Plan' },
     { field: 'accountHolder', label: 'Account Holder Name' },
     { field: 'bankName', label: 'Bank Name' },
     { field: 'accountNumber', label: 'Account Number' },
     { field: 'confirmAccountNumber', label: 'Confirm Account Number' },
     { field: 'ifscCode', label: 'IFSC Code' },
+    { field: 'agreedToTerms', label: 'Terms & Conditions' },
   ],
 };
 
@@ -442,7 +459,6 @@ const INITIAL_FORM_DATA = {
   refundPercentage: 100,
   rescheduleAllowedCount: 2,
 
-  subscriptionType: 'Listing Only',
   subscriptionType: 'Hybrid',
   commissionRate: 10,
   settlementCycle: 'Daily (T+1)',
@@ -505,7 +521,6 @@ export const Register = () => {
   const resetForm = () => {
     setFormData({ ...INITIAL_FORM_DATA });
     setCurrentStep(1);
-    setErrors({});
     setTouched({});
     setNewRuleInput('');
     setNewSafetyInput('');
@@ -808,12 +823,7 @@ export const Register = () => {
 
   // Check step validity
   const isStepValid = (step) => {
-    const fields = STEP_FIELDS[step] || [];
-    return fields.every((f) => !errors[f]);
-    if (step <= 5) {
-      return getStepValidationStatus(step).isValid;
-    }
-    return Boolean(formData.agreedToTerms);
+    return getStepValidationStatus(step).isValid;
   };
 
   const handleNext = async () => {
@@ -867,14 +877,20 @@ export const Register = () => {
       }
     }
 
-    if (hasError) {
+    const stepStatus = getStepValidationStatus(currentStep);
+    if (!stepStatus.isValid || hasError) {
       const firstError = currentFields.find((f) => errors[f]);
-      message.error(errors[firstError] || 'Please complete all required fields.');
+      if (firstError && errors[firstError]) {
+        message.error(errors[firstError]);
+      } else if (stepStatus.missingFields && stepStatus.missingFields.length > 0) {
+        message.error(`Please provide ${stepStatus.missingFields[0].label}`);
+      } else {
+        message.error('Please complete all required fields.');
+      }
       return;
     }
 
     setCurrentStep((prev) => Math.min(prev + 1, 5));
-    setCurrentStep((prev) => Math.min(prev + 1, 6));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1101,6 +1117,7 @@ export const Register = () => {
     const isFieldValid = isFieldTouched && !errors[field] && formData[field];
 
     return {
+      width: '100%',
       height: 44,
       borderRadius: 8,
       backgroundColor: isDarkMode ? '#121214' : '#ffffff',
@@ -1251,6 +1268,8 @@ export const Register = () => {
             size="large"
             block
             onClick={() => {
+              setIsSuccess(false);
+              setRegisteredGymData(null);
               resetForm();
               navigate('/login');
             }}
@@ -1375,25 +1394,29 @@ export const Register = () => {
           </div>
 
           {/* Minimal 5-segment track */}
-          <div style={{ display: 'flex', gap: 6, height: 5 }}>
-            {STEPS.map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  flex: 1,
-                  borderRadius: 3,
-                  backgroundColor:
-                    s.id < currentStep
+          <div key={`step-track-${STEPS.length}-${currentStep}`} style={{ display: 'flex', gap: 6, height: 5 }}>
+            {STEPS.map((s, idx) => {
+              const stepIndex = idx + 1;
+              const isPast = stepIndex < currentStep;
+              const isCurrent = stepIndex === currentStep;
+              return (
+                <div
+                  key={s.key || s.id}
+                  style={{
+                    flex: 1,
+                    borderRadius: 3,
+                    backgroundColor: isPast
                       ? '#10b981'
-                      : s.id === currentStep
+                      : isCurrent
                       ? '#003882'
                       : isDarkMode
                       ? '#27272a'
                       : '#e2e8f0',
-                  transition: 'background-color 0.3s ease',
-                }}
-              />
-            ))}
+                    transition: 'background-color 0.3s ease',
+                  }}
+                />
+              );
+            })}
           </div>
         </div>
 
@@ -1408,30 +1431,10 @@ export const Register = () => {
               letterSpacing: '-0.3px',
             }}
           >
-            {currentStep === 1 && "Let's start with your gym details"}
-            {currentStep === 2 && 'Location, Geolocation & Operating Hours'}
-            {currentStep === 3 && 'Facilities, Amenities & Photos'}
-            {currentStep === 4 && 'Workout Disciplines & Membership Pricing'}
-            {currentStep === 5 && 'Bank Account & Review'}
-            {currentStep === 1 && '1. Business & Legal Information'}
-            {currentStep === 2 && '2. Location, Geolocation & Operating Hours'}
-            {currentStep === 3 && '3. Facilities, Amenities & Floor Space'}
-            {currentStep === 4 && '4. Workouts, Amenities, Rules & Safety'}
-            {currentStep === 5 && '5. GYMEZY Subscription Tier & Payout Settlement'}
-            {currentStep === 6 && '6. Final Review & Submit for Approval'}
+            {STEP_HEADERS[currentStep]?.title || ''}
           </h1>
           <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
-            {currentStep === 1 && 'Provide basic business information and create your administrator login credentials.'}
-            {currentStep === 2 && 'Pinpoint your exact facility address with live geolocation and define regular operating hours.'}
-            {currentStep === 3 && 'Upload brand logo, cover photo, and high quality facility & equipment photos.'}
-            {currentStep === 4 && 'Set your walk-in single session pass price and optional recurring membership tiers.'}
-            {currentStep === 5 && 'Provide your settlement bank account. Your application will be submitted for Super Admin review.'}
-            {currentStep === 1 && 'Provide basic business information, legal registration, and create administrator credentials.'}
-            {currentStep === 2 && 'Pinpoint your exact facility address with live geolocation and configure operating shift timings.'}
-            {currentStep === 3 && 'Define floor area, capacity, highlight badge, brand logo, and facility equipment.'}
-            {currentStep === 4 && 'Configure fitness disciplines, amenities, facility rules, and safety protocols.'}
-            {currentStep === 5 && 'Select your GYMEZY platform partner plan and provide automated payout bank details.'}
-            {currentStep === 6 && 'Review pre-submission compliance checklist, preview your customer app card, and submit for approval.'}
+            {STEP_HEADERS[currentStep]?.desc || ''}
           </p>
         </div>
 
@@ -3012,10 +3015,12 @@ export const Register = () => {
                   </label>
                   <Select
                     showSearch
+                    size="large"
                     optionFilterProp="children"
                     placeholder="Select bank"
-                    value={formData.bankName}
-                    style={getInputStyle('bankName')}
+                    value={formData.bankName || undefined}
+                    status={touched.bankName && errors.bankName ? 'error' : ''}
+                    style={{ width: '100%', height: 44 }}
                     onChange={(bankName) => {
                       updateField('bankName', bankName);
                       updateField('ifscCode', getBankByName(bankName)?.ifscPrefix || '');

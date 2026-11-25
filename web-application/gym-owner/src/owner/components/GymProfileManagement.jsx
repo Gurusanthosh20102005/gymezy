@@ -986,7 +986,7 @@ export const GymProfileManagement = () => {
   }, [activeGym, user?.phone, user?.email, facilities, pricingPlans, operatingHours, bankDetails, socialLinks, gymLogoUrl, gymCoverUrl, galleryPhotosList]);
 
   // Save Gym Updates to Backend API
-  const saveGymToBackend = async (updatePayload, successMsg = 'Changes submitted successfully! Pending Super Admin approval.') => {
+  const saveGymToBackend = async (updatePayload, successMsg = 'Gym profile updated successfully!') => {
     if (!targetGymId) {
       message.error('Gym ID not detected. Please login again.');
       return null;
@@ -1029,8 +1029,31 @@ export const GymProfileManagement = () => {
         maxFloorCapacity: Number(values.maxFloorCapacity) || 0,
         genderAllowed: values.genderAllowed,
         aboutText: values.aboutText,
+        facilities: Array.isArray(values.facilities) ? values.facilities : facilities,
+        workouts: Array.isArray(values.workouts) ? values.workouts : gymWorkouts,
+        amenities: Array.isArray(values.amenities) ? values.amenities : gymAmenities,
+        rules: Array.isArray(values.rules) ? values.rules : gymRules,
+        safety: Array.isArray(values.safety) ? values.safety : safetyMeasures,
+        safetyMeasures: Array.isArray(values.safety) ? values.safety : safetyMeasures,
+        bankDetails: {
+          ...bankDetails,
+          accountHolder: values.bankAccountHolder !== undefined ? values.bankAccountHolder : (bankDetails.accountHolder || ''),
+          bankName: values.bankName !== undefined ? values.bankName : (bankDetails.bankName || ''),
+          accountNumber: values.bankAccountNumber !== undefined ? values.bankAccountNumber : (bankDetails.accountNumber || ''),
+          ifscCode: values.bankIfscCode !== undefined ? values.bankIfscCode : (bankDetails.ifscCode || ''),
+          accountType: values.bankAccountType !== undefined ? values.bankAccountType : (bankDetails.accountType || 'Current Account'),
+          branch: values.bankBranch !== undefined ? values.bankBranch : (bankDetails.branch || ''),
+          upiId: values.bankUpiId !== undefined ? values.bankUpiId : (bankDetails.upiId || ''),
+        },
+        socialLinks: {
+          ...socialLinks,
+          whatsapp: values.socialWhatsapp !== undefined ? values.socialWhatsapp : (socialLinks.whatsapp || ''),
+          instagramHandle: values.socialInstagram !== undefined ? values.socialInstagram : (socialLinks.instagramHandle || ''),
+          website: values.socialWebsite !== undefined ? values.socialWebsite : (socialLinks.website || ''),
+          googleBusinessUrl: values.socialGoogleMaps !== undefined ? values.socialGoogleMaps : (socialLinks.googleBusinessUrl || ''),
+        },
       };
-      const res = await saveGymToBackend(payload);
+      const res = await saveGymToBackend(payload, 'Gym profile updated successfully!');
       if (res) {
         setIsEditModalOpen(false);
       }
@@ -1444,137 +1467,52 @@ export const GymProfileManagement = () => {
   };
 
 
-  const editMenu = {
-    items: [
-      {
-        key: 'pending_changes',
-        label: (
-          <div
-            onClick={() => {
-              setIsEditDropdownOpen(false);
-              setIsPendingRequestsOpen(true);
-            }}
-            style={{
-              padding: '10px 12px',
-              minWidth: 260,
-              borderRadius: 'var(--radius-base)',
-              backgroundColor: isDarkMode ? 'rgba(250, 140, 22, 0.12)' : '#fef4e8',
-              border: `1px solid ${isDarkMode ? 'rgba(250, 140, 22, 0.3)' : 'rgba(250, 140, 22, 0.25)'}`,
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fa8c16', fontWeight: 700, fontSize: 13 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <ClockCircleOutlined /> Pending Changes
-              </div>
-              <Tag color="warning" style={{ margin: 0, fontSize: 10, borderRadius: 4, padding: '0 5px', lineHeight: '16px', fontWeight: 700 }}>
-                {pendingRequests.length} Pending
-              </Tag>
-            </div>
-            <div style={{ fontSize: 11.5, color: isDarkMode ? '#dddddd' : '#64748b', marginTop: 4, lineHeight: 1.35 }}>
-              You have {pendingRequests.length} pending change request(s) under review.
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: 'var(--color-primary)',
-                fontWeight: 700,
-                marginTop: 8,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              View Requests <ArrowRightOutlined style={{ fontSize: 10 }} />
-            </div>
-          </div>
-        ),
-      },
-      {
-        type: 'divider',
-      },
-      {
-        key: 'audit_history',
-        label: (
-          <div
-            onClick={() => {
-              setIsEditDropdownOpen(false);
-              setIsAuditHistoryOpen(true);
-            }}
-            style={{
-              padding: '8px 12px',
-              minWidth: 260,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-              <AuditOutlined style={{ color: 'var(--color-primary)' }} /> Audit History Log
-            </div>
-            <Tag style={{ margin: 0, fontSize: 11 }}>{auditHistory.length}</Tag>
-          </div>
-        ),
-      },
-      {
-        type: 'divider',
-      },
-      {
-        key: 'request_edit',
-        label: (
-          <div style={{ padding: '6px 4px', minWidth: 260 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-              Edit Gym Profile Information
-            </div>
-            <div style={{ fontSize: 11.5, color: isDarkMode ? '#888888' : '#64748b', marginTop: 3, lineHeight: 1.35 }}>
-              Update legal credentials, address, facilities, or contact numbers.
-            </div>
-            <Button
-              type="primary"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsEditDropdownOpen(false);
-                editForm.setFieldsValue({
-                  name: gymData?.name || '',
-                  ownerName: gymData?.ownerName || '',
-                  phone: gymData?.phone || '',
-                  email: gymData?.email || '',
-                  businessType: gymData?.businessType || 'Private Limited',
-                  yearEstablished: gymData?.yearEstablished || '',
-                  gstNumber: gymData?.gstNumber || '',
-                  panNumber: gymData?.panNumber || '',
-                  address: gymData?.address || gymData?.fullAddress || '',
-                  area: gymData?.area || '',
-                  city: gymData?.city || '',
-                  state: gymData?.state || 'Tamil Nadu',
-                  pincode: gymData?.pincode || '',
-                  landmark: gymData?.landmark || '',
-                  floorSpaceSqFt: gymData?.floorSpaceSqFt || '',
-                  maxFloorCapacity: gymData?.maxFloorCapacity || '',
-                  genderAllowed: gymData?.genderAllowed || 'Unisex',
-                  aboutText: gymData?.aboutText || '',
-                });
-                setIsEditModalOpen(true);
-              }}
-              style={{
-                marginTop: 10,
-                width: '100%',
-                borderRadius: 'var(--radius-base)',
-                fontWeight: 600,
-                fontSize: 12,
-                backgroundColor: 'var(--color-primary)',
-                height: 32,
-              }}
-            >
-              Edit Profile
-            </Button>
-          </div>
-        ),
-      },
-    ],
+  const [editModalTab, setEditModalTab] = useState('basic');
+
+  const handleOpenEditProfileModal = () => {
+    if (activeTab === 'facilities') setEditModalTab('facilities');
+    else if (activeTab === 'workouts') setEditModalTab('workouts');
+    else if (activeTab === 'bank') setEditModalTab('bank');
+    else if (activeTab === 'social') setEditModalTab('social');
+    else setEditModalTab('basic');
+
+    editForm.setFieldsValue({
+      name: gymData?.name || '',
+      ownerName: gymData?.ownerName || '',
+      phone: gymData?.phone || '',
+      email: gymData?.email || '',
+      businessType: gymData?.businessType || 'Private Limited',
+      yearEstablished: gymData?.yearEstablished || '',
+      gstNumber: gymData?.gstNumber || '',
+      panNumber: gymData?.panNumber || '',
+      address: gymData?.address || gymData?.fullAddress || '',
+      area: gymData?.area || '',
+      city: gymData?.city || '',
+      state: gymData?.state || 'Tamil Nadu',
+      pincode: gymData?.pincode || '',
+      landmark: gymData?.landmark || '',
+      floorSpaceSqFt: gymData?.floorSpaceSqFt || '',
+      maxFloorCapacity: gymData?.maxFloorCapacity || '',
+      genderAllowed: gymData?.genderAllowed || 'Unisex',
+      aboutText: gymData?.aboutText || '',
+      facilities: Array.isArray(facilities) && facilities.length > 0 ? facilities : (gymData?.facilities || []),
+      workouts: Array.isArray(gymWorkouts) && gymWorkouts.length > 0 ? gymWorkouts : (gymData?.workouts || []),
+      amenities: Array.isArray(gymAmenities) && gymAmenities.length > 0 ? gymAmenities : (gymData?.amenities || []),
+      rules: Array.isArray(gymRules) && gymRules.length > 0 ? gymRules : (gymData?.rules || DEFAULT_RULES),
+      safety: Array.isArray(safetyMeasures) && safetyMeasures.length > 0 ? safetyMeasures : (gymData?.safetyMeasures || gymData?.safety || DEFAULT_SAFETY),
+      bankAccountHolder: bankDetails?.accountHolder || gymData?.bankDetails?.accountHolder || '',
+      bankName: bankDetails?.bankName || gymData?.bankDetails?.bankName || '',
+      bankAccountNumber: bankDetails?.accountNumber || gymData?.bankDetails?.accountNumber || '',
+      bankIfscCode: bankDetails?.ifscCode || gymData?.bankDetails?.ifscCode || '',
+      bankAccountType: bankDetails?.accountType || gymData?.bankDetails?.accountType || 'Current Account',
+      bankBranch: bankDetails?.branch || gymData?.bankDetails?.branch || '',
+      bankUpiId: bankDetails?.upiId || gymData?.bankDetails?.upiId || '',
+      socialWhatsapp: socialLinks?.whatsapp || gymData?.socialLinks?.whatsapp || '',
+      socialInstagram: socialLinks?.instagramHandle || gymData?.socialLinks?.instagramHandle || '',
+      socialWebsite: socialLinks?.website || gymData?.socialLinks?.website || '',
+      socialGoogleMaps: socialLinks?.googleBusinessUrl || gymData?.googleMapsUrl || gymData?.socialLinks?.googleBusinessUrl || '',
+    });
+    setIsEditModalOpen(true);
   };
 
   const TABS_LIST = [
@@ -1637,73 +1575,8 @@ export const GymProfileManagement = () => {
           >
             Refresh
           </Button>
-
-          {/* Edit Profile Split / Dropdown Action */}
-          <Dropdown
-            menu={editMenu}
-            open={isEditDropdownOpen}
-            onOpenChange={setIsEditDropdownOpen}
-            trigger={['click']}
-            placement="bottomRight"
-          >
-            <Button
-              type="primary"
-              icon={<EditOutlined />}
-              style={{
-                backgroundColor: 'var(--color-primary)',
-                borderColor: 'var(--color-primary)',
-                borderRadius: 'var(--radius-base)',
-                fontWeight: 600,
-                height: 40,
-                padding: '0 18px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <span>Edit Profile</span>
-              <DownOutlined style={{ fontSize: 10 }} />
-            </Button>
-          </Dropdown>
         </div>
       </div>
-
-      {/* Pending Changes Alert Banner */}
-      {Boolean(
-        (gymData?.pendingChanges && Object.keys(gymData.pendingChanges).length > 0) ||
-        pendingRequests.length > 0
-      ) && (
-          <Alert
-            type="warning"
-            showIcon
-            message="Profile Modifications Pending Super Admin Approval"
-            description={
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 8,
-                }}
-              >
-                <span>
-                  Your recent changes ({gymData?.pendingChanges ? Object.keys(gymData.pendingChanges).length : pendingRequests.length} field(s) updated) have been submitted to the Super Administrator. Once approved, the changes will reflect live on your public profile.
-                </span>
-                <Button
-                  size="small"
-                  type="primary"
-                  ghost
-                  onClick={() => setIsPendingRequestsOpen(true)}
-                  style={{ fontWeight: 600 }}
-                >
-                  View Pending Requests
-                </Button>
-              </div>
-            }
-            style={{ marginBottom: 20, borderRadius: 'var(--radius-base)' }}
-          />
-        )}
 
       {/* Navigation Tabs Bar */}
       <div
@@ -3991,174 +3864,446 @@ export const GymProfileManagement = () => {
 
       {/* 1. EDIT PROFILE MODAL */}
       <Modal
-        title="Edit Gym Profile Information"
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <EditOutlined style={{ color: 'var(--color-primary)' }} />
+            <span>Edit Gym Profile Information</span>
+          </div>
+        }
         open={isEditModalOpen}
         onCancel={() => setIsEditModalOpen(false)}
         footer={null}
-        width={720}
+        width={820}
+        centered
+        styles={{
+          body: {
+            maxHeight: '75vh',
+            overflowY: 'auto',
+            paddingRight: 6,
+          },
+        }}
       >
         <Form form={editForm} layout="vertical" onFinish={handleEditSubmit}>
-          <Row gutter={16} style={{ marginBottom: 16 }}>
-            <Col span={12}>
-              <div
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 'var(--radius-base)',
-                  border: `1.5px dashed ${isDarkMode ? '#333333' : '#cbd5e1'}`,
-                  backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  cursor: 'pointer',
-                }}
-                onClick={handleLogoUpload}
-              >
-                <Avatar
-                  shape="square"
-                  size={46}
-                  src={gymLogoUrl}
-                  icon={<ShopOutlined />}
-                  style={{ borderRadius: 'var(--radius-base)', flexShrink: 0 }}
-                />
-                <div style={{ overflow: 'hidden' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                    Brand Logo
-                  </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--color-primary)', fontWeight: 600, marginTop: 2 }}>
-                    Click to Upload Logo
-                  </div>
-                </div>
-              </div>
-            </Col>
-            <Col span={12}>
-              <div
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 'var(--radius-base)',
-                  border: `1.5px dashed ${isDarkMode ? '#333333' : '#cbd5e1'}`,
-                  backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  cursor: 'pointer',
-                }}
-                onClick={handleCoverPhotoUpload}
-              >
-                <Avatar
-                  shape="square"
-                  size={46}
-                  src={gymCoverUrl}
-                  icon={<PictureOutlined />}
-                  style={{ borderRadius: 'var(--radius-base)', flexShrink: 0 }}
-                />
-                <div style={{ overflow: 'hidden' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                    Cover Banner
-                  </div>
-                  <div style={{ fontSize: 11.5, color: 'var(--color-primary)', fontWeight: 600, marginTop: 2 }}>
-                    Click to Upload Cover
-                  </div>
-                </div>
-              </div>
-            </Col>
-          </Row>
+          <Tabs
+            activeKey={editModalTab}
+            onChange={setEditModalTab}
+            items={[
+              {
+                key: 'basic',
+                label: 'Basic & Location',
+                children: (
+                  <div>
+                    <Row gutter={16} style={{ marginBottom: 16 }}>
+                      <Col span={12}>
+                        <div
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: 'var(--radius-base)',
+                            border: `1.5px dashed ${isDarkMode ? '#333333' : '#cbd5e1'}`,
+                            backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            cursor: 'pointer',
+                          }}
+                          onClick={handleLogoUpload}
+                        >
+                          <Avatar
+                            shape="square"
+                            size={46}
+                            src={gymLogoUrl}
+                            icon={<ShopOutlined />}
+                            style={{ borderRadius: 'var(--radius-base)', flexShrink: 0 }}
+                          />
+                          <div style={{ overflow: 'hidden' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                              Brand Logo
+                            </div>
+                            <div style={{ fontSize: 11.5, color: 'var(--color-primary)', fontWeight: 600, marginTop: 2 }}>
+                              Click to Upload Logo
+                            </div>
+                          </div>
+                        </div>
+                      </Col>
+                      <Col span={12}>
+                        <div
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: 'var(--radius-base)',
+                            border: `1.5px dashed ${isDarkMode ? '#333333' : '#cbd5e1'}`,
+                            backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            cursor: 'pointer',
+                          }}
+                          onClick={handleCoverPhotoUpload}
+                        >
+                          <Avatar
+                            shape="square"
+                            size={46}
+                            src={gymCoverUrl}
+                            icon={<PictureOutlined />}
+                            style={{ borderRadius: 'var(--radius-base)', flexShrink: 0 }}
+                          />
+                          <div style={{ overflow: 'hidden' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                              Cover Banner
+                            </div>
+                            <div style={{ fontSize: 11.5, color: 'var(--color-primary)', fontWeight: 600, marginTop: 2 }}>
+                              Click to Upload Cover
+                            </div>
+                          </div>
+                        </div>
+                      </Col>
+                    </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="name" label="Gym Name" rules={[{ required: true, message: 'Please enter gym name' }]}>
-                <Input placeholder="e.g. FitZone Elite Fitness" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="ownerName" label="Owner / Partner Name" rules={[{ required: true, message: 'Please enter owner name' }]}>
-                <Input placeholder="e.g. Rajesh Kumar" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="phone" label="Phone Number" rules={[{ required: true, message: 'Please enter phone' }]}>
-                <Input placeholder="e.g. 9876543210" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="email" label="Contact Email" rules={[{ required: true, type: 'email', message: 'Please enter valid email' }]}>
-                <Input placeholder="e.g. contact@fitzone.in" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="genderAllowed" label="Gender Policy">
-                <Select>
-                  <Option value="Unisex">Unisex</Option>
-                  <Option value="Men Only">Men Only</Option>
-                  <Option value="Women Only">Women Only</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="gstNumber"
-                label="GST Number"
-                normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15) : '')}
-              >
-                <Input maxLength={15} placeholder="e.g. 33AAAAA0000A1Z5" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="panNumber"
-                label="PAN Number"
-                normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) : '')}
-              >
-                <Input maxLength={10} placeholder="e.g. ABCDE1234F" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="yearEstablished" label="Year Established">
-                <Input placeholder="e.g. 2021" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="floorSpaceSqFt" label="Floor Space (Sq. Ft)">
-                <InputNumber style={{ width: '100%' }} min={0} placeholder="e.g. 3500" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="maxFloorCapacity" label="Max Floor Capacity">
-                <InputNumber style={{ width: '100%' }} min={1} placeholder="e.g. 60" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="area" label="Area / Locality">
-                <Input placeholder="e.g. Anna Nagar West" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="city" label="City" rules={[{ required: true, message: 'Please enter city' }]}>
-                <Input placeholder="e.g. Chennai" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="state" label="State">
-                <Input placeholder="e.g. Tamil Nadu" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="pincode" label="Pincode">
-                <Input placeholder="e.g. 600040" />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item name="address" label="Full Street Address" rules={[{ required: true, message: 'Please enter street address' }]}>
-                <Input placeholder="e.g. Plot No. 12, 4th Main Road, Anna Nagar West" />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item name="aboutText" label="About Gym Summary">
-                <TextArea rows={3} placeholder="Describe gym training style, equipment brands, certified trainers..." />
-              </Form.Item>
-            </Col>
-          </Row>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item name="name" label="Gym Name" rules={[{ required: true, message: 'Please enter gym name' }]}>
+                          <Input placeholder="e.g. FitZone Elite Fitness" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="ownerName" label="Owner / Partner Name" rules={[{ required: true, message: 'Please enter owner name' }]}>
+                          <Input placeholder="e.g. Rajesh Kumar" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="phone" label="Phone Number" rules={[{ required: true, message: 'Please enter phone' }]}>
+                          <Input placeholder="e.g. 9876543210" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="email" label="Contact Email" rules={[{ required: true, type: 'email', message: 'Please enter valid email' }]}>
+                          <Input placeholder="e.g. contact@fitzone.in" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="businessType" label="Business Type">
+                          <Select placeholder="Select business type">
+                            <Option value="Private Limited">Private Limited</Option>
+                            <Option value="Partnership">Partnership</Option>
+                            <Option value="Sole Proprietorship">Sole Proprietorship</Option>
+                            <Option value="LLP">Limited Liability Partnership (LLP)</Option>
+                            <Option value="Public Limited">Public Limited</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="genderAllowed" label="Gender Policy">
+                          <Select>
+                            <Option value="Unisex">Unisex</Option>
+                            <Option value="Men Only">Men Only</Option>
+                            <Option value="Women Only">Women Only</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item
+                          name="gstNumber"
+                          label="GST Number"
+                          normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15) : '')}
+                        >
+                          <Input maxLength={15} placeholder="e.g. 33AAAAA0000A1Z5" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item
+                          name="panNumber"
+                          label="PAN Number"
+                          normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) : '')}
+                        >
+                          <Input maxLength={10} placeholder="e.g. ABCDE1234F" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item name="yearEstablished" label="Year Established">
+                          <Input placeholder="e.g. 2021" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="floorSpaceSqFt" label="Floor Space (Sq. Ft)">
+                          <InputNumber style={{ width: '100%' }} min={0} placeholder="e.g. 3500" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="maxFloorCapacity" label="Max Floor Capacity">
+                          <InputNumber style={{ width: '100%' }} min={1} placeholder="e.g. 60" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="area" label="Area / Locality">
+                          <Input placeholder="e.g. Anna Nagar West" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="city" label="City" rules={[{ required: true, message: 'Please enter city' }]}>
+                          <Input placeholder="e.g. Chennai" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="state" label="State">
+                          <Input placeholder="e.g. Tamil Nadu" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="pincode" label="Pincode">
+                          <Input placeholder="e.g. 600040" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={16}>
+                        <Form.Item name="address" label="Full Street Address" rules={[{ required: true, message: 'Please enter street address' }]}>
+                          <Input placeholder="e.g. Plot No. 12, 4th Main Road, Anna Nagar West" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={8}>
+                        <Form.Item name="landmark" label="Landmark">
+                          <Input placeholder="e.g. Near Metro Station" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={24}>
+                        <Form.Item name="aboutText" label="About Gym Summary">
+                          <TextArea rows={3} placeholder="Describe gym training style, equipment brands, certified trainers..." />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </div>
+                ),
+              },
+              {
+                key: 'facilities',
+                label: 'Facilities & Amenities',
+                children: (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="Highlight equipment and conveniences displayed on the GYMEZY mobile app."
+                    />
+                    <Form.Item
+                      name="facilities"
+                      label={<span style={{ fontWeight: 600 }}>Floor Facilities & Equipment ({FACILITY_OPTIONS.length} available)</span>}
+                      help="Select all active facilities available in your gym"
+                    >
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        style={{ width: '100%' }}
+                        placeholder="Select facilities (e.g. AC Gym, Turnstile Access, Ice Bath...)"
+                        options={FACILITY_OPTIONS.map((f) => ({ label: f, value: f }))}
+                        maxTagCount="responsive"
+                      />
+                    </Form.Item>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+                    <Form.Item
+                      name="amenities"
+                      label={<span style={{ fontWeight: 600 }}>Complimentary Amenities & Perks ({AMENITY_OPTIONS.length} available)</span>}
+                      help="Select complimentary member amenities"
+                    >
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        style={{ width: '100%' }}
+                        placeholder="Select amenities (e.g. RO Drinking Water, Towel Service, BMI Scanner...)"
+                        options={AMENITY_OPTIONS.map((a) => ({ label: a, value: a }))}
+                        maxTagCount="responsive"
+                      />
+                    </Form.Item>
+                  </div>
+                ),
+              },
+              {
+                key: 'workouts',
+                label: 'Workouts & Rules',
+                children: (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="Define fitness training styles offered and floor conduct guidelines for members."
+                    />
+                    <Form.Item
+                      name="workouts"
+                      label={<span style={{ fontWeight: 600 }}>Workout Styles & Training Disciplines ({WORKOUT_OPTIONS.length} available)</span>}
+                      help="Select disciplines trained at your gym"
+                    >
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        style={{ width: '100%' }}
+                        placeholder="Select workouts (e.g. Strength, HIIT, CrossFit, Yoga...)"
+                        options={WORKOUT_OPTIONS.map((w) => ({ label: w, value: w }))}
+                        maxTagCount="responsive"
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="rules"
+                      label={<span style={{ fontWeight: 600 }}>Gym Floor Rules & Code of Conduct</span>}
+                      help="Select standard rules or type custom rules and press Enter"
+                    >
+                      <Select
+                        mode="tags"
+                        allowClear
+                        style={{ width: '100%' }}
+                        placeholder="Type a rule and press Enter"
+                        tokenSeparators={[',']}
+                        options={DEFAULT_RULES.map((r) => ({ label: r, value: r }))}
+                        maxTagCount="responsive"
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      name="safety"
+                      label={<span style={{ fontWeight: 600 }}>Safety & Hygiene Protocols</span>}
+                      help="Select standard safety protocols or type custom protocols and press Enter"
+                    >
+                      <Select
+                        mode="tags"
+                        allowClear
+                        style={{ width: '100%' }}
+                        placeholder="Type a safety protocol and press Enter"
+                        tokenSeparators={[',']}
+                        options={DEFAULT_SAFETY.map((s) => ({ label: s, value: s }))}
+                        maxTagCount="responsive"
+                      />
+                    </Form.Item>
+                  </div>
+                ),
+              },
+              {
+                key: 'bank',
+                label: 'Bank Details',
+                children: (
+                  <div>
+                    <Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 16 }}
+                      message="Automated Settlement Bank Account"
+                      description="Subscription payouts and daily walk-in session earnings are disbursed directly into this bank account."
+                    />
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item
+                          name="bankAccountHolder"
+                          label="Account Holder Name"
+                          rules={[{ required: true, message: 'Please enter account holder name' }]}
+                        >
+                          <Input placeholder="e.g. FitZone Health Pvt Ltd" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="bankName"
+                          label="Bank Name"
+                          rules={[{ required: true, message: 'Please select or enter bank' }]}
+                        >
+                          <Select
+                            showSearch
+                            optionFilterProp="children"
+                            placeholder="Select bank"
+                            style={{ width: '100%' }}
+                            onChange={(bankName) => {
+                              const prefix = getBankByName(bankName)?.ifscPrefix;
+                              if (prefix && !editForm.getFieldValue('bankIfscCode')) {
+                                editForm.setFieldValue('bankIfscCode', prefix);
+                              }
+                            }}
+                          >
+                            {BANKS.map((b) => (
+                              <Option key={b.name} value={b.name}>
+                                {b.name}
+                              </Option>
+                            ))}
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="bankAccountNumber"
+                          label="Bank Account Number"
+                          rules={[{ required: true, message: 'Please enter account number' }]}
+                          normalize={(val) => (val ? val.replace(/\D/g, '').slice(0, 18) : '')}
+                        >
+                          <Input placeholder="e.g. 50100123456789" maxLength={18} inputMode="numeric" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item
+                          name="bankIfscCode"
+                          label="Bank IFSC Code"
+                          rules={[{ required: true, message: 'Please enter IFSC Code' }]}
+                          normalize={(val) => (val ? val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11) : '')}
+                        >
+                          <Input placeholder="e.g. HDFC0001234" maxLength={11} />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="bankAccountType" label="Account Type" initialValue="Current Account">
+                          <Select>
+                            <Option value="Current Account">Current Account</Option>
+                            <Option value="Savings Account">Savings Account</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="bankBranch" label="Branch Address">
+                          <Input placeholder="e.g. Anna Nagar Branch, Chennai" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={24}>
+                        <Form.Item name="bankUpiId" label="Instant Settlement UPI ID (Optional)">
+                          <Input placeholder="e.g. fitzone@okhdfcbank" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </div>
+                ),
+              },
+              {
+                key: 'social',
+                label: 'Social & Online Presence',
+                children: (
+                  <div>
+                    <Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 16 }}
+                      message="Online Presence & Discoverability"
+                      description="Connect social links and Google Business so members can reach you on WhatsApp, follow Instagram, and navigate directly via Google Maps."
+                    />
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item name="socialWhatsapp" label="WhatsApp Business Number">
+                          <Input prefix={<WhatsAppOutlined style={{ color: '#25D366' }} />} placeholder="e.g. +91 98765 43210" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item name="socialInstagram" label="Instagram Handle / Profile">
+                          <Input prefix={<InstagramOutlined style={{ color: '#E1306C' }} />} placeholder="e.g. @fitzone_fitness" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={24}>
+                        <Form.Item name="socialWebsite" label="Official Website URL">
+                          <Input prefix={<GlobalOutlined style={{ color: 'var(--color-primary)' }} />} placeholder="e.g. https://www.fitzonegym.com" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={24}>
+                        <Form.Item name="socialGoogleMaps" label="Google Maps Location URL">
+                          <Input prefix={<EnvironmentOutlined style={{ color: '#ea4335' }} />} placeholder="e.g. https://maps.google.com/?cid=..." />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                  </div>
+                ),
+              },
+            ]}
+          />
+
+          <Divider style={{ margin: '16px 0 12px 0' }} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
             <Button onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
             <Button type="primary" htmlType="submit" loading={isSavingBasic}>
               Save Profile Changes
@@ -4456,8 +4601,10 @@ export const GymProfileManagement = () => {
               <Form.Item name="bankName" label="Bank Name" rules={[{ required: true, message: 'Enter bank name' }]}>
                 <Select
                   showSearch
+                  size="large"
                   optionFilterProp="children"
                   placeholder="Select bank"
+                  style={{ width: '100%' }}
                   onChange={(bankName) => {
                     bankForm.setFieldValue('ifscCode', getBankByName(bankName)?.ifscPrefix || '');
                   }}

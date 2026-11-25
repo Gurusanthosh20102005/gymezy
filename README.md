@@ -150,37 +150,126 @@ Ensure you have the following installed on your machine:
 
 ---
 
-### 3. Member Mobile Application (`user-react`) Setup
+### 3. Member Mobile Application (`user-react`) Setup & Build Guide
 
-1. Forward API and Metro ports to your connected Android device / emulator:
+The Member Mobile App is built with **React Native** and **Expo (SDK 58)**.
+
+#### Environment Configurations & Targets
+
+The app uses `src/config/envConfig.js` to manage backend API targets:
+* **`local`**: `http://localhost:5001/api/v1` (or local machine IP via loopback)
+* **`development`**: `https://dev.api.gymezy.com/api/v1` (staging/dev cloud API)
+* **`production`**: `https://api.gymezy.com/api/v1` (live production API)
+
+Switch environments at any time:
+```bash
+cd mobile-application/user-react
+
+# Switch to development (connects to https://dev.api.gymezy.com/api/v1)
+npm run set-env:dev
+
+# Switch to production (connects to https://api.gymezy.com/api/v1)
+npm run set-env:prod
+
+# Switch to local machine
+npm run set-env:local
+```
+
+#### Building Standalone Android APKs
+
+Generate installable `.apk` packages directly:
+
+```bash
+cd mobile-application/user-react
+
+# Build Development APK (automatically sets environment to dev and bundles)
+npm run build:dev:apk
+
+# Build Production APK (sets environment to production and bundles)
+npm run build:prod:apk
+
+# Build Local APK (points to localhost:5001)
+npm run build:local:apk
+```
+
+* **Release APK Output Location:**
+  ```
+  mobile-application/user-react/android/app/build/outputs/apk/release/app-release.apk
+  ```
+* **Debug APK Build (optional):**
+  ```bash
+  cd mobile-application/user-react/android && ./gradlew assembleDebug
+  ```
+  *Output: `mobile-application/user-react/android/app/build/outputs/apk/debug/app-debug.apk`*
+
+#### Running Live Development (Metro & Hot Reload)
+
+1. Connect your Android phone via USB (with USB Debugging enabled) or start an Android Emulator.
+2. Forward the backend and Metro ports:
    ```bash
    adb reverse tcp:5001 tcp:5001
-   adb reverse tcp:8081 tcp:8081
+   adb reverse tcp:8082 tcp:8082
    ```
-2. Navigate to the user app directory:
+3. Navigate to the app directory and install dependencies:
    ```bash
    cd mobile-application/user-react
-   ```
-3. Install dependencies:
-   ```bash
    npm install
    ```
-4. Start Metro bundler:
+4. Set the desired target environment (e.g. `npm run set-env:dev` or `npm run set-env:local`).
+5. Start Metro bundler:
    ```bash
    npm start
    ```
-5. Launch on device:
+6. In a new terminal, launch on your device:
    ```bash
-   # Run on connected Android device / emulator
+   # Android
    npm run android
 
-   # Run on iOS simulator (macOS only)
+   # iOS simulator (macOS only)
    npm run ios
    ```
 
 ---
 
-### 4. Gym Owner Web Portal Setup
+### 4. Gym Owner Scanner App (`gym-owner`) Setup & Build Guide
+
+The Gym Owner Mobile App is built with **React Native CLI** for turnstile gate scanning and staff check-ins.
+
+#### Building Standalone Android APKs
+
+```bash
+cd mobile-application/gym-owner
+
+# Build Development APK (connects to https://dev.api.gymezy.com/api/v1)
+npm run build:dev:android
+
+# Build Production APK (connects to https://api.gymezy.com/api/v1)
+npm run build:prod:android
+
+# Build Local APK
+npm run build:local:android
+```
+
+* **APK Output Location:**
+  ```
+  mobile-application/gym-owner/android/app/build/outputs/apk/release/app-release.apk
+  ```
+
+#### Running Live Development
+
+```bash
+cd mobile-application/gym-owner
+npm install
+npm run set-env:dev
+npm start
+
+# In another terminal:
+npm run android
+```
+
+---
+
+### 5. Gym Owner Web Portal Setup
 
 1. Navigate to the Gym Owner web application:
    ```bash
@@ -198,7 +287,7 @@ Ensure you have the following installed on your machine:
 
 ---
 
-### 5. Super Admin Web Portal Setup
+### 6. Super Admin Web Portal Setup
 
 1. Navigate to the Super Admin web application:
    ```bash

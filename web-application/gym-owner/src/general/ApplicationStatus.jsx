@@ -1854,8 +1854,10 @@ export const ApplicationStatus = () => {
                         <Form.Item label="Bank Name" name="bankName">
                           <Select
                             showSearch
+                            size="large"
                             optionFilterProp="children"
                             placeholder="Select bank"
+                            style={{ width: '100%' }}
                             onChange={(bankName) => {
                               editForm.setFieldValue('ifscCode', getBankByName(bankName)?.ifscPrefix || '');
                             }}
