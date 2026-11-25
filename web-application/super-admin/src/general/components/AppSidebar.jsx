@@ -23,7 +23,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import gymezyLogo from '../../assets/logo/gymezy.png';
 
 // Helper to render neatly proportioned sidebar count badges
-const renderMenuBadge = (count, isHighlight = false) => {
+const renderMenuBadge = (count, isHighlight = false, isDarkMode = false) => {
   if (count === undefined || count === null || count === 0) return null;
   return (
     <span
@@ -38,8 +38,16 @@ const renderMenuBadge = (count, isHighlight = false) => {
         fontSize: 11,
         fontWeight: 700,
         lineHeight: 1,
-        backgroundColor: isHighlight ? '#6366f1' : 'rgba(255, 255, 255, 0.14)',
-        color: '#ffffff',
+        backgroundColor: isHighlight
+          ? '#4f46e5'
+          : isDarkMode
+          ? 'rgba(255, 255, 255, 0.14)'
+          : '#e2e8f0',
+        color: isHighlight
+          ? '#ffffff'
+          : isDarkMode
+          ? '#ffffff'
+          : '#334155',
         flexShrink: 0,
       }}
     >
@@ -92,7 +100,7 @@ export const AppSidebar = ({
       label: (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 4 }}>
           <span>Gyms</span>
-          {totalActionRequired > 0 && renderMenuBadge(totalActionRequired, true)}
+          {totalActionRequired > 0 && renderMenuBadge(totalActionRequired, true, isDarkMode)}
         </div>
       ),
       children: [
@@ -101,7 +109,7 @@ export const AppSidebar = ({
           label: (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 2 }}>
               <span>Approved</span>
-              {renderMenuBadge(approvedCount, false)}
+              {renderMenuBadge(approvedCount, false, isDarkMode)}
             </div>
           ),
         },
@@ -138,7 +146,7 @@ export const AppSidebar = ({
           label: (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 2 }}>
               <span>On Hold</span>
-              {renderMenuBadge(onHoldCount, false)}
+              {renderMenuBadge(onHoldCount, false, isDarkMode)}
             </div>
           ),
         },
@@ -268,8 +276,8 @@ export const AppSidebar = ({
       width={260}
       collapsedWidth={80}
       style={{
-        backgroundColor: isDarkMode ? '#0d0d0d' : '#0e131f',
-        borderRight: `1px solid ${isDarkMode ? '#222222' : '#1e293b'}`,
+        backgroundColor: isDarkMode ? '#0a0a0a' : '#ffffff',
+        borderRight: `1px solid ${isDarkMode ? '#1e1e1e' : '#e2e8f0'}`,
         position: 'sticky',
         top: 0,
         height: '100vh',
@@ -285,8 +293,9 @@ export const AppSidebar = ({
             display: 'flex',
             alignItems: 'center',
             gap: 12,
-            padding: '0 20px',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            padding: collapsed ? '0' : '0 20px',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            borderBottom: `1px solid ${isDarkMode ? '#1a1a1a' : '#e2e8f0'}`,
             cursor: 'pointer',
             transition: 'all 0.2s ease',
           }}
@@ -308,7 +317,7 @@ export const AppSidebar = ({
                   fontSize: 18,
                   fontWeight: 900,
                   letterSpacing: '1.5px',
-                  color: '#ffffff',
+                  color: isDarkMode ? '#ffffff' : '#0f172a',
                 }}
               >
                 GYMEZY
@@ -318,7 +327,7 @@ export const AppSidebar = ({
                   fontSize: 10,
                   fontWeight: 700,
                   letterSpacing: '0.8px',
-                  color: '#818cf8',
+                  color: isDarkMode ? '#818cf8' : '#4338ca',
                   textTransform: 'uppercase',
                 }}
               >
@@ -329,10 +338,10 @@ export const AppSidebar = ({
         </div>
 
         {/* Navigation Menu */}
-        <div style={{ flex: 1, padding: '16px 8px', overflowY: 'auto' }}>
+        <div style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
           <Menu
             mode="inline"
-            theme="dark"
+            theme={isDarkMode ? 'dark' : 'light'}
             selectedKeys={[activeKey]}
             defaultOpenKeys={['gyms-sub']}
             onClick={({ key }) => navigate(key)}
@@ -340,6 +349,8 @@ export const AppSidebar = ({
             style={{
               backgroundColor: 'transparent',
               borderRight: 'none',
+              fontSize: 14,
+              fontWeight: 500,
             }}
           />
         </div>
@@ -348,14 +359,14 @@ export const AppSidebar = ({
         <div
           style={{
             padding: '12px 16px',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
+            borderTop: `1px solid ${isDarkMode ? '#1a1a1a' : '#e2e8f0'}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'space-between',
           }}
         >
           {!collapsed && (
-            <span style={{ fontSize: 11, color: '#64748b' }}>
+            <span style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b' }}>
               v1.0.0 Enterprise
             </span>
           )}
@@ -363,7 +374,7 @@ export const AppSidebar = ({
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => onCollapse(!collapsed)}
-            style={{ color: '#94a3b8' }}
+            style={{ color: isDarkMode ? '#888888' : '#64748b' }}
           />
         </div>
       </div>

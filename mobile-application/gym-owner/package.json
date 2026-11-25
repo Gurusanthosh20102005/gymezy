@@ -8,8 +8,10 @@
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest",
+    "set-env:local": "node scripts/set-env.js local",
     "set-env:dev": "node scripts/set-env.js development",
     "set-env:prod": "node scripts/set-env.js production",
+    "build:local:android": "node scripts/set-env.js local && cd android && ./gradlew assembleRelease",
     "build:dev:android": "node scripts/set-env.js development && cd android && ./gradlew assembleRelease",
     "build:prod:android": "node scripts/set-env.js production && cd android && ./gradlew assembleRelease"
   },

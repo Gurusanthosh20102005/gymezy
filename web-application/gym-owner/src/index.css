@@ -488,6 +488,16 @@ html.dark .ant-select-selector {
   font-size: var(--text-sm);
 }
 
+/* Ensure Ant Design Select with height 44 or size large expands and vertically centers */
+.ant-select-single.ant-select-lg .ant-select-selector,
+.ant-select-single[style*="height: 44px"] .ant-select-selector,
+.ant-select-single[style*="height: 44"] .ant-select-selector {
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  border-radius: var(--radius-base) !important;
+}
+
 html.dark .ant-input:focus,
 html.dark .ant-input-affix-wrapper:focus,
 html.dark .ant-input-affix-wrapper-focused {
