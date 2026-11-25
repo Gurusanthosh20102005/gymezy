@@ -21,6 +21,8 @@ import {
   Spin,
   Empty,
   DatePicker,
+  Segmented,
+  Alert,
 } from 'antd';
 import {
   PlusOutlined,
@@ -98,6 +100,7 @@ export const SectionsManagement = () => {
 
   // Filters
   const [activeCategory, setActiveCategory] = useState('all');
+  const [lifecycleFilter, setLifecycleFilter] = useState('active'); // 'active' (Upcoming/Ongoing), 'completed', 'all'
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 350);
 
@@ -135,10 +138,18 @@ export const SectionsManagement = () => {
     }
   };
 
-  // Dynamic Watch for Estimated End Date calculation
+  // Dynamic Watch for Estimated End Date calculation & Trainer Availability
   const watchedStartDate = Form.useWatch('startDate', form);
   const watchedDurationDays = Form.useWatch('durationDays', form);
   const watchedActiveDays = Form.useWatch('activeDays', form);
+  const watchedStartTime = Form.useWatch('startTime', form);
+  const watchedEndTime = Form.useWatch('endTime', form);
+  const watchedTrainerId = Form.useWatch('trainerId', form);
+
+  // Available Trainers for the current schedule
+  const [availableTrainers, setAvailableTrainers] = useState([]);
+  const [allEvaluatedTrainers, setAllEvaluatedTrainers] = useState([]);
+  const [isLoadingAvailableTrainers, setIsLoadingAvailableTrainers] = useState(false);
 
   // Calculates exact completion date by counting occurrences of active weekly days
   const calculateScheduleEndDate = useCallback((startDateInput, durationDaysInput, activeDaysInput) => {
@@ -171,6 +182,29 @@ export const SectionsManagement = () => {
     }
     return current;
   }, []);
+
+  // Single Source of Truth Lifecycle Calculator for Section Batches
+  const getSectionLifecycleState = useCallback((record) => {
+    if (record.lifecycleStatus) return record.lifecycleStatus;
+    const now = new Date();
+    const sDate = record.startDate ? new Date(record.startDate) : new Date();
+    let effectiveEnd = record.endDate;
+    if (!effectiveEnd && record.startDate && record.durationDays) {
+      effectiveEnd = calculateScheduleEndDate(record.startDate, record.durationDays, record.activeDays);
+    }
+    const eDate = effectiveEnd ? new Date(effectiveEnd) : sDate;
+    eDate.setHours(23, 59, 59, 999);
+    if (now > eDate) return 'COMPLETED';
+    if (record.isActive === false) return 'PAUSED';
+    if (now >= sDate) return 'ONGOING';
+    return 'UPCOMING';
+  }, [calculateScheduleEndDate]);
+
+  // Lifecycle counts for tabs
+  const upcomingCount = sections.filter((s) => getSectionLifecycleState(s) === 'UPCOMING').length;
+  const ongoingCount = sections.filter((s) => getSectionLifecycleState(s) === 'ONGOING').length;
+  const activeCount = upcomingCount + ongoingCount;
+  const completedCount = sections.filter((s) => getSectionLifecycleState(s) === 'COMPLETED').length;
 
   const estimatedEndDate = React.useMemo(() => {
     const rawStart = watchedStartDate || form.getFieldValue('startDate');
@@ -232,33 +266,128 @@ export const SectionsManagement = () => {
     fetchTrainers();
   }, [fetchSections, fetchTrainers]);
 
-  // Trainer Select Options
+  // Dynamic Available Trainers Fetcher for Selected Schedule
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    let isMounted = true;
+    const fetchAvailable = async () => {
+      setIsLoadingAvailableTrainers(true);
+      try {
+        const params = {
+          startDate: watchedStartDate || undefined,
+          durationDays: watchedDurationDays || 20,
+          activeDays: watchedActiveDays ? (Array.isArray(watchedActiveDays) ? watchedActiveDays.join(',') : watchedActiveDays) : undefined,
+          startTime: watchedStartTime || undefined,
+          endTime: watchedEndTime || undefined,
+          excludeSectionId: editingSection?._id || undefined,
+        };
+        const res = await apiClient.get('/sections/available-trainers', { params });
+        if (isMounted && res.data?.success) {
+          const avail = res.data.data?.availableTrainers || [];
+          const allEv = res.data.data?.allTrainers || [];
+          setAvailableTrainers(avail);
+          setAllEvaluatedTrainers(allEv);
+
+          // If current trainer is no longer available, select first available or clear
+          const currentTid = form.getFieldValue('trainerId');
+          const stillAvail = avail.some((t) => String(t._id || t.id) === String(currentTid));
+          if (!stillAvail) {
+            form.setFieldsValue({
+              trainerId: avail.length > 0 ? String(avail[0]._id || avail[0].id) : null,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch available trainers:', err);
+      } finally {
+        if (isMounted) setIsLoadingAvailableTrainers(false);
+      }
+    };
+
+    fetchAvailable();
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    isModalOpen,
+    watchedStartDate,
+    watchedDurationDays,
+    watchedActiveDays,
+    watchedStartTime,
+    watchedEndTime,
+    editingSection,
+    form,
+  ]);
+
+  // Trainer Select Options (Showing all trainers with live availability status badges)
+  // Trainer Select Options (Showing all trainers: available selectable, unavailable labeled Not Available & disabled)
   const trainerOptions = React.useMemo(() => {
-    return trainers.map((t) => ({
-      value: String(t._id || t.id),
-      label: (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Avatar
-            size="small"
-            src={hasValidProfilePic(t.avatar) ? t.avatar : undefined}
-            icon={<UserOutlined style={{ fontSize: 13 }} />}
+    const list = allEvaluatedTrainers.length > 0 ? allEvaluatedTrainers : trainers;
+    return list.map((t) => {
+      const isAvail = t.isAvailable !== false;
+      return {
+        value: String(t._id || t.id),
+        disabled: !isAvail,
+        label: (
+          <div
             style={{
-              backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
-              color: '#6366f1',
-              flexShrink: 0,
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              gap: 8,
+              opacity: isAvail ? 1 : 0.65,
+              opacity: isAvail ? 1 : 0.5,
             }}
-          />
-          <span style={{ fontWeight: 600 }}>{t.name}</span>
-          {t.employeeId ? (
-            <span style={{ color: '#94a3b8', fontSize: 12 }}>({t.employeeId})</span>
-          ) : null}
-        </div>
-      ),
-    }));
-  }, [trainers]);
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+              <Avatar
+                size="small"
+                src={hasValidProfilePic(t.avatar) ? t.avatar : undefined}
+                icon={<UserOutlined style={{ fontSize: 13 }} />}
+                style={{
+                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                  color: '#6366f1',
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              />
+              <span style={{ fontWeight: 600 }}>{t.name}</span>
+              <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                ({t.specialty || t.role || 'Coach'}{t.employeeId ? ` • ${t.employeeId}` : ''})
+              </span>
+            </div>
+            {!isAvail ? (
+              <Tag color="error" style={{ fontSize: 11, borderRadius: 10, margin: 0, whiteSpace: 'nowrap' }}>
+                {t.reason || 'Unavailable'}
+              </Tag>
+            ) : (
+              <Tag color="success" style={{ fontSize: 11, borderRadius: 10, margin: 0 }}>
+                Available
+              </Tag>
+            )}
+            <Tag
+              color={isAvail ? 'success' : 'default'}
+              style={{
+                fontSize: 11,
+                borderRadius: 10,
+                margin: 0,
+                fontWeight: 500,
+                color: isAvail ? undefined : '#64748b',
+                background: isAvail ? undefined : (isDarkMode ? '#334155' : '#f1f5f9'),
+                borderColor: 'transparent',
+              }}
+            >
+              {isAvail ? 'Available' : 'Not Available'}
+            </Tag>
+          </div>
+        ),
+      };
+    });
+  }, [allEvaluatedTrainers, trainers, isDarkMode]);
 
   // Open Create/Edit Modal
   const handleOpenModal = (section = null) => {
@@ -286,13 +415,10 @@ export const SectionsManagement = () => {
         });
       } else {
         form.resetFields();
-        const defaultTrainerId = trainers[0]?._id
-          ? String(trainers[0]._id)
-          : (trainers[0]?.id ? String(trainers[0].id) : undefined);
         form.setFieldsValue({
           title: '',
           category: 'yoga',
-          trainerId: defaultTrainerId,
+          trainerId: undefined,
           cost: 1500,
           startDate: new Date().toISOString().split('T')[0],
           durationDays: 20,
@@ -366,6 +492,11 @@ export const SectionsManagement = () => {
 
   // Toggle Section Status
   const handleToggleStatus = async (id, currentStatus) => {
+    const target = sections.find((s) => s._id === id);
+    if (target && getSectionLifecycleState(target) === 'COMPLETED' && !currentStatus) {
+      message.warning('This batch schedule has already ended. Edit the schedule dates to reopen it.');
+      return;
+    }
     try {
       const response = await apiClient.patch(`/sections/${id}/status`, {
         isActive: !currentStatus,
@@ -397,6 +528,10 @@ export const SectionsManagement = () => {
   // Filtered Sections
   const filteredSections = React.useMemo(() => {
     return sections.filter((sec) => {
+      const state = getSectionLifecycleState(sec);
+      if (lifecycleFilter === 'active' && state !== 'UPCOMING' && state !== 'ONGOING') return false;
+      if (lifecycleFilter === 'completed' && state !== 'COMPLETED') return false;
+
       const matchesCategory = activeCategory === 'all' || sec.category === activeCategory;
       const trainerName =
         (typeof sec.trainerId === 'object' ? sec.trainerId?.name : '') || '';
@@ -408,7 +543,7 @@ export const SectionsManagement = () => {
         (sec.category || '').toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
-  }, [sections, activeCategory, debouncedSearchQuery]);
+  }, [sections, lifecycleFilter, activeCategory, debouncedSearchQuery, getSectionLifecycleState]);
 
   // Category Color Helper
   const getCategoryColor = (catKey) => {
@@ -604,16 +739,48 @@ export const SectionsManagement = () => {
     },
     {
       title: 'Status',
-      dataIndex: 'isActive',
-      key: 'isActive',
-      width: 100,
-      render: (isActive, record) => (
-        <Switch
-          checked={isActive}
-          onChange={() => handleToggleStatus(record._id, isActive)}
-          size="small"
-        />
-      ),
+      key: 'lifecycleStatus',
+      width: 130,
+      render: (_, record) => {
+        const state = getSectionLifecycleState(record);
+        const isCompleted = state === 'COMPLETED';
+        const badgeColors = {
+          UPCOMING: '#0284c7',
+          ONGOING: '#ea580c',
+          COMPLETED: '#64748b',
+          PAUSED: '#ef4444',
+        };
+        const badgeLabels = {
+          UPCOMING: 'Upcoming',
+          ONGOING: 'Ongoing',
+          COMPLETED: 'Completed',
+          PAUSED: 'Paused',
+        };
+        return (
+          <Space direction="vertical" size={4} style={{ display: 'inline-flex', alignItems: 'flex-start' }}>
+            <Tag
+              color={badgeColors[state] || '#64748b'}
+              style={{
+                borderRadius: 12,
+                fontWeight: 600,
+                fontSize: 11,
+                padding: '1px 8px',
+                border: 'none',
+                margin: 0,
+              }}
+            >
+              {badgeLabels[state] || state}
+            </Tag>
+            {!isCompleted && (
+              <Switch
+                checked={record.isActive}
+                onChange={() => handleToggleStatus(record._id, record.isActive)}
+                size="small"
+              />
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: 'Action',
@@ -667,8 +834,18 @@ export const SectionsManagement = () => {
           marginBottom: 20,
         }}
       >
-        {/* Category Dropdown & Search Filter */}
+        {/* Lifecycle Tabs, Category Dropdown & Search Filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Segmented
+            value={lifecycleFilter}
+            onChange={setLifecycleFilter}
+            options={[
+              { label: `Active (${activeCount})`, value: 'active' },
+              { label: `Completed (${completedCount})`, value: 'completed' },
+              { label: `All (${sections.length})`, value: 'all' },
+            ]}
+          />
+
           <Select
             value={activeCategory}
             onChange={(val) => setActiveCategory(val)}
@@ -884,11 +1061,26 @@ export const SectionsManagement = () => {
               <Form.Item
                 name="trainerId"
                 label="Assigned Gym Trainer (Available in Gym)"
-                rules={[{ required: true, message: 'Please select a trainer' }]}
+                rules={[{ required: true, message: 'Please select an available trainer' }]}
+                help={
+                  !isLoadingAvailableTrainers && availableTrainers.length === 0 ? (
+                    <span style={{ color: '#ef4444', fontWeight: 500 }}>
+                      No trainers are available for this time and schedule. Adjust the time slot or active days.
+                    </span>
+                  ) : undefined
+                }
+                validateStatus={!isLoadingAvailableTrainers && availableTrainers.length === 0 ? 'error' : undefined}
               >
                 <Select
                   size="large"
-                  placeholder="Select a gym trainer"
+                  placeholder={
+                    isLoadingAvailableTrainers
+                      ? 'Evaluating available trainers...'
+                      : availableTrainers.length === 0
+                      ? 'No trainers available for this schedule'
+                      : 'Select an available trainer'
+                  }
+                  loading={isLoadingAvailableTrainers}
                   style={{ borderRadius: 'var(--radius-base)' }}
                   options={trainerOptions}
                 />
@@ -911,6 +1103,30 @@ export const SectionsManagement = () => {
               </Form.Item>
             </Col>
           </Row>
+
+          {!isLoadingAvailableTrainers && availableTrainers.length === 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message="No Trainers Available for this Schedule"
+              description={
+                <div style={{ marginTop: 6 }}>
+                  <div>All trainers either have an overlapping batch or do not work during these hours/days:</div>
+                  <ul style={{ paddingLeft: 18, marginTop: 6, marginBottom: 4 }}>
+                    {allEvaluatedTrainers.map((t) => (
+                      <li key={t._id || t.id}>
+                        <strong>{t.name}</strong>: {t.reason || 'Schedule conflict or off-duty'}
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
+                    Tip: Adjust the Daily Start/End Time or active days (e.g. Mon, Wed, Fri) to assign a trainer.
+                  </div>
+                </div>
+              }
+              style={{ marginBottom: 16, borderRadius: 'var(--radius-base)' }}
+            />
+          )}
 
           <Row gutter={16}>
             <Col span={6}>
@@ -1076,7 +1292,11 @@ export const SectionsManagement = () => {
               size="large"
               htmlType="submit"
               loading={isSubmitting}
-              style={{ backgroundColor: '#003882', fontWeight: 600 }}
+              disabled={availableTrainers.length === 0 || !watchedTrainerId}
+              style={{
+                backgroundColor: availableTrainers.length === 0 || !watchedTrainerId ? undefined : '#003882',
+                fontWeight: 600,
+              }}
             >
               {editingSection ? 'Save Changes' : 'Create & Publish Section'}
             </Button>
