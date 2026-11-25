@@ -184,6 +184,8 @@ export const ApplicationStatus = () => {
     try {
       await apiClient.post(`/gyms/${gymId}/resubmit`, {
         notes: resubmitNotes,
+        resubmissionNote: resubmitNotes,
+        description: resubmitNotes,
       });
       messageApi.success('Application resubmitted successfully. Status updated to Pending Approval.');
       setResubmitModalOpen(false);
@@ -304,6 +306,7 @@ export const ApplicationStatus = () => {
         galleryPhotos: editGalleryPhotos,
         resubmit: editResubmitFlag,
         resubmitNotes: editAdminNotes,
+        resubmissionNote: editAdminNotes,
       };
 
       const res = await apiClient.put(`/gyms/${gymId}`, payload);
@@ -739,16 +742,22 @@ export const ApplicationStatus = () => {
           </div>
         </div>
 
-        {/* ADMIN NOTE BANNER (ON HOLD / REJECTED / PREVIOUS REMARKS) */}
-        {adminRemark && (
+        {/* 1. ADMIN REJECTION / HOLD FEEDBACK BANNER */}
+        {Boolean(
+          gym.rejectionReason ||
+          gym.rejectionNote ||
+          isOnHold ||
+          isRejected ||
+          (adminRemark && adminRemark !== 'Approved and published by Super Admin')
+        ) && (
           <div
             style={{
-              padding: '16px 20px',
+              padding: '18px 22px',
               borderRadius: 8,
               backgroundColor: surfaceBg,
               border: `1px solid ${borderCol}`,
-              borderLeft: `4px solid ${isOnHold ? '#fa8c16' : isRejected ? '#ef4444' : '#2563eb'}`,
-              marginBottom: 32,
+              borderLeft: `5px solid ${isOnHold ? '#fa8c16' : isRejected ? '#ef4444' : '#2563eb'}`,
+              marginBottom: 24,
             }}
           >
             <div
@@ -757,24 +766,32 @@ export const ApplicationStatus = () => {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                gap: 8,
-                marginBottom: 6,
+                gap: 10,
+                marginBottom: 10,
               }}
             >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: isOnHold ? '#fa8c16' : isRejected ? '#ef4444' : '#2563eb',
-                  letterSpacing: '0.5px',
-                  textTransform: 'uppercase',
-                }}
-              >
-                {isOnHold
-                  ? 'Administrator Note — On Hold'
-                  : isRejected
-                  ? 'Administrator Note — Changes Required'
-                  : 'Administrator Note'}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: isOnHold ? '#fa8c16' : isRejected ? '#ef4444' : '#2563eb',
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {isOnHold
+                    ? 'Administrator Notice — Application On Hold'
+                    : isRejected
+                    ? 'Administrator Notice — Changes Required / Rejection'
+                    : 'Administrator Note'}
+                </span>
+
+                {gym.rejectionReason && (
+                  <Tag color={isOnHold ? 'orange' : 'error'} style={{ fontWeight: 700, fontSize: 12 }}>
+                    Reason: {gym.rejectionReason}
+                  </Tag>
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: 8 }}>
@@ -807,14 +824,72 @@ export const ApplicationStatus = () => {
                       borderColor: isOnHold ? '#fa8c16' : '#2563eb',
                     }}
                   >
-                    Resubmit Now
+                    Resubmit Application
                   </Button>
                 )}
               </div>
             </div>
 
-            <div style={{ fontSize: 13, color: textPrimary, lineHeight: 1.5 }}>
-              {adminRemark}
+            <div
+              style={{
+                fontSize: 13,
+                color: textPrimary,
+                lineHeight: 1.6,
+                backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.7)',
+                padding: '10px 14px',
+                borderRadius: 6,
+                border: `1px dashed ${isOnHold ? '#fde68a' : '#fecaca'}`,
+              }}
+            >
+              <strong style={{ color: isOnHold ? '#d97706' : '#dc2626' }}>Admin Feedback: </strong>
+              {gym.rejectionNote || gym.remark || adminRemark || 'Please review the requested changes and update your details.'}
+            </div>
+          </div>
+        )}
+
+        {/* 2. PARTNER RESUBMISSION NOTE BANNER */}
+        {Boolean(gym.resubmissionNote) && (
+          <div
+            style={{
+              padding: '16px 20px',
+              borderRadius: 8,
+              backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.08)' : '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderLeft: '5px solid #2563eb',
+              marginBottom: 24,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CheckCircleFilled style={{ fontSize: 16, color: '#2563eb' }} />
+                <span style={{ fontWeight: 700, fontSize: 13, color: textPrimary }}>
+                  Your Resubmission Explanation & Notes
+                </span>
+                <Tag color="processing" style={{ fontWeight: 700 }}>
+                  Awaiting Super Admin Review
+                </Tag>
+              </div>
+              {gym.resubmittedAt && (
+                <span style={{ fontSize: 12, color: textMuted }}>
+                  Resubmitted on: {new Date(gym.resubmittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                </span>
+              )}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: textPrimary,
+                backgroundColor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#ffffff',
+                padding: '10px 14px',
+                borderRadius: 6,
+                border: '1px solid #dbeafe',
+                lineHeight: 1.5,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#2563eb', marginBottom: 4 }}>
+                Changes Submitted by You:
+              </div>
+              {gym.resubmissionNote}
             </div>
           </div>
         )}

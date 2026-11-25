@@ -742,6 +742,114 @@ export const GymDetailsView = ({
         </div>
       </div>
 
+      {/* REJECTION / HOLD FEEDBACK BANNER */}
+      {Boolean(
+        gym?.rejectionReason ||
+        gym?.rejectionNote ||
+        gym?.approvalStatus === 'Rejected' ||
+        gym?.approvalStatus === 'On Hold' ||
+        (gym?.remark && gym?.remark !== 'Approved and published by Super Admin')
+      ) && (
+        <div
+          style={{
+            padding: '16px 20px',
+            borderRadius: 8,
+            backgroundColor: isDarkMode
+              ? (gym?.approvalStatus === 'On Hold' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(239, 68, 68, 0.08)')
+              : (gym?.approvalStatus === 'On Hold' ? '#fffbe7' : '#fef2f2'),
+            border: `1px solid ${gym?.approvalStatus === 'On Hold' ? '#fde68a' : '#fecaca'}`,
+            borderLeft: `5px solid ${gym?.approvalStatus === 'On Hold' ? '#f59e0b' : '#ef4444'}`,
+            marginBottom: 20,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <ExclamationCircleOutlined style={{ fontSize: 18, color: gym?.approvalStatus === 'On Hold' ? '#f59e0b' : '#ef4444' }} />
+              <span style={{ fontWeight: 700, fontSize: 14, color: isDarkMode ? '#f8fafc' : '#0f172a' }}>
+                {gym?.approvalStatus === 'On Hold' ? 'Application Put On Hold' : 'Rejection Feedback & Requirements'}
+              </span>
+              <Tag color={gym?.approvalStatus === 'On Hold' ? 'warning' : 'error'} style={{ fontWeight: 700 }}>
+                {gym?.approvalStatus === 'On Hold' ? 'On Hold' : 'Rejected'}
+              </Tag>
+            </div>
+            {gym?.rejectionReason && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#94a3b8' : '#64748b' }}>Reason:</span>
+                <Tag color="volcano" style={{ fontWeight: 700, fontSize: 12 }}>
+                  {gym.rejectionReason}
+                </Tag>
+              </div>
+            )}
+          </div>
+          {(gym?.rejectionNote || gym?.remark) && (
+            <div
+              style={{
+                fontSize: 13,
+                color: isDarkMode ? '#cbd5e1' : '#334155',
+                backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.7)',
+                padding: '10px 14px',
+                borderRadius: 6,
+                border: `1px dashed ${gym?.approvalStatus === 'On Hold' ? '#fde68a' : '#fecaca'}`,
+                lineHeight: 1.5,
+              }}
+            >
+              <strong style={{ color: gym?.approvalStatus === 'On Hold' ? '#d97706' : '#dc2626' }}>
+                Admin Rejection Note:
+              </strong>{' '}
+              {gym.rejectionNote || gym.remark}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* PARTNER RESUBMISSION NOTES BANNER */}
+      {Boolean(gym?.resubmissionNote) && (
+        <div
+          style={{
+            padding: '16px 20px',
+            borderRadius: 8,
+            backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.08)' : '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderLeft: '5px solid #2563eb',
+            marginBottom: 20,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <CheckCircleOutlined style={{ fontSize: 18, color: '#2563eb' }} />
+              <span style={{ fontWeight: 700, fontSize: 14, color: isDarkMode ? '#f8fafc' : '#0f172a' }}>
+                Owner Resubmission Description & Clarifications
+              </span>
+              <Tag color="processing" style={{ fontWeight: 700 }}>
+                Resubmitted by Partner
+              </Tag>
+            </div>
+            {gym?.resubmittedAt && (
+              <span style={{ fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                Resubmitted on: {new Date(gym.resubmittedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            )}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: isDarkMode ? '#cbd5e1' : '#1e3a8a',
+              backgroundColor: isDarkMode ? 'rgba(0,0,0,0.25)' : '#ffffff',
+              padding: '12px 14px',
+              borderRadius: 6,
+              border: '1px solid #dbeafe',
+              lineHeight: 1.6,
+              fontWeight: 500,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#2563eb', marginBottom: 4 }}>
+              Changes & Corrections made by Gym Partner:
+            </div>
+            {gym.resubmissionNote}
+          </div>
+        </div>
+      )}
+
       {/* 2. MAIN GYM HERO HEADER CARD */}
       <Card
         style={{
@@ -1451,7 +1559,7 @@ export const GymDetailsView = ({
                       <Button
                         size="small"
                         type="link"
-                        icon={<FireOutlined style={{ color: '#ea580c' }} />}
+                        icon={<TeamOutlined style={{ color: '#ea580c' }} />}
                         onClick={() => setActiveTab('classes')}
                         style={{ marginLeft: 8, fontWeight: 600, color: '#ea580c' }}
                       >
@@ -1546,7 +1654,7 @@ export const GymDetailsView = ({
                       {
                         label: (
                           <span style={{ padding: '4px 8px', fontWeight: 600 }}>
-                            <FireOutlined style={{ marginRight: 6, color: '#ea580c' }} />
+                            <TeamOutlined style={{ marginRight: 6, color: '#ea580c' }} />
                             Group Classes{' '}
                             <Badge
                               count={bookingCounts.groupClasses}
@@ -1608,7 +1716,7 @@ export const GymDetailsView = ({
                         } else if (record.category === 'GROUP_CLASS') {
                           catTag = (
                             <Tag color="volcano" style={{ borderRadius: 6, fontWeight: 600, fontSize: 11 }}>
-                              <FireOutlined style={{ marginRight: 4 }} /> Group Class
+                              <TeamOutlined style={{ marginRight: 4 }} /> Group Class
                             </Tag>
                           );
                         } else {
@@ -1670,7 +1778,7 @@ export const GymDetailsView = ({
             key: 'classes',
             label: (
               <span>
-                <FireOutlined /> Group Classes ({createdSections.length})
+                <TeamOutlined /> Group Classes ({createdSections.length})
               </span>
             ),
             children: (
@@ -2823,7 +2931,7 @@ export const GymDetailsView = ({
       <Modal
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FireOutlined style={{ color: '#ea580c' }} />
+            <TeamOutlined style={{ color: '#ea580c' }} />
             <span>{selectedSectionForModal?.title || 'Group Class Details'}</span>
           </div>
         }

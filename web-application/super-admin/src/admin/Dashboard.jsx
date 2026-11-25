@@ -177,20 +177,30 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
 
   const series = useMemo(() => {
     if (hasData) {
-      return data.map((d, i) => ({
-        label: d.name ? `${d.name} '${String(d.year || new Date().getFullYear()).slice(-2)}` : `Month ${i + 1}`,
-        current: Number(d.subscription || 0),
-        previous: Number(d.commission || 0),
-        total: Number(d.total || (Number(d.subscription || 0) + Number(d.commission || 0))),
-      }));
+      const years = new Set(data.map((d) => d.year || new Date().getFullYear()));
+      const multiYear = years.size > 1;
+
+      return data.map((d, i) => {
+        const yearSuffix = `'${String(d.year || new Date().getFullYear()).slice(-2)}`;
+        const monthName = d.name || `Month ${i + 1}`;
+        return {
+          label: multiYear ? `${monthName} ${yearSuffix}` : monthName,
+          fullLabel: `${monthName} ${yearSuffix}`,
+          current: Number(d.subscription || 0),
+          previous: Number(d.commission || 0),
+          total: Number(d.total || (Number(d.subscription || 0) + Number(d.commission || 0))),
+        };
+      });
     }
     const now = new Date();
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const fallback = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const yearSuffix = `'${String(d.getFullYear()).slice(-2)}`;
       fallback.push({
-        label: `${months[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`,
+        label: months[d.getMonth()],
+        fullLabel: `${months[d.getMonth()]} ${yearSuffix}`,
         current: 0,
         previous: 0,
         total: 0,
@@ -476,7 +486,7 @@ const RevenueGrowthSplineChart = ({ isDarkMode, data = [] }) => {
                 fontWeight="700"
                 fill={isDarkMode ? '#f8fafc' : '#0f172a'}
               >
-                {activeItem.label}
+                {activeItem.fullLabel || activeItem.label}
               </text>
 
               {/* Plans */}
