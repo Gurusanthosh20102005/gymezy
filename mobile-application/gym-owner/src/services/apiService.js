@@ -2,8 +2,8 @@ import { NativeModules } from 'react-native';
 import { getCloudApiUrl, ACTIVE_ENV, ENV_TARGETS } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
-const CURRENT_MAC_IP = '192.168.0.104';
-const LOCAL_WIFI_IP = '192.168.0.104';
+const CURRENT_MAC_IP = '192.168.0.101';
+const LOCAL_WIFI_IP = '192.168.0.101';
 
 const getMetroHost = () => {
   try {
@@ -88,6 +88,79 @@ class ApiService {
     return headers;
   }
 
+  async get(endpoint) {
+    const response = await this.executeFetch(endpoint, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const result = await response.json();
+    if (!response.ok || result?.success === false) {
+      const err = new Error(result?.message || 'Request failed.');
+      err.data = result?.data || null;
+      throw err;
+    }
+    return result;
+  }
+
+  async post(endpoint, body = {}) {
+    const response = await this.executeFetch(endpoint, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    if (!response.ok || result?.success === false) {
+      const err = new Error(result?.message || 'Request failed.');
+      err.data = result?.data || null;
+      throw err;
+    }
+    return result;
+  }
+
+  async put(endpoint, body = {}) {
+    const response = await this.executeFetch(endpoint, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    if (!response.ok || result?.success === false) {
+      const err = new Error(result?.message || 'Request failed.');
+      err.data = result?.data || null;
+      throw err;
+    }
+    return result;
+  }
+
+  async patch(endpoint, body = {}) {
+    const response = await this.executeFetch(endpoint, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    if (!response.ok || result?.success === false) {
+      const err = new Error(result?.message || 'Request failed.');
+      err.data = result?.data || null;
+      throw err;
+    }
+    return result;
+  }
+
+  async delete(endpoint) {
+    const response = await this.executeFetch(endpoint, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    const result = await response.json();
+    if (!response.ok || result?.success === false) {
+      const err = new Error(result?.message || 'Request failed.');
+      err.data = result?.data || null;
+      throw err;
+    }
+    return result;
+  }
+
   async executeFetch(endpoint, options = {}, timeoutMs = 4000) {
     const metroHost = getMetroHost();
     const cloudUrl = getCloudApiUrl();
@@ -100,10 +173,9 @@ class ApiService {
     const candidateBases = isDev
       ? [
           this.verifiedBase,
-          `http://${LOCAL_WIFI_IP}:${BACKEND_PORT}/api/v1`,
-          metroHost ? `http://${metroHost}:${BACKEND_PORT}/api/v1` : null,
-          `http://${CURRENT_MAC_IP}:${BACKEND_PORT}/api/v1`,
           `http://localhost:${BACKEND_PORT}/api/v1`,
+          metroHost ? `http://${metroHost}:${BACKEND_PORT}/api/v1` : null,
+          `http://${LOCAL_WIFI_IP}:${BACKEND_PORT}/api/v1`,
           `http://127.0.0.1:${BACKEND_PORT}/api/v1`,
           `http://10.0.2.2:${BACKEND_PORT}/api/v1`,
           cloudUrl,
@@ -118,7 +190,10 @@ class ApiService {
       const currentBase = uniqueBases[i];
       const targetUrl = `${currentBase}${endpoint}`;
       try {
-        const attemptTimeout = i === 0 && this.verifiedBase ? timeoutMs : 4000;
+        const attemptTimeout =
+          currentBase.includes('10.0.2.2')
+            ? 2500
+            : Math.max(timeoutMs, 12000);
         const response = await fetchWithTimeout(targetUrl, options, attemptTimeout);
 
         // Safely extract response text to inspect before treating as valid JSON
@@ -227,6 +302,63 @@ class ApiService {
     };
   }
 
+  async googleLogin({ idToken, portal = 'gym-owner', expectedRole = 'GYM_OWNER' }) {
+    if (!idToken) {
+      throw new Error('Google ID token is required.');
+    }
+
+    const response = await this.executeFetch('/auth/google-login', {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        idToken,
+        portal,
+        expectedRole,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      const errorMessage =
+        result.message ||
+        (result.errors && result.errors[0]?.msg) ||
+        'Google Authentication failed. Please try again.';
+      throw new Error(errorMessage);
+    }
+
+    const data = result.data || {};
+
+    // If user does not exist in DB yet: return profile for onboarding
+    if (data.exists === false) {
+      return {
+        exists: false,
+        isNewUser: true,
+        profile: data.profile || {},
+        message: result.message,
+      };
+    }
+
+    if (data.token) {
+      this.setAuthToken(data.token);
+    }
+
+    return {
+      exists: true,
+      user: {
+        id: data.user?.id || data.user?._id,
+        fullName: data.user?.fullName,
+        email: data.user?.email,
+        phone: data.user?.phone,
+        role: data.user?.role,
+        gymId: data.user?.gymId,
+      },
+      gym: data.gym || data.user?.gym || null,
+      token: data.token || null,
+      message: result.message,
+    };
+  }
+
   async logout() {
     try {
       await this.executeFetch('/auth/logout', {
@@ -282,6 +414,20 @@ class ApiService {
     const result = await response.json();
     if (!response.ok || !result.success) {
       throw new Error(result.message || 'Failed to fetch gym profile.');
+    }
+    return result.data;
+  }
+
+  async getGymDashboardStats(gymId, range = 'This Month') {
+    if (!gymId) throw new Error('Gym ID is required.');
+    const qs = range ? `?range=${encodeURIComponent(range)}` : '';
+    const response = await this.executeFetch(`/gyms/${gymId}/dashboard-stats${qs}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to fetch gym dashboard statistics.');
     }
     return result.data;
   }
@@ -443,7 +589,9 @@ class ApiService {
     });
     const result = await response.json();
     if (!response.ok || !result.success) {
-      throw new Error(result.message || 'Check-in failed. Please verify the code/OTP.');
+      const err = new Error(result.message || 'Check-in failed. Please verify the code/OTP.');
+      err.data = result.data || null;
+      throw err;
     }
     return result.data;
   }
@@ -638,6 +786,34 @@ class ApiService {
     const result = await response.json();
     if (!response.ok || !result.success) {
       throw new Error(result.message || 'Failed to cancel membership.');
+    }
+    return result.data;
+  }
+
+  async extendMembership(membershipId, payload = {}) {
+    if (!membershipId) throw new Error('Membership ID is required.');
+    const response = await this.executeFetch(`/memberships/${membershipId}/extend`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to extend membership.');
+    }
+    return result.data;
+  }
+
+  async sendRenewalOffer(membershipId, payload = {}) {
+    if (!membershipId) throw new Error('Membership ID is required.');
+    const response = await this.executeFetch(`/memberships/${membershipId}/renewal-offer`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to send renewal offer.');
     }
     return result.data;
   }
@@ -839,6 +1015,19 @@ class ApiService {
     const result = await response.json();
     if (!response.ok || !result.success) {
       throw new Error(result.message || 'Failed to review cancellation request.');
+    }
+    return result.data;
+  }
+
+  async toggleSso(enabled) {
+    const response = await this.executeFetch('/auth/toggle-sso', {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ enabled: Boolean(enabled) }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || 'Failed to update SSO setting.');
     }
     return result.data;
   }

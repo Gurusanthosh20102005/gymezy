@@ -206,6 +206,30 @@ const membershipSchema = new mongoose.Schema(
       type: switchMetadataSchema,
       default: null,
     },
+    extensionHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            extendedAt: { type: Date, default: Date.now },
+            previousEndDate: { type: Date, required: true },
+            newEndDate: { type: Date, required: true },
+            addedDays: { type: Number, required: true, min: 1 },
+            planTier: { type: String, trim: true },
+            amountPaid: { type: Number, default: 0, min: 0 },
+            paymentMethod: { type: String, trim: true, default: 'Cash' },
+            trainerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
+            trainerFee: { type: Number, default: 0, min: 0 },
+            extendedByName: { type: String, trim: true, default: 'Gym Admin' },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
+    pendingRenewalOffer: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
   },
   {
     timestamps: true,

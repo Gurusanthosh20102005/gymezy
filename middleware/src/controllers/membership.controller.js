@@ -6,7 +6,7 @@ import { MembershipCancellation } from '../models/membershipCancellation.model.j
 import { Wallet } from '../models/wallet.model.js';
 import Gym from '../models/gym.model.js';
 import Employee from '../models/employee.model.js';
-import User from '../models/user.model.js';
+import User, { USER_ROLES } from '../models/user.model.js';
 import Counter from '../models/counter.model.js';
 import { ProrationEngine } from '../services/proration.service.js';
 import {
@@ -533,33 +533,36 @@ export const getGymMemberships = async (req, res, next) => {
     }
 
     // Build filter
-    const filter = { gymId: gym._id };
+    const andConditions = [{ gymId: gym._id }];
     if (status && status !== 'All' && status !== 'ALL') {
       if (status === 'Expiring Soon') {
         const now = new Date();
         const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        filter.$or = [
-          { status: 'Expiring Soon' },
-          { status: 'Active', endDate: { $gte: now, $lte: in30Days } },
-        ];
+        andConditions.push({
+          $or: [
+            { status: 'Expiring Soon' },
+            { status: 'Active', endDate: { $gte: now, $lte: in30Days } },
+          ],
+        });
       } else {
-        filter.status = status;
+        andConditions.push({ status });
       }
     }
     if (tier && tier !== 'All' && tier !== 'ALL') {
-      filter.membershipTier = tier;
+      andConditions.push({ membershipTier: tier });
     }
     if (source && source !== 'All' && source !== 'ALL') {
-      filter.source = source.toUpperCase();
+      andConditions.push({ source: source.toUpperCase() });
     }
     if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      const createdAtRange = {};
+      if (startDate) createdAtRange.$gte = new Date(startDate);
       if (endDate) {
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        filter.createdAt.$lte = end;
+        createdAtRange.$lte = end;
       }
+      andConditions.push({ createdAt: createdAtRange });
     }
     const searchTerm = getSearchTerm(req.query);
     if (searchTerm) {
@@ -575,12 +578,15 @@ export const getGymMemberships = async (req, res, next) => {
       }).select('_id');
       const userIds = matchingUsers.map((u) => u._id);
 
-      filter.$or = [
-        { membershipId: searchRegex },
-        { 'walkInDetails.bookedByName': searchRegex },
-        { userId: { $in: userIds } },
-      ];
+      andConditions.push({
+        $or: [
+          { membershipId: searchRegex },
+          { 'walkInDetails.bookedByName': searchRegex },
+          { userId: { $in: userIds } },
+        ],
+      });
     }
+    const filter = andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
     const skip = (Number(page) - 1) * Number(limit);
     const total = await Membership.countDocuments(filter);
@@ -1871,6 +1877,207 @@ export const superAdminActionReviewSwitchRequest = async (req, res, next) => {
 
       return res.status(200).json(ApiResponse.success(request, 'Switch request rejected by Super Admin.'));
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Resolve membership by Mongo _id or membershipId
+ */
+const findMembershipByParam = async (id) => {
+  const isObjectId = mongoose.Types.ObjectId.isValid(id);
+  return Membership.findOne(
+    isObjectId ? { $or: [{ _id: id }, { membershipId: id }] } : { membershipId: id }
+  );
+};
+
+/**
+ * PATCH /api/v1/memberships/:id/extend
+ * Direct desk extension for WALK_IN memberships (SSOT: stacks from endDate if active, or today if expired).
+ */
+export const extendWalkInMembership = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const membership = await findMembershipByParam(id);
+    if (!membership) {
+      throw ApiError.notFound('Membership not found.');
+    }
+
+    if (membership.status === 'Cancelled') {
+      throw ApiError.badRequest('Cancelled memberships cannot be extended. Please enroll as a new membership.');
+    }
+
+    const isWalkIn =
+      membership.source === 'WALK_IN' ||
+      (membership.source !== 'APP' && Boolean(membership.walkInDetails?.bookedBy || membership.walkInDetails?.bookedByName));
+
+    if (!isWalkIn) {
+      throw ApiError.badRequest(
+        'Online App memberships cannot be billed directly at the desk. Please send a Renewal Offer to the member.'
+      );
+    }
+
+    const {
+      planTier,
+      tier,
+      durationDays: customDays,
+      amountPaid,
+      amount,
+      paymentMethod = 'Cash',
+      trainerId,
+      trainerSlot,
+      trainerFee,
+    } = req.body || {};
+
+    const resolvedTier = planTier || tier || membership.membershipTier || 'Monthly';
+    const addedDays = Math.max(1, Number(customDays) || TIER_DURATION_DAYS[resolvedTier] || 30);
+    const now = new Date();
+    const currentEnd = membership.endDate ? new Date(membership.endDate) : now;
+    const baseDate = currentEnd > now ? currentEnd : now;
+    const newEndDate = new Date(baseDate.getTime() + addedDays * 24 * 60 * 60 * 1000);
+    const paidNum = Math.max(0, Number(amountPaid ?? amount ?? 0) || 0);
+    const tFee = Math.max(0, Number(trainerFee ?? 0) || 0);
+
+    if (trainerId === 'none' || trainerId === null) {
+      membership.trainerId = null;
+      membership.hasTrainer = false;
+      membership.trainerSlot = null;
+    } else if (trainerId && mongoose.Types.ObjectId.isValid(trainerId)) {
+      membership.trainerId = trainerId;
+      membership.hasTrainer = true;
+      if (trainerSlot) membership.trainerSlot = trainerSlot;
+    }
+
+    membership.membershipTier = resolvedTier;
+    membership.durationDays = Number(membership.durationDays || 0) + addedDays;
+    membership.endDate = newEndDate;
+    membership.status = 'Active';
+    membership.pricing = {
+      ...(membership.pricing?.toObject ? membership.pricing.toObject() : membership.pricing || {}),
+      totalAmount: Number(membership.pricing?.totalAmount || 0) + paidNum,
+      trainerFee: tFee > 0 ? tFee : Number(membership.pricing?.trainerFee || 0),
+    };
+    membership.payment = {
+      ...(membership.payment?.toObject ? membership.payment.toObject() : membership.payment || {}),
+      method: paymentMethod,
+      paidAt: now,
+    };
+
+    if (!Array.isArray(membership.extensionHistory)) {
+      membership.extensionHistory = [];
+    }
+    membership.extensionHistory.push({
+      extendedAt: now,
+      previousEndDate: currentEnd,
+      newEndDate,
+      addedDays,
+      planTier: resolvedTier,
+      amountPaid: paidNum,
+      paymentMethod,
+      trainerId: membership.trainerId || null,
+      trainerFee: tFee,
+      extendedByName: req.user?.fullName || req.user?.name || 'Gym Admin',
+    });
+
+    await membership.save();
+
+    const populated = await Membership.findById(membership._id)
+      .populate('userId', 'fullName name email phone avatar customerId')
+      .populate('trainerId', 'name employeeId specialty profilePicture rating reviewsCount')
+      .lean();
+
+    return res.status(200).json(
+      ApiResponse.success(sanitizeDocument(populated), 'Walk-in membership extended successfully.')
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/v1/memberships/:id/renewal-offer
+ * Dispatches a renewal / extension payment offer to an online APP member's User App.
+ */
+export const sendAppRenewalOffer = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const membership = await findMembershipByParam(id);
+    if (!membership) {
+      throw ApiError.notFound('Membership not found.');
+    }
+
+    if (membership.status === 'Cancelled') {
+      throw ApiError.badRequest('Cancelled memberships cannot be extended.');
+    }
+
+    const isWalkIn =
+      membership.source === 'WALK_IN' ||
+      (membership.source !== 'APP' && Boolean(membership.walkInDetails?.bookedBy || membership.walkInDetails?.bookedByName));
+
+    if (isWalkIn) {
+      throw ApiError.badRequest('Walk-in memberships should be extended directly using PATCH /:id/extend.');
+    }
+
+    const {
+      planTier,
+      tier,
+      durationDays: customDays,
+      amount,
+      amountPaid,
+      trainerId,
+      trainerFee,
+      notes = '',
+    } = req.body || {};
+
+    const resolvedTier = planTier || tier || membership.membershipTier || 'Monthly';
+    const addedDays = Math.max(1, Number(customDays) || TIER_DURATION_DAYS[resolvedTier] || 30);
+    const offerAmount = Math.max(0, Number(amount ?? amountPaid ?? 0) || 0);
+    const tFee = Math.max(0, Number(trainerFee ?? 0) || 0);
+
+    const now = new Date();
+    const currentEnd = membership.endDate ? new Date(membership.endDate) : now;
+    const baseDate = currentEnd > now ? currentEnd : now;
+    const previewNewEndDate = new Date(baseDate.getTime() + addedDays * 24 * 60 * 60 * 1000);
+
+    membership.pendingRenewalOffer = {
+      offeredAt: now,
+      offeredByName: req.user?.fullName || req.user?.name || 'Gym Admin',
+      planTier: resolvedTier,
+      addedDays,
+      amount: offerAmount,
+      trainerId: trainerId && trainerId !== 'none' && mongoose.Types.ObjectId.isValid(trainerId) ? trainerId : null,
+      trainerFee: tFee,
+      previewNewEndDate,
+      notes: String(notes || '').trim(),
+      status: 'PENDING',
+    };
+    await membership.save();
+
+    if (mongoose.models.Notification && membership.userId) {
+      await mongoose.models.Notification.create({
+        userId: membership.userId,
+        title: 'Membership Renewal Offer',
+        message: `Your gym sent a ${resolvedTier} (${addedDays} days) renewal offer for ₹${offerAmount.toLocaleString('en-IN')}. Review & pay in your GYMEZY App.`,
+        type: 'MEMBERSHIP_RENEWAL_OFFER',
+        metadata: {
+          membershipId: membership.membershipId,
+          planTier: resolvedTier,
+          addedDays,
+          amount: offerAmount,
+        },
+      }).catch(() => {});
+    }
+
+    return res.status(200).json(
+      ApiResponse.success(
+        {
+          membershipId: membership.membershipId,
+          pendingRenewalOffer: membership.pendingRenewalOffer,
+        },
+        'Renewal offer sent to member via GYMEZY App.'
+      )
+    );
   } catch (error) {
     next(error);
   }

@@ -1,0 +1,170 @@
+{
+  "banks_in_tamil_nadu": {
+    "public_sector_banks": [
+      {
+        "name": "State Bank of India (SBI)",
+        "ifsc_prefix": "SBIN"
+      },
+      {
+        "name": "Indian Bank",
+        "ifsc_prefix": "IDIB"
+      },
+      {
+        "name": "Indian Overseas Bank (IOB)",
+        "ifsc_prefix": "IOBA"
+      },
+      {
+        "name": "Canara Bank",
+        "ifsc_prefix": "CNRB"
+      },
+      {
+        "name": "Punjab National Bank (PNB)",
+        "ifsc_prefix": "PUNB"
+      },
+      {
+        "name": "Union Bank of India",
+        "ifsc_prefix": "UBIN"
+      },
+      {
+        "name": "Bank of Baroda",
+        "ifsc_prefix": "BARB"
+      },
+      {
+        "name": "Bank of India",
+        "ifsc_prefix": "BKID"
+      },
+      {
+        "name": "Central Bank of India",
+        "ifsc_prefix": "CBIN"
+      },
+      {
+        "name": "Bank of Maharashtra",
+        "ifsc_prefix": "MAHB"
+      },
+      {
+        "name": "UCO Bank",
+        "ifsc_prefix": "UCBA"
+      },
+      {
+        "name": "Punjab & Sind Bank",
+        "ifsc_prefix": "PSIB"
+      }
+    ],
+    "private_sector_banks": [
+      {
+        "name": "Tamilnad Mercantile Bank (TMB)",
+        "ifsc_prefix": "TMBL"
+      },
+      {
+        "name": "City Union Bank (CUB)",
+        "ifsc_prefix": "CIUB"
+      },
+      {
+        "name": "Karur Vysya Bank (KVB)",
+        "ifsc_prefix": "KVBL"
+      },
+      {
+        "name": "HDFC Bank",
+        "ifsc_prefix": "HDFC"
+      },
+      {
+        "name": "ICICI Bank",
+        "ifsc_prefix": "ICIC"
+      },
+      {
+        "name": "Axis Bank",
+        "ifsc_prefix": "UTIB"
+      },
+      {
+        "name": "Kotak Mahindra Bank",
+        "ifsc_prefix": "KKBK"
+      },
+      {
+        "name": "IndusInd Bank",
+        "ifsc_prefix": "INDB"
+      },
+      {
+        "name": "Federal Bank",
+        "ifsc_prefix": "FDRL"
+      },
+      {
+        "name": "South Indian Bank",
+        "ifsc_prefix": "SIBL"
+      },
+      {
+        "name": "IDFC FIRST Bank",
+        "ifsc_prefix": "IDFB"
+      },
+      {
+        "name": "Bandhan Bank",
+        "ifsc_prefix": "BDBL"
+      },
+      {
+        "name": "Yes Bank",
+        "ifsc_prefix": "YESB"
+      },
+      {
+        "name": "RBL Bank",
+        "ifsc_prefix": "RATN"
+      },
+      {
+        "name": "Karnataka Bank",
+        "ifsc_prefix": "KARB"
+      },
+      {
+        "name": "Dhanlaxmi Bank",
+        "ifsc_prefix": "DLXB"
+      },
+      {
+        "name": "CSB Bank",
+        "ifsc_prefix": "CSBK"
+      },
+      {
+        "name": "DCB Bank",
+        "ifsc_prefix": "DCBL"
+      }
+    ],
+    "regional_rural_banks": [
+      {
+        "name": "Tamil Nadu Grama Bank",
+        "ifsc_prefix": "IDIB"
+      }
+    ],
+    "state_cooperative_banks": [
+      {
+        "name": "Tamil Nadu State Apex Co-operative Bank (TNSC Bank)",
+        "ifsc_prefix": "TNSC"
+      }
+    ],
+    "small_finance_banks": [
+      {
+        "name": "Equitas Small Finance Bank",
+        "ifsc_prefix": "ESFB"
+      },
+      {
+        "name": "Ujjivan Small Finance Bank",
+        "ifsc_prefix": "UJVN"
+      },
+      {
+        "name": "ESAF Small Finance Bank",
+        "ifsc_prefix": "ESMF"
+      },
+      {
+        "name": "Suryoday Small Finance Bank",
+        "ifsc_prefix": "SURY"
+      },
+      {
+        "name": "Jana Small Finance Bank",
+        "ifsc_prefix": "JSFB"
+      },
+      {
+        "name": "Utkarsh Small Finance Bank",
+        "ifsc_prefix": "UTKS"
+      },
+      {
+        "name": "AU Small Finance Bank",
+        "ifsc_prefix": "AUBL"
+      }
+    ]
+  }
+}

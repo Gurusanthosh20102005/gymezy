@@ -28,6 +28,34 @@ const resolveGym = async (gymId) => {
 };
 
 /**
+ * Return a structured 400 denial response that still includes member & pass details for UI display
+ */
+const denyCheckIn = (res, message, { targetUser, booking, membership } = {}) => {
+  const member =
+    targetUser || booking || membership
+      ? {
+          id: targetUser?._id,
+          customerId: targetUser?.userId || undefined,
+          name: targetUser?.fullName || targetUser?.name || 'Gym Member',
+          phone: targetUser?.phone || 'N/A',
+          avatar: targetUser?.avatar || targetUser?.profilePicture || null,
+          membershipId: membership?.membershipId || null,
+          bookingId: booking?.bookingId || null,
+          bookingType: booking?.bookingType || null,
+          tier: membership?.membershipTier || membership?.tier || null,
+          title: booking?.title || (membership?.membershipTier ? `${membership.membershipTier} Pass` : null),
+          status: booking?.status || membership?.status || 'Denied',
+        }
+      : null;
+
+  return res.status(400).json({
+    success: false,
+    message,
+    data: member ? { status: 'Denied', member } : null,
+  });
+};
+
+/**
  * Parse QR or code input to extract lookup criteria
  */
 const parseCodePayload = (rawCode) => {
@@ -236,7 +264,7 @@ export const checkInMember = async (req, res, next) => {
     // --- CASE A: BOOKING PASS (SECTION / CUSTOM DATES / GYM PASS) ---
     if (booking) {
       if (booking.status === 'Cancelled') {
-        throw ApiError.badRequest('This booking pass has been cancelled. Entry is not permitted.');
+        return denyCheckIn(res, 'This booking pass has been cancelled. Entry is not permitted.', { targetUser, booking });
       }
 
       const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
@@ -419,7 +447,7 @@ export const checkInMember = async (req, res, next) => {
 
     // --- CASE B: MEMBERSHIP PASS ---
     if (membership.status === 'Cancelled') {
-      throw ApiError.badRequest('This membership pass has been cancelled. Entry is not permitted.');
+      return denyCheckIn(res, 'This membership pass has been cancelled. Entry is not permitted.', { targetUser, membership });
     }
 
     const pendingReview = await MembershipSwitchRequest.findOne({
@@ -428,18 +456,24 @@ export const checkInMember = async (req, res, next) => {
     }).lean();
 
     if (pendingReview) {
-      throw ApiError.badRequest(
-        'Your membership plan switch request is currently under review. Gym entry is paused until review completion.'
+      return denyCheckIn(
+        res,
+        'Your membership plan switch request is currently under review. Gym entry is paused until review completion.',
+        { targetUser, membership }
       );
     }
 
     if (membership.startDate && new Date(membership.startDate) > now) {
       const startStr = new Date(membership.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-      throw ApiError.badRequest(`Membership pass is not active yet (Starts on ${startStr}). Entry is not permitted before the start date.`);
+      return denyCheckIn(
+        res,
+        `Membership pass is not active yet (Starts on ${startStr}). Entry is not permitted before the start date.`,
+        { targetUser, membership }
+      );
     }
 
     if (membership.endDate && new Date(membership.endDate) < now) {
-      throw ApiError.badRequest('Membership has expired. Renewal required before entry.');
+      return denyCheckIn(res, 'Membership has expired. Renewal required before entry.', { targetUser, membership });
     }
 
     if (membership.status !== 'Active') {

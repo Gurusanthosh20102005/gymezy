@@ -118,9 +118,21 @@ const AnimatedNavItem = ({ item, isSelected, onTap, isDark }) => {
   );
 };
 
-export const CustomFloatingNavBar = ({ currentIndex, onTap }) => {
+const MEMBERSHIP_SUBMENU_ITEMS = [
+  { id: 'MEMBERS', label: 'All Members', icon: 'people' },
+  { id: 'SWITCHES', label: 'Plan Switch Requests', icon: 'sync' },
+  { id: 'CANCELLATIONS', label: 'Cancellation Requests', icon: 'block' },
+];
+
+export const CustomFloatingNavBar = ({
+  currentIndex,
+  onTap,
+  membersMode = 'MEMBERS',
+  onSelectMembersMode,
+}) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const [showMembersMenu, setShowMembersMenu] = useState(false);
   const bottomMargin =
     insets.bottom > 0
       ? insets.bottom + 6
@@ -170,6 +182,59 @@ export const CustomFloatingNavBar = ({ currentIndex, onTap }) => {
 
   return (
     <View style={styles.outerWrapper} pointerEvents="box-none">
+      {showMembersMenu && (
+        <View
+          style={[
+            styles.submenuContainer,
+            {
+              backgroundColor: isDark
+                ? 'rgba(22, 22, 26, 0.96)'
+                : 'rgba(255, 255, 255, 0.98)',
+              borderColor: isDark
+                ? 'rgba(255, 255, 255, 0.14)'
+                : 'rgba(226, 232, 240, 0.95)',
+            },
+          ]}
+        >
+          {MEMBERSHIP_SUBMENU_ITEMS.map((sub) => {
+            const isSubActive = currentIndex === 1 && membersMode === sub.id;
+            const activeCol = isDark ? AppColors.secondaryColor : AppColors.primaryColor;
+            const textCol = isSubActive
+              ? activeCol
+              : isDark
+              ? '#E2E8F0'
+              : '#334155';
+            return (
+              <TouchableOpacity
+                key={sub.id}
+                activeOpacity={0.75}
+                style={[
+                  styles.submenuItem,
+                  isSubActive && {
+                    backgroundColor: isDark
+                      ? 'rgba(255, 255, 255, 0.08)'
+                      : 'rgba(0, 56, 130, 0.08)',
+                  },
+                ]}
+                onPress={() => {
+                  onSelectMembersMode?.(sub.id);
+                  setShowMembersMenu(false);
+                }}
+              >
+                <MaterialIcons name={sub.icon} size={18} color={textCol} />
+                <Text
+                  style={[
+                    styles.submenuLabel,
+                    { color: textCol, fontWeight: isSubActive ? '700' : '500' },
+                  ]}
+                >
+                  {sub.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
       <View
         style={[
           styles.container,
@@ -216,7 +281,15 @@ export const CustomFloatingNavBar = ({ currentIndex, onTap }) => {
               key={item.label}
               item={item}
               isSelected={currentIndex === index}
-              onTap={() => onTap(index)}
+              onTap={() => {
+                if (index === 1) {
+                  setShowMembersMenu((prev) => (currentIndex === 1 ? !prev : true));
+                  onTap(1);
+                } else {
+                  setShowMembersMenu(false);
+                  onTap(index);
+                }
+              }}
               isDark={isDark}
             />
           ))}
@@ -277,6 +350,30 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     marginTop: 3,
+    fontFamily: Platform.OS === 'ios' ? 'Outfit' : 'Outfit-Medium',
+  },
+  submenuContainer: {
+    width: '86%',
+    marginBottom: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    elevation: 10,
+  },
+  submenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  submenuLabel: {
+    fontSize: 13.5,
     fontFamily: Platform.OS === 'ios' ? 'Outfit' : 'Outfit-Medium',
   },
 });

@@ -76,11 +76,13 @@ export const EmployeesTab = ({ topInset, navigation }) => {
   // Fetch Employees from Middleware (SSOT Server Search & Pagination)
   const fetchEmployees = useCallback(async () => {
     try {
-      const targetGymId = gym?._id || gym?.partnerId;
-      if (!targetGymId) return;
+      const targetGymId = gym?._id || gym?.id || user?.gymId || gym?.partnerId;
+      const targetPartnerId = gym?.partnerId || user?.partnerId;
+      if (!targetGymId && !targetPartnerId) return;
 
       const params = {
         gymId: targetGymId,
+        gymPartnerId: targetPartnerId,
         page,
         limit: 10,
       };
@@ -109,11 +111,12 @@ export const EmployeesTab = ({ topInset, navigation }) => {
       }
     } catch (err) {
       console.warn('Employees fetch warning:', err.message);
+      showToast({ message: err.message || 'Failed to load employees', isError: true });
     } finally {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [gym?._id, gym?.partnerId, debouncedSearch, activeTab, page]);
+  }, [gym?._id, gym?.id, gym?.partnerId, user?.gymId, user?.partnerId, debouncedSearch, activeTab, page]);
 
   useEffect(() => {
     fetchEmployees();
@@ -369,32 +372,6 @@ export const EmployeesTab = ({ topInset, navigation }) => {
             </Text>
           </View>
         </View>
-
-        {/* 3. Quick Attendance Action Card */}
-        <TouchableOpacity
-          style={[
-            styles.attendanceBanner,
-            {
-              backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-              borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-            },
-          ]}
-          onPress={() => navigation?.navigate('Attendance')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.attendanceIconCircle}>
-            <MaterialIcons name="how-to-reg" size={22} color="#FFFFFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.attendanceBannerTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-              Staff & Trainer Attendance Hub
-            </Text>
-            <Text style={[styles.attendanceBannerSub, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
-              Record check-ins, verify shift hours & review today's roster
-            </Text>
-          </View>
-          <MaterialIcons name="arrow-forward-ios" size={16} color={AppColors.primaryColor} />
-        </TouchableOpacity>
 
         {/* 4. Search Bar */}
         <View
@@ -1300,27 +1277,6 @@ export const EmployeesTab = ({ topInset, navigation }) => {
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[
-                      styles.modalActionBtn,
-                      {
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
-                        borderWidth: 1,
-                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                        flex: 1,
-                      },
-                    ]}
-                    onPress={() => {
-                      setShowDetailModal(false);
-                      navigation?.navigate('Attendance');
-                    }}
-                  >
-                    <MaterialIcons name="how-to-reg" size={17} color={isDark ? '#FFFFFF' : '#0F172A'} />
-                    <Text style={[styles.modalActionBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                      Attendance
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
                     style={[styles.modalActionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.12)', flex: 1 }]}
                     onPress={() => handleDeactivate(selectedEmployee)}
                   >
@@ -1458,32 +1414,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
-  },
-  attendanceBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 14,
-    gap: 12,
-  },
-  attendanceIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: AppColors.primaryColor,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  attendanceBannerTitle: {
-    fontSize: 14.5,
-    fontWeight: '700',
-  },
-  attendanceBannerSub: {
-    fontSize: 11.5,
-    marginTop: 2,
-    lineHeight: 16,
   },
   searchContainer: {
     flexDirection: 'row',

@@ -12,13 +12,45 @@ import {
   Image,
   KeyboardAvoidingView,
   Switch,
+  Modal,
+  PermissionsAndroid,
+  NativeModules,
+  TurboModuleRegistry,
 } from 'react-native';
+
+const getGeolocation = () => {
+  try {
+    const hasNative =
+      (typeof TurboModuleRegistry?.get === 'function' && TurboModuleRegistry.get('RNCGeolocation')) ||
+      NativeModules?.RNCGeolocation;
+    if (!hasNative) return null;
+    const mod = require('@react-native-community/geolocation');
+    return mod?.default || mod;
+  } catch {
+    return null;
+  }
+};
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../theme/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { pickImageFromDevice } from '../utils/filePickerUtils';
+import { BANKS, getBankByName } from '../utils/bankData';
+import {
+  stripEmojis,
+  containsEmoji,
+  validateEmail,
+  validatePhone,
+  validateUpiId,
+  validatePersonName,
+  validatePassword,
+  validatePostalCode,
+  validateAccountNumber,
+  validateConfirmAccountNumber,
+  MEDIA_FIELDS,
+} from '../utils/validationUtils';
 
 // GPS Regex helper for extracting coordinates from various Google Maps URL formats
 const AT_COORDS_REGEX = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/;
@@ -91,12 +123,37 @@ const reverseGeocodeCoordinates = async (lat, lng) => {
 };
 
 const STEPS = [
-  { id: 1, title: 'Basic Info', key: 'basic' },
-  { id: 2, title: 'Location & Geolocation', key: 'location' },
+  { id: 1, title: 'Business Info', key: 'business' },
+  { id: 2, title: 'Location & Operating Hours', key: 'location' },
   { id: 3, title: 'Facilities & Photos', key: 'facilities' },
-  { id: 4, title: 'Pricing & Plans', key: 'pricing' },
-  { id: 5, title: 'Bank & Submit', key: 'bank' },
+  { id: 4, title: 'Workouts, Pricing & Rules', key: 'workouts' },
+  { id: 5, title: 'Bank Account & Review', key: 'bank' },
 ];
+
+const STEP_HEADERS = {
+  1: {
+    title: '1. Business & Legal Information',
+    desc: 'Provide basic business information, legal registration, and create administrator credentials.',
+  },
+  2: {
+    title: '2. Location, Geolocation & Operating Hours',
+    desc: 'Pinpoint your exact facility address with live geolocation and configure operating shift timings.',
+  },
+  3: {
+    title: '3. Facilities, Amenities & Floor Space',
+    desc: 'Define floor area, capacity, highlight badge, brand logo, and facility equipment.',
+  },
+  4: {
+    title: '4. Workouts, Pricing, Rules & Safety',
+    desc: 'Configure fitness disciplines, membership tiers, facility guidelines, and safety protocols.',
+  },
+  5: {
+    title: '5. Bank Account & Final Review',
+    desc: 'Provide settlement bank account details, review registration overview, and submit for Super Admin approval.',
+  },
+};
+
+const BADGE_OPTIONS = ['Trending', 'Top Rated', 'Verified SuperGym', 'Popular', 'Premium Club', '24/7 Access', 'CrossFit Ready'];
 
 const FACILITY_OPTIONS = [
   'AC Gym',
@@ -157,11 +214,47 @@ const DEFAULT_SAFETY = [
 ];
 
 const STEP_FIELDS = {
-  1: ['subscriptionType', 'gymName', 'ownerName', 'phone', 'email', 'password', 'confirmPassword', 'gstNumber', 'panNumber'],
-  2: ['address', 'area', 'city', 'state', 'pincode'],
-  3: ['floorSpaceSqFt', 'maxFloorCapacity', 'logo', 'facilities'],
+  1: ['subscriptionType', 'gymName', 'tagline', 'ownerName', 'phone', 'email', 'password', 'confirmPassword', 'gstNumber', 'panNumber'],
+  2: ['address', 'area', 'city', 'state', 'pincode', 'landmark'],
+  3: ['floorSpaceSqFt', 'maxFloorCapacity', 'logo', 'facilities', 'aboutText'],
   4: ['workouts', 'monthlyPrice'],
-  5: ['accountHolder', 'bankName', 'accountNumber', 'confirmAccountNumber', 'ifscCode', 'agreedToTerms'],
+  5: ['accountHolder', 'bankName', 'accountNumber', 'confirmAccountNumber', 'ifscCode', 'upiId', 'agreedToTerms'],
+};
+
+const STEP_REQUIRED_FIELDS = {
+  1: [
+    { field: 'subscriptionType', label: 'Subscription Plan' },
+    { field: 'gymName', label: 'Gym / Studio Name' },
+    { field: 'ownerName', label: 'Owner / MD Name' },
+    { field: 'phone', label: 'Mobile Number' },
+    { field: 'email', label: 'Official Email' },
+    { field: 'password', label: 'Password' },
+  ],
+  2: [
+    { field: 'address', label: 'Street Address' },
+    { field: 'area', label: 'Area / Locality' },
+    { field: 'city', label: 'City' },
+    { field: 'state', label: 'State' },
+    { field: 'pincode', label: 'Pincode' },
+  ],
+  3: [
+    { field: 'floorSpaceSqFt', label: 'Floor Space' },
+    { field: 'maxFloorCapacity', label: 'Max Capacity' },
+    { field: 'logo', label: 'Gym Logo' },
+    { field: 'facilities', label: 'Facilities (Min 1)' },
+  ],
+  4: [
+    { field: 'workouts', label: 'Workouts (Min 1)' },
+    { field: 'monthlyPrice', label: 'Monthly Pass Price' },
+  ],
+  5: [
+    { field: 'accountHolder', label: 'Account Holder Name' },
+    { field: 'bankName', label: 'Bank Name' },
+    { field: 'accountNumber', label: 'Account Number' },
+    { field: 'confirmAccountNumber', label: 'Confirm Account Number' },
+    { field: 'ifscCode', label: 'IFSC Code' },
+    { field: 'agreedToTerms', label: 'Terms & Conditions' },
+  ],
 };
 
 const validateField = (field, value, form) => {
@@ -171,29 +264,23 @@ const validateField = (field, value, form) => {
       return '';
     case 'gymName':
       if (!value || !value.trim()) return 'Gym / Studio name is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in Gym / Studio name';
       if (value.trim().length < 2) return 'Must be at least 2 characters';
+      return '';
+    case 'tagline':
+      if (value && containsEmoji(value)) return 'Emojis are not allowed in Tagline';
       return '';
     case 'ownerName':
-      if (!value || !value.trim()) return 'Owner / MD name is required';
-      if (value.trim().length < 2) return 'Must be at least 2 characters';
-      return '';
+      return validatePersonName(value, 'Owner / MD name', 2, 100);
     case 'phone':
-      if (!value || !value.trim()) return 'Mobile number is required';
-      if (!/^\d{10}$/.test(value.trim())) return 'Must be a valid 10-digit mobile number';
-      return '';
+      return validatePhone(value);
     case 'email':
-      if (!value || !value.trim()) return 'Email address is required';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return 'Enter a valid email (e.g. owner@gym.com)';
-      return '';
-    case 'password': {
-      if (!value) return 'Password is required';
-      if (value.length < 8 || value.length > 16) return 'Must be 8 to 16 characters';
-      if (!/[A-Z]/.test(value)) return 'Must contain at least 1 uppercase letter';
-      if (!/\d/.test(value)) return 'Must contain at least 1 number';
-      if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(value)) return 'Must contain 1 special character';
-      return '';
-    }
+      return validateEmail(value);
+    case 'password':
+      if (form?.isGoogleSso) return '';
+      return validatePassword(value, { name: form?.ownerName, email: form?.email, phone: form?.phone });
     case 'confirmPassword':
+      if (form?.isGoogleSso) return '';
       if (!value) return 'Please confirm your password';
       if (value !== form.password) return 'Passwords do not match';
       return '';
@@ -209,29 +296,41 @@ const validateField = (field, value, form) => {
       return '';
     case 'address':
       if (!value || !value.trim()) return 'Street address is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in address';
       if (value.trim().length < 5) return 'Enter full street address (min 5 characters)';
       return '';
     case 'area':
       if (!value || !value.trim()) return 'Area / Locality is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in Area / Locality';
       return '';
     case 'city':
       if (!value || !value.trim()) return 'City is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in City';
       return '';
     case 'state':
       if (!value || !value.trim()) return 'State is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in State';
+      return '';
+    case 'landmark':
+      if (value && containsEmoji(value)) return 'Emojis are not allowed in Landmark';
+      return '';
+    case 'aboutText':
+      if (value && containsEmoji(value)) return 'Emojis are not allowed in description';
       return '';
     case 'pincode':
-      if (!value || !value.trim()) return 'Pincode is required';
-      if (!/^\d{6}$/.test(value.trim())) return 'Pincode must be exactly 6 digits';
+      return validatePostalCode(value);
+    case 'floorSpaceSqFt': {
+      const num = Number(value);
+      if (!value || isNaN(num) || num < 200) return 'Floor area must be at least 200 sq. ft.';
+      if (num > 100000) return 'Floor area cannot exceed 100,000 sq. ft.';
       return '';
-    case 'floorSpaceSqFt':
-      if (!value || Number(value) < 200) return 'Floor area must be at least 200 sq. ft.';
-      if (Number(value) > 100000) return 'Floor area cannot exceed 100,000 sq. ft.';
+    }
+    case 'maxFloorCapacity': {
+      const num = Number(value);
+      if (!value || isNaN(num) || num < 5) return 'Max capacity must be at least 5 athletes';
+      if (num > 2000) return 'Max capacity cannot exceed 2,000 athletes';
       return '';
-    case 'maxFloorCapacity':
-      if (!value || Number(value) < 5) return 'Max capacity must be at least 5 athletes';
-      if (Number(value) > 2000) return 'Max capacity cannot exceed 2,000 athletes';
-      return '';
+    }
     case 'logo':
       if (!value) return 'Gym brand logo is required';
       return '';
@@ -241,27 +340,29 @@ const validateField = (field, value, form) => {
     case 'workouts':
       if (!value || value.length === 0) return 'Select at least 1 workout discipline';
       return '';
-    case 'monthlyPrice':
-      if (!value || Number(value) < 1) return 'Monthly membership price is required';
+    case 'monthlyPrice': {
+      const num = Number(value);
+      if (!value || isNaN(num) || num < 1) return 'Monthly membership price is required';
       return '';
+    }
     case 'accountHolder':
       if (!value || !value.trim()) return 'Account holder name is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in Account holder name';
+      if (value.trim().length < 2) return 'Must be at least 2 characters';
       return '';
     case 'bankName':
       if (!value || !value.trim()) return 'Bank name is required';
       return '';
     case 'accountNumber':
-      if (!value || !value.trim()) return 'Account number is required';
-      if (value.trim().length < 8) return 'Account number must be at least 8 digits';
-      return '';
+      return validateAccountNumber(value);
     case 'confirmAccountNumber':
-      if (!value || !value.trim()) return 'Please confirm account number';
-      if (value.trim() !== form.accountNumber?.trim()) return 'Account numbers do not match';
-      return '';
+      return validateConfirmAccountNumber(value, form?.accountNumber);
     case 'ifscCode':
       if (!value || !value.trim()) return 'IFSC code is required';
       if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(value.trim())) return 'Invalid IFSC (e.g. HDFC0001234)';
       return '';
+    case 'upiId':
+      return validateUpiId(value);
     case 'agreedToTerms':
       if (!value) return 'You must accept the terms to proceed';
       return '';
@@ -271,6 +372,8 @@ const validateField = (field, value, form) => {
 };
 
 const INITIAL_FORM_DATA = {
+  // Step 1: Business Info
+  subscriptionType: 'Hybrid',
   gymName: '',
   tagline: '',
   ownerName: '',
@@ -314,6 +417,7 @@ const INITIAL_FORM_DATA = {
   floorSpaceSqFt: 3500,
   maxFloorCapacity: 45,
   genderAllowed: 'Unisex',
+  badgeText: 'Trending',
   logo: '',
   coverPhoto: '',
   galleryPhotos: [],
@@ -326,7 +430,6 @@ const INITIAL_FORM_DATA = {
   rules: [...DEFAULT_RULES],
   safetyMeasures: [...DEFAULT_SAFETY],
   singleSessionPrice: 199,
-  weeklyPassPrice: 799,
   fiveSessionPrice: 899,
   monthlyPrice: 1999,
   quarterlyPrice: 4999,
@@ -337,7 +440,6 @@ const INITIAL_FORM_DATA = {
   rescheduleAllowedCount: 2,
 
   // Step 5: Bank & Submission
-  subscriptionType: 'Hybrid',
   commissionRate: 10,
   settlementCycle: 'Daily (T+1)',
   accountHolder: '',
@@ -350,16 +452,18 @@ const INITIAL_FORM_DATA = {
   agreedToTerms: false,
 };
 
-export const RegisterScreen = ({ navigation }) => {
+export const RegisterScreen = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
   const { isDark, toggleTheme } = useTheme();
+  const { login } = useAuth();
   const { showToast } = useToast();
   const scrollViewRef = useRef(null);
 
+  const googleProfile = route?.params?.googleProfile || null;
+  const isGoogleSso = Boolean(googleProfile);
+
   const [currentStep, setCurrentStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [registeredGymData, setRegisteredGymData] = useState(null);
 
   // GPS Auto-detect loading & pinned state
   const [isFetchingGps, setIsFetchingGps] = useState(false);
@@ -369,7 +473,29 @@ export const RegisterScreen = ({ navigation }) => {
   const [touched, setTouched] = useState({});
 
   // Form State matching web gym exactly
-  const [formData, setFormData] = useState(() => ({ ...INITIAL_FORM_DATA }));
+  const [formData, setFormData] = useState(() => ({
+    ...INITIAL_FORM_DATA,
+    ...(googleProfile
+      ? {
+          email: googleProfile.email || '',
+          ownerName: googleProfile.fullName || '',
+          isGoogleSso: true,
+          googleId: googleProfile.googleUid,
+        }
+      : {}),
+  }));
+
+  useEffect(() => {
+    if (googleProfile) {
+      setFormData((prev) => ({
+        ...prev,
+        email: googleProfile.email || prev.email,
+        ownerName: googleProfile.fullName || prev.ownerName,
+        isGoogleSso: true,
+        googleId: googleProfile.googleUid,
+      }));
+    }
+  }, [googleProfile]);
 
   const resetForm = () => {
     setFormData({ ...INITIAL_FORM_DATA });
@@ -517,12 +643,17 @@ export const RegisterScreen = ({ navigation }) => {
   }, [formData, emailCheckError, phoneCheckError]);
 
   const updateField = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    const sanitized = typeof value === 'string' && !MEDIA_FIELDS.has(field) ? stripEmojis(value) : value;
+    setFormData((prev) => ({ ...prev, [field]: sanitized }));
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
 
   const updateFields = (fieldsObj) => {
-    setFormData((prev) => ({ ...prev, ...fieldsObj }));
+    const sanitizedObj = {};
+    for (const [k, v] of Object.entries(fieldsObj)) {
+      sanitizedObj[k] = typeof v === 'string' && !MEDIA_FIELDS.has(k) ? stripEmojis(v) : v;
+    }
+    setFormData((prev) => ({ ...prev, ...sanitizedObj }));
   };
 
   const markFieldTouched = (field) => {
@@ -539,7 +670,7 @@ export const RegisterScreen = ({ navigation }) => {
   };
 
   const handleAddRule = () => {
-    const trimmed = newRuleInput.trim();
+    const trimmed = stripEmojis(newRuleInput).trim();
     if (!trimmed) return;
     setFormData((prev) => ({
       ...prev,
@@ -556,7 +687,7 @@ export const RegisterScreen = ({ navigation }) => {
   };
 
   const handleAddSafety = () => {
-    const trimmed = newSafetyInput.trim();
+    const trimmed = stripEmojis(newSafetyInput).trim();
     if (!trimmed) return;
     setFormData((prev) => ({
       ...prev,
@@ -588,66 +719,103 @@ export const RegisterScreen = ({ navigation }) => {
     }
   };
 
-  // GPS Auto-detect and reverse geocode handler
+  // GPS Auto-detect and reverse geocode handler using native device Geolocation
   const handleGetAddressByGps = async () => {
     setIsFetchingGps(true);
     try {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            const { latitude, longitude } = pos.coords;
-            const geoRes = await reverseGeocodeCoordinates(latitude, longitude);
-
-            setFormData((prev) => ({
-              ...prev,
-              lat: latitude,
-              lng: longitude,
-              googleMapsUrl: `https://maps.google.com/?q=${latitude},${longitude}`,
-              address: geoRes?.address || prev.address,
-              area: geoRes?.area || prev.area,
-              city: geoRes?.city || prev.city,
-              state: geoRes?.state || prev.state,
-              pincode: geoRes?.pincode || prev.pincode,
-            }));
-            setIsGpsPinned(true);
-            setIsFetchingGps(false);
-            showToast({ message: 'GPS location auto-detected successfully!', isSuccess: true });
-          },
-          (err) => {
-            setIsFetchingGps(false);
-            showToast({
-              message: 'Could not access GPS. Please enter coordinates or paste Google Maps URL.',
-              isError: true,
-            });
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'Location Permission',
+            message: 'GYMEZY needs access to your location to auto-detect your gym address and coordinates.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
         );
-      } else {
-        // Fallback simulate geocode for current default coordinates
-        const geoRes = await reverseGeocodeCoordinates(formData.lat || 13.0827, formData.lng || 80.2707);
-        if (geoRes) {
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          setIsFetchingGps(false);
+          showToast({
+            message: 'Location permission denied. Please enable it in settings or paste a Google Maps link.',
+            isError: true,
+          });
+          return;
+        }
+      }
+
+      const Geolocation = getGeolocation();
+      if (!Geolocation) {
+        setIsFetchingGps(false);
+        showToast({
+          message: 'Native GPS module is not linked in this build. Rebuild the app (npm run android) or paste a Google Maps URL.',
+          isError: true,
+        });
+        return;
+      }
+
+      Geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude } = pos.coords;
+          const geoRes = await reverseGeocodeCoordinates(latitude, longitude);
+
           setFormData((prev) => ({
             ...prev,
-            address: geoRes.address || prev.address,
-            area: geoRes.area || prev.area,
-            city: geoRes.city || prev.city,
-            state: geoRes.state || prev.state,
-            pincode: geoRes.pincode || prev.pincode,
+            lat: latitude,
+            lng: longitude,
+            googleMapsUrl: `https://maps.google.com/?q=${latitude},${longitude}`,
+            address: stripEmojis(geoRes?.address || prev.address),
+            area: stripEmojis(geoRes?.area || prev.area),
+            city: stripEmojis(geoRes?.city || prev.city),
+            state: stripEmojis(geoRes?.state || prev.state),
+            pincode: geoRes?.pincode || prev.pincode,
           }));
-        }
-        setIsGpsPinned(true);
-        setIsFetchingGps(false);
-        showToast({ message: 'Location synced from current coordinates.', isSuccess: true });
-      }
+          setTouched((prev) => ({
+            ...prev,
+            address: true,
+            area: true,
+            city: true,
+            state: true,
+            pincode: true,
+          }));
+          setIsGpsPinned(true);
+          setIsFetchingGps(false);
+          showToast({ message: `GPS location detected (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`, isSuccess: true });
+        },
+        (err) => {
+          setIsFetchingGps(false);
+          showToast({
+            message: err?.message || 'Could not access GPS. Please enable device location or paste Google Maps URL.',
+            isError: true,
+          });
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
     } catch (e) {
       setIsFetchingGps(false);
       showToast({ message: 'Failed to detect GPS location.', isError: true });
     }
   };
 
-  // Image upload handlers
+  // Image upload handlers (1MB max limit)
+  const MAX_UPLOAD_BYTES = 1024 * 1024;
+
+  const isAllowedImagePick = (picked) => {
+    if (!picked) return false;
+    if (picked.fileType && !String(picked.fileType).toLowerCase().startsWith('image/')) {
+      showToast({ message: 'Only image files (JPG, PNG, WEBP) are allowed.', isError: true });
+      return false;
+    }
+    return true;
+  };
+
   const handlePickLogo = async () => {
     const picked = await pickImageFromDevice({ maxWidth: 800, maxHeight: 800 });
+    if (!isAllowedImagePick(picked)) return;
+    if (picked?.fileSize && picked.fileSize > MAX_UPLOAD_BYTES) {
+      showToast({ message: 'Logo file size must be less than 1MB.', isError: true });
+      return;
+    }
     if (picked?.fileData) {
       updateField('logo', picked.fileData);
       showToast({ message: 'Brand logo uploaded.', isSuccess: true });
@@ -656,6 +824,11 @@ export const RegisterScreen = ({ navigation }) => {
 
   const handlePickCover = async () => {
     const picked = await pickImageFromDevice({ maxWidth: 1200, maxHeight: 800 });
+    if (!isAllowedImagePick(picked)) return;
+    if (picked?.fileSize && picked.fileSize > MAX_UPLOAD_BYTES) {
+      showToast({ message: 'Cover photo file size must be less than 1MB.', isError: true });
+      return;
+    }
     if (picked?.fileData) {
       updateField('coverPhoto', picked.fileData);
       showToast({ message: 'Cover photo uploaded.', isSuccess: true });
@@ -664,6 +837,11 @@ export const RegisterScreen = ({ navigation }) => {
 
   const handlePickFacilityPhoto = async () => {
     const picked = await pickImageFromDevice({ maxWidth: 1000, maxHeight: 1000 });
+    if (!isAllowedImagePick(picked)) return;
+    if (picked?.fileSize && picked.fileSize > MAX_UPLOAD_BYTES) {
+      showToast({ message: 'Facility photo file size must be less than 1MB.', isError: true });
+      return;
+    }
     if (picked?.fileData) {
       setFormData((prev) => ({
         ...prev,
@@ -682,6 +860,10 @@ export const RegisterScreen = ({ navigation }) => {
 
   const handlePickBusinessDoc = async () => {
     const picked = await pickImageFromDevice({ maxWidth: 1200, maxHeight: 1200 });
+    if (picked?.fileSize && picked.fileSize > MAX_UPLOAD_BYTES) {
+      showToast({ message: 'Document size must be less than 1MB.', isError: true });
+      return;
+    }
     if (picked?.fileData) {
       const sizeStr = picked.fileSize
         ? picked.fileSize > 1024 * 1024
@@ -698,6 +880,17 @@ export const RegisterScreen = ({ navigation }) => {
     }
   };
 
+  // Expandable progress drawer & Bank search modal states
+  const [showProgressDetails, setShowProgressDetails] = useState(false);
+  const [bankModalVisible, setBankModalVisible] = useState(false);
+  const [bankSearchQuery, setBankSearchQuery] = useState('');
+
+  const filteredBanks = useMemo(() => {
+    if (!bankSearchQuery.trim()) return BANKS;
+    const q = bankSearchQuery.toLowerCase();
+    return BANKS.filter((b) => b.name.toLowerCase().includes(q) || b.ifscPrefix.toLowerCase().includes(q));
+  }, [bankSearchQuery]);
+
   // Live password checks
   const passwordChecks = {
     length: formData.password.length >= 8 && formData.password.length <= 16,
@@ -707,9 +900,77 @@ export const RegisterScreen = ({ navigation }) => {
     match: formData.password === formData.confirmPassword && formData.confirmPassword.length > 0,
   };
 
+  const getStepValidationStatus = (stepId) => {
+    const required = STEP_REQUIRED_FIELDS[stepId] || [];
+    const missing = required.filter(({ field }) => {
+      if (isGoogleSso && (field === 'password' || field === 'confirmPassword')) return false;
+      const val = formData[field];
+      if (Array.isArray(val)) return !val || val.length === 0;
+      if (field === 'floorSpaceSqFt') {
+        const num = Number(val);
+        return !val || isNaN(num) || num < 200 || num > 100000;
+      }
+      if (field === 'maxFloorCapacity') {
+        const num = Number(val);
+        return !val || isNaN(num) || num < 5 || num > 2000;
+      }
+      if (field === 'monthlyPrice') {
+        const num = Number(val);
+        return !val || isNaN(num) || num < 1;
+      }
+      if (field === 'phone') {
+        return validatePhone(val) !== '' || phoneCheckStatus === 'exists';
+      }
+      if (field === 'email') {
+        return validateEmail(val) !== '' || emailCheckStatus === 'exists';
+      }
+      if (field === 'password') {
+        return !val || containsEmoji(val) || val.length < 8 || val.length > 16 || !/[A-Z]/.test(val) || !/\d/.test(val) || !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(val);
+      }
+      if (field === 'confirmPassword') {
+        return !val || val !== formData.password;
+      }
+      if (field === 'pincode') {
+        return !val || !/^[1-9][0-9]{5}$/.test(String(val).trim());
+      }
+      if (field === 'agreedToTerms') {
+        return !val;
+      }
+      if (field === 'ifscCode') {
+        return !val || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(String(val).trim());
+      }
+      if (field === 'accountNumber') {
+        return validateAccountNumber(val) !== '';
+      }
+      if (field === 'confirmAccountNumber') {
+        return validateConfirmAccountNumber(val, formData.accountNumber) !== '';
+      }
+      return !val || String(val).trim() === '';
+    });
+    return {
+      isValid: missing.length === 0,
+      missingCount: missing.length,
+      missingFields: missing,
+    };
+  };
+
+  const validationSummary = useMemo(() => {
+    const statusMap = {};
+    let totalMissing = 0;
+    for (let i = 1; i <= 5; i++) {
+      const st = getStepValidationStatus(i);
+      statusMap[i] = st;
+      totalMissing += st.missingCount;
+    }
+    return {
+      statusMap,
+      totalMissing,
+      isAllValid: totalMissing === 0,
+    };
+  }, [formData, isGoogleSso, phoneCheckStatus, emailCheckStatus]);
+
   const isStepValid = (step) => {
-    const fields = STEP_FIELDS[step] || [];
-    return fields.every((f) => !errors[f]);
+    return getStepValidationStatus(step).isValid;
   };
 
   const handleNext = async () => {
@@ -783,6 +1044,20 @@ export const RegisterScreen = ({ navigation }) => {
       return;
     }
 
+    if (!validationSummary.isAllValid) {
+      for (let s = 1; s <= 5; s++) {
+        if (!validationSummary.statusMap[s]?.isValid) {
+          setCurrentStep(s);
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+          showToast({
+            message: `Please complete required fields in Step ${s}: ${STEPS[s - 1].title}`,
+            isError: true,
+          });
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -840,6 +1115,7 @@ export const RegisterScreen = ({ navigation }) => {
         floorSpaceSqFt: Number(formData.floorSpaceSqFt),
         maxFloorCapacity: Number(formData.maxFloorCapacity),
         genderAllowed: formData.genderAllowed,
+        badgeText: formData.badgeText || 'Trending',
         logo: formData.logo,
         coverPhoto: formData.coverPhoto || formData.logo,
         galleryPhotos: formData.galleryPhotos || [],
@@ -852,7 +1128,6 @@ export const RegisterScreen = ({ navigation }) => {
         aboutText: formData.aboutText,
 
         singleSessionPrice: Number(formData.singleSessionPrice),
-        weeklyPassPrice: Number(formData.weeklyPassPrice),
         fiveSessionPrice: Number(formData.fiveSessionPrice),
         monthlyPrice: Number(formData.monthlyPrice),
         quarterlyPrice: Number(formData.quarterlyPrice),
@@ -880,14 +1155,21 @@ export const RegisterScreen = ({ navigation }) => {
       const res = await apiService.registerGym(payload);
 
       if (res?.success) {
-        setRegisteredGymData({
-          ...res.data,
-          ownerName: formData.ownerName,
-          email: formData.email,
-        });
-        setIsSuccess(true);
+        if (!isGoogleSso && formData.email && formData.password) {
+          const loginRes = await login({
+            identifier: formData.email.trim().toLowerCase(),
+            password: formData.password,
+          });
+          if (loginRes?.success) {
+            resetForm();
+            showToast({ message: 'Application submitted! Redirecting to application status.', isSuccess: true });
+            navigation.replace('ApplicationStatus');
+            return;
+          }
+        }
         resetForm();
-        showToast({ message: 'Registration submitted successfully!', isSuccess: true });
+        showToast({ message: 'Registration submitted! Please sign in to track your status.', isSuccess: true });
+        navigation.replace('Login');
       } else {
         showToast({ message: res?.message || 'Registration failed. Please review your details.', isError: true });
       }
@@ -921,68 +1203,6 @@ export const RegisterScreen = ({ navigation }) => {
     }
     return null;
   };
-
-  // SUCCESS SCREEN
-  if (isSuccess) {
-    return (
-      <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top + 20 }]}>
-        <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <ScrollView contentContainerStyle={[styles.successScrollContent, { paddingBottom: insets.bottom > 0 ? insets.bottom + 24 : 32 }]}>
-          <View style={[styles.successCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-            <View style={styles.successIconBadge}>
-              <Icon name="check" size={36} color="#FFFFFF" />
-            </View>
-
-            <Text style={[styles.successTitle, { color: textColor }]}>Registration Submitted!</Text>
-            <Text style={[styles.successSubtitle, { color: subtitleColor }]}>
-              Your gym partner application has been submitted and is currently queued for Super Admin verification.
-            </Text>
-
-            <View style={[styles.detailsBox, { backgroundColor: isDark ? '#18181B' : '#F8FAFC', borderColor: cardBorder }]}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Reference ID</Text>
-                <Text style={[styles.detailValue, { color: primaryNavy, fontWeight: '800' }]}>
-                  {registeredGymData?.partnerId || registeredGymData?.gymId || 'GYM-REG'}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Publication Status</Text>
-                <View style={styles.pendingBadge}>
-                  <Text style={styles.pendingBadgeText}>Pending Approval</Text>
-                </View>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Owner Name</Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>
-                  {registeredGymData?.ownerName || '-'}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Login Email</Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>
-                  {registeredGymData?.email || '-'}
-                </Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.primaryActionBtn, { backgroundColor: primaryNavy }]}
-              onPress={() => {
-                resetForm();
-                navigation.replace('Login');
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.primaryActionBtnText}>Back to Sign In</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </View>
-    );
-  }
 
   return (
     <KeyboardAvoidingView
@@ -1043,60 +1263,173 @@ export const RegisterScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* STEP PROGRESS HEADER (EXACTLY AS IN WEB / SCREENSHOT) */}
-        <View style={styles.progressContainer}>
-          <View style={styles.progressTopRow}>
-            <Text style={styles.stepIndicatorText}>
-              STEP {currentStep} OF {STEPS.length} • {STEPS[currentStep - 1].title.toUpperCase()}
-            </Text>
-            <Text
-              style={[
-                styles.completionText,
-                { color: isStepValid(currentStep) ? '#16A34A' : '#64748B' },
-              ]}
-            >
-              {isStepValid(currentStep) ? '✓ Ready to proceed' : `${Math.round((currentStep / STEPS.length) * 100)}% Completed`}
-            </Text>
-          </View>
+        {/* ONBOARDING PROGRESS CARD & STEP TRACK */}
+        <View style={[styles.progressCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+          <TouchableOpacity
+            style={styles.progressCardHeader}
+            onPress={() => setShowProgressDetails((prev) => !prev)}
+            activeOpacity={0.8}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.progressCardSub, { color: primaryNavy }]}>ONBOARDING PROGRESS</Text>
+              <Text style={[styles.progressCardTitle, { color: textColor }]}>
+                Step {currentStep} of {STEPS.length} &bull; {STEPS[currentStep - 1].title}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View
+                style={[
+                  styles.statusBadgePill,
+                  {
+                    backgroundColor: isStepValid(currentStep)
+                      ? isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7'
+                      : isDark ? '#27272A' : '#F1F5F9',
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color: isStepValid(currentStep) ? '#16A34A' : subtitleColor,
+                  }}
+                >
+                  {isStepValid(currentStep)
+                    ? '✓ Ready'
+                    : `${validationSummary.statusMap[currentStep]?.missingCount || 0} pending`}
+                </Text>
+              </View>
+              <Icon
+                name={showProgressDetails ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                size={22}
+                color={subtitleColor}
+              />
+            </View>
+          </TouchableOpacity>
 
           {/* 5-segment track */}
           <View style={styles.segmentTrack}>
-            {STEPS.map((s) => (
-              <View
-                key={s.id}
-                style={[
-                  styles.segmentBar,
-                  {
-                    backgroundColor:
-                      s.id < currentStep
+            {STEPS.map((s) => {
+              const isPast = s.id < currentStep;
+              const isCurrent = s.id === currentStep;
+              return (
+                <View
+                  key={s.id}
+                  style={[
+                    styles.segmentBar,
+                    {
+                      backgroundColor: isPast
                         ? '#10B981'
-                        : s.id === currentStep
+                        : isCurrent
                         ? primaryNavy
                         : isDark
                         ? '#27272A'
                         : '#E2E8F0',
-                  },
-                ]}
-              />
-            ))}
+                    },
+                  ]}
+                />
+              );
+            })}
           </View>
+
+          {/* Expandable Step Breakdown List */}
+          {showProgressDetails && (
+            <View style={[styles.progressBreakdownList, { borderTopColor: cardBorder }]}>
+              {STEPS.map((s) => {
+                const stepStatus = validationSummary.statusMap[s.id];
+                const isCurrent = s.id === currentStep;
+                return (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={[
+                      styles.progressStepRow,
+                      isCurrent && {
+                        backgroundColor: isDark ? 'rgba(0, 56, 130, 0.2)' : '#EFF6FF',
+                        borderRadius: 8,
+                      },
+                    ]}
+                    onPress={() => {
+                      setCurrentStep(s.id);
+                      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                      <View
+                        style={[
+                          styles.stepNumberCircle,
+                          {
+                            backgroundColor: stepStatus?.isValid
+                              ? '#10B981'
+                              : isCurrent
+                              ? primaryNavy
+                              : isDark
+                              ? '#27272A'
+                              : '#E2E8F0',
+                          },
+                        ]}
+                      >
+                        {stepStatus?.isValid ? (
+                          <Icon name="check" size={12} color="#FFFFFF" />
+                        ) : (
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              fontWeight: '800',
+                              color: isCurrent ? '#FFFFFF' : subtitleColor,
+                            }}
+                          >
+                            {s.id}
+                          </Text>
+                        )}
+                      </View>
+                      <Text
+                        style={[
+                          styles.stepRowTitle,
+                          {
+                            color: isCurrent ? primaryNavy : textColor,
+                            fontWeight: isCurrent ? '800' : '600',
+                          },
+                        ]}
+                      >
+                        {s.title}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusBadgePill,
+                        {
+                          backgroundColor: stepStatus?.isValid
+                            ? isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7'
+                            : isDark ? '#18181B' : '#F1F5F9',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: stepStatus?.isValid ? '#16A34A' : '#64748B',
+                        }}
+                      >
+                        {stepStatus?.isValid ? 'Ready' : `${stepStatus?.missingCount || 0} pending`}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* STEP TITLE & SUBTITLE */}
         <View style={styles.stepHeader}>
           <Text style={[styles.stepTitle, { color: textColor }]}>
-            {currentStep === 1 && "Let's start with your gym details"}
-            {currentStep === 2 && 'Location, Geolocation & Operating Hours'}
-            {currentStep === 3 && 'Facilities, Amenities & Photos'}
-            {currentStep === 4 && 'Workout Disciplines & Membership Pricing'}
-            {currentStep === 5 && 'Bank Account & Review'}
+            {STEP_HEADERS[currentStep]?.title || ''}
           </Text>
           <Text style={[styles.stepSubtitle, { color: subtitleColor }]}>
-            {currentStep === 1 && 'Provide basic business information and create your administrator login credentials.'}
-            {currentStep === 2 && 'Pinpoint your exact facility address with live geolocation and define regular operating hours.'}
-            {currentStep === 3 && 'Upload brand logo, cover photo, and high quality facility & equipment photos.'}
-            {currentStep === 4 && 'Set your walk-in single session pass price and optional recurring membership tiers.'}
-            {currentStep === 5 && 'Provide your settlement bank account. Your application will be submitted for Super Admin review.'}
+            {STEP_HEADERS[currentStep]?.desc || ''}
           </Text>
         </View>
 
@@ -1105,6 +1438,31 @@ export const RegisterScreen = ({ navigation }) => {
           {/* ================= STEP 1: BASIC INFO ================= */}
           {currentStep === 1 && (
             <View>
+              {Boolean(formData.isGoogleSso) && (
+                <View
+                  style={{
+                    backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF',
+                    borderColor: '#3B82F6',
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 16,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Icon name="check-circle" size={20} color="#3B82F6" style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', fontSize: 13, color: isDark ? '#93C5FD' : '#1D4ED8' }}>
+                      Google Account Connected
+                    </Text>
+                    <Text style={{ fontSize: 12, color: isDark ? '#BFDBFE' : '#2563EB', marginTop: 2 }}>
+                      Registered with {formData.email}. Password is not required for Google Sign-In.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               {/* Partnership Plan Selector */}
               <View style={styles.fieldGroup}>
                 <View style={styles.fieldHeaderRow}>
@@ -1188,7 +1546,9 @@ export const RegisterScreen = ({ navigation }) => {
                   style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
                   value={formData.tagline}
                   onChangeText={(val) => updateField('tagline', val)}
+                  onBlur={() => markFieldTouched('tagline')}
                 />
+                {renderFieldError('tagline')}
               </View>
 
               {/* Owner Name */}
@@ -1268,78 +1628,82 @@ export const RegisterScreen = ({ navigation }) => {
                 {renderFieldError('email')}
               </View>
 
-              {/* Password */}
-              <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>
-                  Create Password <Text style={styles.requiredStar}>*</Text>
-                </Text>
-                <View style={[styles.passwordWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
-                  <TextInput
-                    style={[styles.passwordInput, { color: textColor }]}
-                    secureTextEntry={!showPassword}
-                    value={formData.password}
-                    onChangeText={(val) => updateField('password', val)}
-                    onBlur={() => markFieldTouched('password')}
-                  />
-                  <TouchableOpacity
-                    style={styles.eyeBtn}
-                    onPress={() => setShowPassword(!showPassword)}
-                  >
-                    <Icon name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#94A3B8" />
-                  </TouchableOpacity>
-                </View>
-                {renderFieldError('password')}
-              </View>
-
-              {/* Confirm Password */}
-              <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>
-                  Confirm Password <Text style={styles.requiredStar}>*</Text>
-                </Text>
-                <View style={[styles.passwordWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
-                  <TextInput
-                    style={[styles.passwordInput, { color: textColor }]}
-                    secureTextEntry={!showConfirmPassword}
-                    value={formData.confirmPassword}
-                    onChangeText={(val) => updateField('confirmPassword', val)}
-                    onBlur={() => markFieldTouched('confirmPassword')}
-                  />
-                  <TouchableOpacity
-                    style={styles.eyeBtn}
-                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                  >
-                    <Icon name={showConfirmPassword ? 'visibility-off' : 'visibility'} size={20} color="#94A3B8" />
-                  </TouchableOpacity>
-                </View>
-                {renderFieldError('confirmPassword')}
-              </View>
-
-              {/* Live Password Requirements Checklist */}
-              <View style={[styles.checksBox, { backgroundColor: isDark ? '#18181B' : '#F8FAFC', borderColor: cardBorder }]}>
-                {[
-                  { label: '8-16 Chars', valid: passwordChecks.length },
-                  { label: '1 Uppercase', valid: passwordChecks.hasUpper },
-                  { label: '1 Number', valid: passwordChecks.hasNumber },
-                  { label: '1 Special Symbol', valid: passwordChecks.hasSpecial },
-                  { label: 'Passwords Match', valid: passwordChecks.match },
-                ].map((item, idx) => (
-                  <View key={idx} style={styles.checkItem}>
-                    <Icon
-                      name={item.valid ? 'check-circle' : 'radio-button-unchecked'}
-                      size={14}
-                      color={item.valid ? '#16A34A' : '#94A3B8'}
-                    />
-                    <Text
-                      style={[
-                        styles.checkItemText,
-                        { color: item.valid ? '#16A34A' : '#94A3B8', fontWeight: item.valid ? '700' : '500' },
-                      ]}
-                    >
-                      {item.label}
+              {/* Password & Confirm Password (Hidden for Google SSO users) */}
+              {!formData.isGoogleSso && (
+                <>
+                  <View style={styles.fieldGroup}>
+                    <Text style={[styles.fieldLabel, { color: textColor }]}>
+                      Create Password <Text style={styles.requiredStar}>*</Text>
                     </Text>
+                    <View style={[styles.passwordWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+                      <TextInput
+                        style={[styles.passwordInput, { color: textColor }]}
+                        secureTextEntry={!showPassword}
+                        value={formData.password}
+                        onChangeText={(val) => updateField('password', val)}
+                        onBlur={() => markFieldTouched('password')}
+                      />
+                      <TouchableOpacity
+                        style={styles.eyeBtn}
+                        onPress={() => setShowPassword(!showPassword)}
+                      >
+                        <Icon name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#94A3B8" />
+                      </TouchableOpacity>
+                    </View>
+                    {renderFieldError('password')}
                   </View>
-                ))}
-              </View>
+
+                  {/* Confirm Password */}
+                  <View style={styles.fieldGroup}>
+                    <Text style={[styles.fieldLabel, { color: textColor }]}>
+                      Confirm Password <Text style={styles.requiredStar}>*</Text>
+                    </Text>
+                    <View style={[styles.passwordWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+                      <TextInput
+                        style={[styles.passwordInput, { color: textColor }]}
+                        secureTextEntry={!showConfirmPassword}
+                        value={formData.confirmPassword}
+                        onChangeText={(val) => updateField('confirmPassword', val)}
+                        onBlur={() => markFieldTouched('confirmPassword')}
+                      />
+                      <TouchableOpacity
+                        style={styles.eyeBtn}
+                        onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                      >
+                        <Icon name={showConfirmPassword ? 'visibility-off' : 'visibility'} size={20} color="#94A3B8" />
+                      </TouchableOpacity>
+                    </View>
+                    {renderFieldError('confirmPassword')}
+                  </View>
+
+                  {/* Live Password Requirements Checklist */}
+                  <View style={[styles.checksBox, { backgroundColor: isDark ? '#18181B' : '#F8FAFC', borderColor: cardBorder }]}>
+                    {[
+                      { label: '8-16 Chars', valid: passwordChecks.length },
+                      { label: '1 Uppercase', valid: passwordChecks.hasUpper },
+                      { label: '1 Number', valid: passwordChecks.hasNumber },
+                      { label: '1 Special Symbol', valid: passwordChecks.hasSpecial },
+                      { label: 'Passwords Match', valid: passwordChecks.match },
+                    ].map((item, idx) => (
+                      <View key={idx} style={styles.checkItem}>
+                        <Icon
+                          name={item.valid ? 'check-circle' : 'radio-button-unchecked'}
+                          size={14}
+                          color={item.valid ? '#16A34A' : '#94A3B8'}
+                        />
+                        <Text
+                          style={[
+                            styles.checkItemText,
+                            { color: item.valid ? '#16A34A' : '#94A3B8', fontWeight: item.valid ? '700' : '500' },
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
 
               {/* GST Number & PAN (Optional) */}
               <View style={styles.rowTwoCols}>
@@ -1431,7 +1795,7 @@ export const RegisterScreen = ({ navigation }) => {
                       Upload License / Registration Document
                     </Text>
                     <Text style={styles.docUploadSubtitle}>
-                      PNG or JPG (Trade License, GST, or Shop Act)
+                      PNG or JPG up to 1MB (Trade License, GST, or Shop Act)
                     </Text>
                   </TouchableOpacity>
                 ) : (
@@ -1474,45 +1838,66 @@ export const RegisterScreen = ({ navigation }) => {
           {/* ================= STEP 2: LOCATION & GEOLOCATION ================= */}
           {currentStep === 2 && (
             <View>
-              {/* GPS Auto Detect Bar */}
-              <View style={styles.gpsAutoBar}>
-                <Text style={[styles.sectionHeading, { color: textColor }]}>Facility Address & Geolocation</Text>
-                <TouchableOpacity
-                  style={[styles.autoDetectBtn, { backgroundColor: isDark ? '#1E293B' : '#EFF6FF' }]}
-                  onPress={handleGetAddressByGps}
-                  disabled={isFetchingGps}
-                  activeOpacity={0.8}
-                >
-                  {isFetchingGps ? (
-                    <ActivityIndicator size="small" color={primaryNavy} />
-                  ) : (
-                    <>
-                      <Icon name="my-location" size={16} color={primaryNavy} />
-                      <Text style={styles.autoDetectBtnText}>Auto-Detect GPS</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
+              <Text style={[styles.sectionHeading, { color: textColor, marginBottom: 12 }]}>
+                Facility Address & Geolocation
+              </Text>
 
-              {/* GPS Live Pinned Coordinates Badge */}
-              {isGpsPinned && formData.lat && formData.lng && (
-                <View style={[styles.pinnedBadge, { backgroundColor: isDark ? '#18181B' : '#F0FDF4', borderColor: isDark ? '#27272A' : '#BBF7D0' }]}>
-                  <View style={styles.pinnedBadgeLeft}>
-                    <Icon name="place" size={18} color="#16A34A" />
-                    <Text style={[styles.pinnedBadgeText, { color: isDark ? '#86EFAC' : '#15803D' }]}>
-                      GPS Coordinates: {Number(formData.lat).toFixed(4)}, {Number(formData.lng).toFixed(4)}
+              {/* Google Maps Share Link (Top, matching Web) */}
+              <View style={styles.fieldGroup}>
+                <View style={[styles.fieldHeaderRow, { flexWrap: 'wrap', gap: 6 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Icon name="explore" size={16} color={primaryNavy} />
+                    <Text style={[styles.fieldLabel, { color: textColor, marginBottom: 0 }]}>
+                      Google Maps Share Link (Auto-extracts GPS)
                     </Text>
                   </View>
+                  {isGpsPinned && formData.lat && formData.lng && (
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#16A34A' }}>
+                      GPS: {Number(formData.lat).toFixed(6)}, {Number(formData.lng).toFixed(6)}
+                    </Text>
+                  )}
                 </View>
-              )}
-
-              {/* Street Address */}
-              <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>
-                  Street Address / Door No. <Text style={styles.requiredStar}>*</Text>
-                </Text>
                 <TextInput
                   style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                  placeholder="https://maps.google.com/?q=..."
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="none"
+                  value={formData.googleMapsUrl}
+                  onChangeText={handleGoogleMapsUrlChange}
+                />
+              </View>
+
+              {/* Street Address with inline Get by GPS (Matching Web) */}
+              <View style={styles.fieldGroup}>
+                <View style={[styles.fieldHeaderRow, { marginBottom: 6 }]}>
+                  <Text style={[styles.fieldLabel, { color: textColor, marginBottom: 0 }]}>
+                    Street Address / Door No. <Text style={styles.requiredStar}>*</Text>
+                  </Text>
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2, paddingHorizontal: 4 }}
+                    onPress={handleGetAddressByGps}
+                    disabled={isFetchingGps}
+                    activeOpacity={0.7}
+                  >
+                    {isFetchingGps ? (
+                      <ActivityIndicator size="small" color={primaryNavy} />
+                    ) : (
+                      <>
+                        <Icon name="my-location" size={15} color={primaryNavy} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: primaryNavy }}>Get by GPS</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: inputBg,
+                      borderColor: touched.address && errors.address ? '#EF4444' : inputBorder,
+                      color: textColor,
+                    },
+                  ]}
                   value={formData.address}
                   onChangeText={(val) => updateField('address', val)}
                   onBlur={() => markFieldTouched('address')}
@@ -1520,14 +1905,21 @@ export const RegisterScreen = ({ navigation }) => {
                 {renderFieldError('address')}
               </View>
 
-              {/* Area & Landmark */}
+              {/* Area & City */}
               <View style={styles.rowTwoCols}>
                 <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
                   <Text style={[styles.fieldLabel, { color: textColor }]}>
                     Area / Locality <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: inputBg,
+                        borderColor: touched.area && errors.area ? '#EF4444' : inputBorder,
+                        color: textColor,
+                      },
+                    ]}
                     value={formData.area}
                     onChangeText={(val) => updateField('area', val)}
                     onBlur={() => markFieldTouched('area')}
@@ -1536,36 +1928,41 @@ export const RegisterScreen = ({ navigation }) => {
                 </View>
 
                 <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
-                  <Text style={[styles.fieldLabel, { color: textColor }]}>Landmark (Optional)</Text>
-                  <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
-                    value={formData.landmark}
-                    onChangeText={(val) => updateField('landmark', val)}
-                  />
-                </View>
-              </View>
-
-              {/* City, State, Pincode */}
-              <View style={styles.rowTwoCols}>
-                <View style={[styles.fieldGroup, { flex: 1, marginRight: 6 }]}>
                   <Text style={[styles.fieldLabel, { color: textColor }]}>
                     City <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: inputBg,
+                        borderColor: touched.city && errors.city ? '#EF4444' : inputBorder,
+                        color: textColor,
+                      },
+                    ]}
                     value={formData.city}
                     onChangeText={(val) => updateField('city', val)}
                     onBlur={() => markFieldTouched('city')}
                   />
                   {renderFieldError('city')}
                 </View>
+              </View>
 
-                <View style={[styles.fieldGroup, { flex: 1, marginHorizontal: 6 }]}>
+              {/* State & Pincode */}
+              <View style={styles.rowTwoCols}>
+                <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
                   <Text style={[styles.fieldLabel, { color: textColor }]}>
                     State <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: inputBg,
+                        borderColor: touched.state && errors.state ? '#EF4444' : inputBorder,
+                        color: textColor,
+                      },
+                    ]}
                     value={formData.state}
                     onChangeText={(val) => updateField('state', val)}
                     onBlur={() => markFieldTouched('state')}
@@ -1573,12 +1970,19 @@ export const RegisterScreen = ({ navigation }) => {
                   {renderFieldError('state')}
                 </View>
 
-                <View style={[styles.fieldGroup, { flex: 1, marginLeft: 6 }]}>
+                <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
                   <Text style={[styles.fieldLabel, { color: textColor }]}>
                     Pincode <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: inputBg,
+                        borderColor: touched.pincode && errors.pincode ? '#EF4444' : inputBorder,
+                        color: textColor,
+                      },
+                    ]}
                     keyboardType="number-pad"
                     maxLength={6}
                     value={formData.pincode}
@@ -1589,15 +1993,13 @@ export const RegisterScreen = ({ navigation }) => {
                 </View>
               </View>
 
-              {/* Google Maps Link */}
+              {/* Landmark (Optional) */}
               <View style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: textColor }]}>
-                  Google Maps Share Link (Auto-extracts GPS)
-                </Text>
+                <Text style={[styles.fieldLabel, { color: textColor }]}>Landmark (Optional)</Text>
                 <TextInput
                   style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
-                  value={formData.googleMapsUrl}
-                  onChangeText={handleGoogleMapsUrlChange}
+                  value={formData.landmark}
+                  onChangeText={(val) => updateField('landmark', val)}
                 />
               </View>
 
@@ -1632,12 +2034,13 @@ export const RegisterScreen = ({ navigation }) => {
               {/* Operating Hours Divider */}
               <View style={[styles.divider, { backgroundColor: cardBorder }]} />
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <Text style={[styles.sectionHeading, { color: textColor, marginBottom: 0, fontSize: 14 }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 8 }}>
+                <Text style={[styles.sectionHeading, { color: textColor, marginBottom: 0, fontSize: 14, flex: 1, flexShrink: 1 }]}>
                   Facility Operating Hours & Shift Architecture
                 </Text>
                 <View
                   style={{
+                    flexShrink: 0,
                     paddingHorizontal: 8,
                     paddingVertical: 3,
                     borderRadius: 6,
@@ -1911,10 +2314,19 @@ export const RegisterScreen = ({ navigation }) => {
                     Floor Area (Sq. Ft.) <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: inputBg,
+                        borderColor: touched.floorSpaceSqFt && errors.floorSpaceSqFt ? '#EF4444' : inputBorder,
+                        color: textColor,
+                      },
+                    ]}
                     keyboardType="number-pad"
-                    value={String(formData.floorSpaceSqFt || '')}
-                    onChangeText={(val) => updateField('floorSpaceSqFt', Number(val.replace(/\D/g, '')))}
+                    placeholder="e.g. 3500"
+                    placeholderTextColor="#94A3B8"
+                    value={formData.floorSpaceSqFt !== undefined && formData.floorSpaceSqFt !== null ? String(formData.floorSpaceSqFt) : ''}
+                    onChangeText={(val) => updateField('floorSpaceSqFt', val.replace(/\D/g, ''))}
                     onBlur={() => markFieldTouched('floorSpaceSqFt')}
                   />
                   {renderFieldError('floorSpaceSqFt')}
@@ -1925,10 +2337,19 @@ export const RegisterScreen = ({ navigation }) => {
                     Max Safe Floor Capacity <Text style={styles.requiredStar}>*</Text>
                   </Text>
                   <TextInput
-                    style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                    style={[
+                      styles.textInput,
+                      {
+                        backgroundColor: inputBg,
+                        borderColor: touched.maxFloorCapacity && errors.maxFloorCapacity ? '#EF4444' : inputBorder,
+                        color: textColor,
+                      },
+                    ]}
                     keyboardType="number-pad"
-                    value={String(formData.maxFloorCapacity || '')}
-                    onChangeText={(val) => updateField('maxFloorCapacity', Number(val.replace(/\D/g, '')))}
+                    placeholder="e.g. 45"
+                    placeholderTextColor="#94A3B8"
+                    value={formData.maxFloorCapacity !== undefined && formData.maxFloorCapacity !== null ? String(formData.maxFloorCapacity) : ''}
+                    onChangeText={(val) => updateField('maxFloorCapacity', val.replace(/\D/g, ''))}
                     onBlur={() => markFieldTouched('maxFloorCapacity')}
                   />
                   {renderFieldError('maxFloorCapacity')}
@@ -1958,6 +2379,31 @@ export const RegisterScreen = ({ navigation }) => {
                     );
                   })}
                 </View>
+              </View>
+
+              {/* Highlight Listing Badge */}
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: textColor }]}>Highlight Listing Badge</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                  {BADGE_OPTIONS.map((badge) => {
+                    const isSelected = (formData.badgeText || 'Trending') === badge;
+                    return (
+                      <TouchableOpacity
+                        key={badge}
+                        style={[
+                          styles.optionPill,
+                          isSelected && { backgroundColor: primaryNavy, borderColor: primaryNavy },
+                        ]}
+                        onPress={() => updateField('badgeText', badge)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.optionPillText, isSelected && { color: '#FFFFFF', fontWeight: '700' }]}>
+                          {badge}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
               </View>
 
               <View style={[styles.divider, { backgroundColor: cardBorder }]} />
@@ -2246,8 +2692,8 @@ export const RegisterScreen = ({ navigation }) => {
                   placeholder="199"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
-                  value={String(formData.singleSessionPrice || '')}
-                  onChangeText={(val) => updateField('singleSessionPrice', Number(val.replace(/\D/g, '')))}
+                  value={formData.singleSessionPrice !== undefined && formData.singleSessionPrice !== null ? String(formData.singleSessionPrice) : ''}
+                  onChangeText={(val) => updateField('singleSessionPrice', val.replace(/\D/g, ''))}
                 />
                 <Text style={styles.pricingHint}>Walk-in instant entry pass price</Text>
               </View>
@@ -2258,12 +2704,19 @@ export const RegisterScreen = ({ navigation }) => {
                   1. Monthly Unlimited Pass (₹) <Text style={styles.requiredStar}>*</Text>
                 </Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: inputBg,
+                      borderColor: touched.monthlyPrice && errors.monthlyPrice ? '#EF4444' : inputBorder,
+                      color: textColor,
+                    },
+                  ]}
                   placeholder="1999"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
-                  value={String(formData.monthlyPrice || '')}
-                  onChangeText={(val) => updateField('monthlyPrice', Number(val.replace(/\D/g, '')))}
+                  value={formData.monthlyPrice !== undefined && formData.monthlyPrice !== null ? String(formData.monthlyPrice) : ''}
+                  onChangeText={(val) => updateField('monthlyPrice', val.replace(/\D/g, ''))}
                   onBlur={() => markFieldTouched('monthlyPrice')}
                 />
                 <Text style={styles.pricingHint}>Standard 30-day recurring membership</Text>
@@ -2280,12 +2733,12 @@ export const RegisterScreen = ({ navigation }) => {
                   placeholder="4999"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
-                  value={String(formData.quarterlyPrice || '')}
-                  onChangeText={(val) => updateField('quarterlyPrice', Number(val.replace(/\D/g, '')))}
+                  value={formData.quarterlyPrice !== undefined && formData.quarterlyPrice !== null ? String(formData.quarterlyPrice) : ''}
+                  onChangeText={(val) => updateField('quarterlyPrice', val.replace(/\D/g, ''))}
                 />
-                {formData.monthlyPrice && formData.quarterlyPrice < formData.monthlyPrice * 3 && (
+                {Number(formData.monthlyPrice) > 0 && Number(formData.quarterlyPrice) > 0 && Number(formData.quarterlyPrice) < Number(formData.monthlyPrice) * 3 && (
                   <Text style={[styles.pricingHint, { color: '#10B981', fontWeight: '700' }]}>
-                    Save ₹{(formData.monthlyPrice * 3 - formData.quarterlyPrice).toLocaleString('en-IN')} vs Monthly
+                    Save ₹{(Number(formData.monthlyPrice) * 3 - Number(formData.quarterlyPrice)).toLocaleString('en-IN')} vs Monthly
                   </Text>
                 )}
               </View>
@@ -2300,12 +2753,12 @@ export const RegisterScreen = ({ navigation }) => {
                   placeholder="8999"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
-                  value={String(formData.halfYearlyPrice || '')}
-                  onChangeText={(val) => updateField('halfYearlyPrice', Number(val.replace(/\D/g, '')))}
+                  value={formData.halfYearlyPrice !== undefined && formData.halfYearlyPrice !== null ? String(formData.halfYearlyPrice) : ''}
+                  onChangeText={(val) => updateField('halfYearlyPrice', val.replace(/\D/g, ''))}
                 />
-                {formData.monthlyPrice && formData.halfYearlyPrice < formData.monthlyPrice * 6 && (
+                {Number(formData.monthlyPrice) > 0 && Number(formData.halfYearlyPrice) > 0 && Number(formData.halfYearlyPrice) < Number(formData.monthlyPrice) * 6 && (
                   <Text style={[styles.pricingHint, { color: '#10B981', fontWeight: '700' }]}>
-                    Save ₹{(formData.monthlyPrice * 6 - formData.halfYearlyPrice).toLocaleString('en-IN')} vs Monthly
+                    Save ₹{(Number(formData.monthlyPrice) * 6 - Number(formData.halfYearlyPrice)).toLocaleString('en-IN')} vs Monthly
                   </Text>
                 )}
               </View>
@@ -2320,12 +2773,12 @@ export const RegisterScreen = ({ navigation }) => {
                   placeholder="14999"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
-                  value={String(formData.annualPrice || '')}
-                  onChangeText={(val) => updateField('annualPrice', Number(val.replace(/\D/g, '')))}
+                  value={formData.annualPrice !== undefined && formData.annualPrice !== null ? String(formData.annualPrice) : ''}
+                  onChangeText={(val) => updateField('annualPrice', val.replace(/\D/g, ''))}
                 />
-                {formData.monthlyPrice && formData.annualPrice < formData.monthlyPrice * 12 && (
+                {Number(formData.monthlyPrice) > 0 && Number(formData.annualPrice) > 0 && Number(formData.annualPrice) < Number(formData.monthlyPrice) * 12 && (
                   <Text style={[styles.pricingHint, { color: '#10B981', fontWeight: '700' }]}>
-                    Save ₹{(formData.monthlyPrice * 12 - formData.annualPrice).toLocaleString('en-IN')} vs Monthly
+                    Save ₹{(Number(formData.monthlyPrice) * 12 - Number(formData.annualPrice)).toLocaleString('en-IN')} vs Monthly
                   </Text>
                 )}
               </View>
@@ -2388,7 +2841,7 @@ export const RegisterScreen = ({ navigation }) => {
                     placeholder="Add gym rule..."
                     placeholderTextColor="#94A3B8"
                     value={newRuleInput}
-                    onChangeText={setNewRuleInput}
+                    onChangeText={(val) => setNewRuleInput(stripEmojis(val))}
                   />
                   <TouchableOpacity
                     style={[styles.ruleAddBtn, { backgroundColor: primaryNavy }]}
@@ -2450,7 +2903,7 @@ export const RegisterScreen = ({ navigation }) => {
                     placeholder="Add safety measure..."
                     placeholderTextColor="#94A3B8"
                     value={newSafetyInput}
-                    onChangeText={setNewSafetyInput}
+                    onChangeText={(val) => setNewSafetyInput(stripEmojis(val))}
                   />
                   <TouchableOpacity
                     style={[styles.ruleAddBtn, { backgroundColor: primaryNavy }]}
@@ -2493,14 +2946,38 @@ export const RegisterScreen = ({ navigation }) => {
                 <Text style={[styles.fieldLabel, { color: textColor }]}>
                   Bank Name <Text style={styles.requiredStar}>*</Text>
                 </Text>
-                <TextInput
-                  style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
-                  placeholder="e.g. HDFC Bank Ltd"
-                  placeholderTextColor="#94A3B8"
-                  value={formData.bankName}
-                  onChangeText={(val) => updateField('bankName', val)}
-                  onBlur={() => markFieldTouched('bankName')}
-                />
+                <TouchableOpacity
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: inputBg,
+                      borderColor: touched.bankName && errors.bankName ? '#EF4444' : inputBorder,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingHorizontal: 12,
+                    },
+                  ]}
+                  onPress={() => {
+                    setBankSearchQuery('');
+                    setBankModalVisible(true);
+                    markFieldTouched('bankName');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      color: formData.bankName ? textColor : '#94A3B8',
+                      fontWeight: formData.bankName ? '600' : '400',
+                      flex: 1,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {formData.bankName || 'Select bank'}
+                  </Text>
+                  <Icon name="arrow-drop-down" size={24} color={subtitleColor} />
+                </TouchableOpacity>
                 {renderFieldError('bankName')}
               </View>
 
@@ -2510,7 +2987,14 @@ export const RegisterScreen = ({ navigation }) => {
                   Bank Account Number <Text style={styles.requiredStar}>*</Text>
                 </Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: inputBg,
+                      borderColor: touched.accountNumber && errors.accountNumber ? '#EF4444' : inputBorder,
+                      color: textColor,
+                    },
+                  ]}
                   placeholder="50100456789012"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
@@ -2528,7 +3012,14 @@ export const RegisterScreen = ({ navigation }) => {
                   Confirm Account Number <Text style={styles.requiredStar}>*</Text>
                 </Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: inputBg, borderColor: inputBorder, color: textColor }]}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: inputBg,
+                      borderColor: touched.confirmAccountNumber && errors.confirmAccountNumber ? '#EF4444' : inputBorder,
+                      color: textColor,
+                    },
+                  ]}
                   placeholder="Re-enter bank account number"
                   placeholderTextColor="#94A3B8"
                   keyboardType="number-pad"
@@ -2568,7 +3059,9 @@ export const RegisterScreen = ({ navigation }) => {
                     autoCapitalize="none"
                     value={formData.upiId}
                     onChangeText={(val) => updateField('upiId', val)}
+                    onBlur={() => markFieldTouched('upiId')}
                   />
+                  {renderFieldError('upiId')}
                 </View>
               </View>
 
@@ -2690,6 +3183,110 @@ export const RegisterScreen = ({ navigation }) => {
           </View>
         </View>
       </ScrollView>
+
+      {/* BANK SELECTION SEARCH MODAL */}
+      <Modal
+        visible={bankModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setBankModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Select Bank</Text>
+                <Text style={styles.modalSubtitle}>Popular scheduled commercial banks</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setBankModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Icon name="close" size={24} color={textColor} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.modalSearchBox, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+              <Icon name="search" size={20} color="#94A3B8" />
+              <TextInput
+                style={[styles.modalSearchInput, { color: textColor }]}
+                placeholder="Search bank name or IFSC..."
+                placeholderTextColor="#94A3B8"
+                value={bankSearchQuery}
+                onChangeText={setBankSearchQuery}
+                autoFocus={false}
+              />
+              {bankSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setBankSearchQuery('')}>
+                  <Icon name="cancel" size={18} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView
+              style={{ maxHeight: 380 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {filteredBanks.map((b) => {
+                const isSelected = formData.bankName === b.name;
+                return (
+                  <TouchableOpacity
+                    key={b.name}
+                    style={[
+                      styles.bankRow,
+                      { borderBottomColor: isDark ? '#27272A' : '#F1F5F9' },
+                      isSelected && { backgroundColor: isDark ? 'rgba(0, 56, 130, 0.25)' : '#EFF6FF' },
+                    ]}
+                    onPress={() => {
+                      updateField('bankName', b.name);
+                      if (b.ifscPrefix) {
+                        updateField('ifscCode', b.ifscPrefix);
+                      }
+                      markFieldTouched('bankName');
+                      setBankModalVisible(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.bankRowName, { color: textColor, fontWeight: isSelected ? '700' : '500' }]}>
+                        {b.name}
+                      </Text>
+                      <View style={styles.ifscBadgeRow}>
+                        <Text style={styles.ifscPrefixTag}>IFSC Prefix: {b.ifscPrefix}</Text>
+                      </View>
+                    </View>
+                    {isSelected && <Icon name="check-circle" size={20} color={primaryNavy} />}
+                  </TouchableOpacity>
+                );
+              })}
+
+              {filteredBanks.length === 0 && (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Text style={{ color: subtitleColor, fontSize: 13, textAlign: 'center', marginBottom: 12 }}>
+                    No bank found matching "{bankSearchQuery}"
+                  </Text>
+                  <TouchableOpacity
+                    style={{ paddingVertical: 10, paddingHorizontal: 16, backgroundColor: primaryNavy, borderRadius: 8 }}
+                    onPress={() => {
+                      updateField('bankName', bankSearchQuery.trim());
+                      markFieldTouched('bankName');
+                      setBankModalVisible(false);
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>
+                      Use "{bankSearchQuery.trim()}"
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -2747,24 +3344,60 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 48,
   },
-  progressContainer: {
+  progressCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 20,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
   },
-  progressTopRow: {
+  progressCardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
-  stepIndicatorText: {
-    fontSize: 12,
+  progressCardSub: {
+    fontSize: 11,
     fontWeight: '800',
-    color: '#003882',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 2,
   },
-  completionText: {
-    fontSize: 12,
+  progressCardTitle: {
+    fontSize: 14,
     fontWeight: '700',
+  },
+  statusBadgePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  progressBreakdownList: {
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 10,
+    gap: 6,
+  },
+  progressStepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+  },
+  stepNumberCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepRowTitle: {
+    fontSize: 13,
   },
   segmentTrack: {
     flexDirection: 'row',
@@ -2774,6 +3407,72 @@ const styles = StyleSheet.create({
   segmentBar: {
     flex: 1,
     borderRadius: 3,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    maxHeight: '82%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  modalSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    padding: 0,
+  },
+  bankRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderRadius: 8,
+  },
+  bankRowName: {
+    fontSize: 13.5,
+    marginBottom: 3,
+  },
+  ifscBadgeRow: {
+    flexDirection: 'row',
+  },
+  ifscPrefixTag: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
   },
   stepHeader: {
     marginBottom: 20,
@@ -3404,5 +4103,119 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+  progressCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    elevation: 1,
+  },
+  progressCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  progressCardSub: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  progressCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  statusBadgePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  progressBreakdownList: {
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 10,
+    gap: 6,
+  },
+  progressStepRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+  },
+  stepNumberCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepRowTitle: {
+    fontSize: 12.5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    padding: 20,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  modalSearchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 13.5,
+    padding: 0,
+  },
+  bankRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderRadius: 6,
+  },
+  bankRowName: {
+    fontSize: 13.5,
+  },
+  ifscBadgeRow: {
+    flexDirection: 'row',
+    marginTop: 3,
+  },
+  ifscPrefixTag: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
   },
 });

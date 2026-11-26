@@ -44,7 +44,11 @@ export const AuthProvider = ({ children }) => {
     } catch {
       // Ignore network errors on logout
     } finally {
-      await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]).catch(() => {});
+      if (typeof AsyncStorage.removeMany === 'function') {
+        await AsyncStorage.removeMany([TOKEN_KEY, USER_KEY]).catch(() => {});
+      } else {
+        await Promise.all([TOKEN_KEY, USER_KEY].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+      }
       apiService.setAuthToken(null);
       bookmarkService.clear();
       setUser(null);
@@ -103,7 +107,11 @@ export const AuthProvider = ({ children }) => {
           // Check if token is expired before restoring
           if (isJwtExpired(storedToken)) {
             console.warn('[AUTH] Stored JWT token is expired. Auto-clearing session.');
-            await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]).catch(() => {});
+            if (typeof AsyncStorage.removeMany === 'function') {
+              await AsyncStorage.removeMany([TOKEN_KEY, USER_KEY]).catch(() => {});
+            } else {
+              await Promise.all([TOKEN_KEY, USER_KEY].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+            }
             setToken(null);
             setUser(null);
             setSessionExpiredMessage('Your previous session has expired. Please log in again.');

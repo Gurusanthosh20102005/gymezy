@@ -324,7 +324,11 @@ class BookmarkService {
     this.bookmarkedIds.clear();
     this.cachedGyms = [];
     this.notifyListeners();
-    await AsyncStorage.multiRemove([BOOKMARKS_STORAGE_KEY, BOOKMARKED_GYMS_CACHE_KEY]).catch(() => {});
+    if (typeof AsyncStorage.removeMany === 'function') {
+      await AsyncStorage.removeMany([BOOKMARKS_STORAGE_KEY, BOOKMARKED_GYMS_CACHE_KEY]).catch(() => {});
+    } else {
+      await Promise.all([BOOKMARKS_STORAGE_KEY, BOOKMARKED_GYMS_CACHE_KEY].map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+    }
   }
 }
 

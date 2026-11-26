@@ -7,6 +7,16 @@ const TOKEN_KEY = '@gymezy_jwt_token';
 const USER_KEY = '@gymezy_auth_user';
 const GYM_KEY = '@gymezy_auth_gym';
 
+const removeStorageKeys = async (keys) => {
+  if (typeof AsyncStorage.removeMany === 'function') {
+    await AsyncStorage.removeMany(keys).catch(() => {});
+  } else if (typeof AsyncStorage.multiRemove === 'function') {
+    await AsyncStorage.multiRemove(keys).catch(() => {});
+  } else {
+    await Promise.all(keys.map((k) => AsyncStorage.removeItem(k).catch(() => {})));
+  }
+};
+
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
@@ -33,7 +43,7 @@ export const AuthProvider = ({ children }) => {
     } catch {
       // Ignore network error on logout
     } finally {
-      await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY, GYM_KEY]).catch(() => {});
+      await removeStorageKeys([TOKEN_KEY, USER_KEY, GYM_KEY]);
       apiService.setAuthToken(null);
       setUser(null);
       setGym(null);
@@ -71,7 +81,7 @@ export const AuthProvider = ({ children }) => {
         if (storedToken && storedUser) {
           if (isJwtExpired(storedToken)) {
             console.warn('[GYM OWNER AUTH] Stored token is expired. Auto-logging out.');
-            await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY, GYM_KEY]).catch(() => {});
+            await removeStorageKeys([TOKEN_KEY, USER_KEY, GYM_KEY]);
             setToken(null);
             setUser(null);
             setGym(null);
@@ -144,6 +154,44 @@ export const AuthProvider = ({ children }) => {
     }
   }, [scheduleAutoLogout]);
 
+  const loginWithGoogle = useCallback(async ({ idToken }) => {
+    setIsLoading(true);
+    try {
+      const response = await apiService.googleLogin({
+        idToken,
+        portal: 'gym-owner',
+        expectedRole: 'GYM_OWNER',
+      });
+
+      // User does not exist in DB yet: returns profile for onboarding
+      if (response.exists === false) {
+        return { success: true, exists: false, profile: response.profile };
+      }
+
+      setUser(response.user);
+      setGym(response.gym);
+      setToken(response.token);
+
+      if (response.token) {
+        apiService.setAuthToken(response.token);
+        await AsyncStorage.setItem(TOKEN_KEY, response.token);
+        scheduleAutoLogout(response.token);
+      }
+      if (response.user) {
+        await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+      }
+      if (response.gym) {
+        await AsyncStorage.setItem(GYM_KEY, JSON.stringify(response.gym));
+      }
+
+      return { success: true, exists: true, data: response };
+    } catch (error) {
+      return { success: false, message: error.message || 'Google Login failed.' };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [scheduleAutoLogout]);
+
   const updateGym = useCallback((updatedGym) => {
     setGym((prev) => {
       const nextGym = { ...(prev || {}), ...(updatedGym || {}) };
@@ -176,6 +224,7 @@ export const AuthProvider = ({ children }) => {
     isLoading,
     isRestoringToken,
     login,
+    loginWithGoogle,
     logout,
     updateGym,
     refreshGymProfile,

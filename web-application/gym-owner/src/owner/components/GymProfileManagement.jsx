@@ -1062,6 +1062,8 @@ export const GymProfileManagement = () => {
     }
   };
 
+  const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+
   // Cover Banner Photo Upload
   const handleCoverPhotoUpload = () => {
     const input = document.createElement('input');
@@ -1070,6 +1072,10 @@ export const GymProfileManagement = () => {
     input.onchange = async (e) => {
       const file = e.target.files?.[0];
       if (file) {
+        if (file.size > MAX_IMAGE_SIZE_BYTES) {
+          message.error('Cover photo must be 2 MB or smaller.');
+          return;
+        }
         const reader = new FileReader();
         reader.onload = async (re) => {
           const newCover = re.target?.result;
@@ -1094,6 +1100,10 @@ export const GymProfileManagement = () => {
     input.onchange = async (e) => {
       const file = e.target.files?.[0];
       if (file) {
+        if (file.size > MAX_IMAGE_SIZE_BYTES) {
+          message.error('Brand logo must be 2 MB or smaller.');
+          return;
+        }
         const reader = new FileReader();
         reader.onload = async (re) => {
           const newLogo = re.target?.result;
@@ -1120,10 +1130,17 @@ export const GymProfileManagement = () => {
       const files = Array.from(e.target.files || []);
       if (files.length === 0) return;
 
+      const oversized = files.filter((f) => f.size > MAX_IMAGE_SIZE_BYTES);
+      const validFiles = files.filter((f) => f.size <= MAX_IMAGE_SIZE_BYTES);
+      if (oversized.length > 0) {
+        message.error(`${oversized.length} image(s) exceeded the 2 MB limit and were skipped.`);
+      }
+      if (validFiles.length === 0) return;
+
       setIsUploadingMedia(true);
       try {
         const base64List = await Promise.all(
-          files.map(
+          validFiles.map(
             (file) =>
               new Promise((resolve) => {
                 const reader = new FileReader();
@@ -1136,7 +1153,7 @@ export const GymProfileManagement = () => {
         const currentGallery = (gymData?.galleryPhotos || []).map((img) => extractImageUrl(img)).filter(Boolean);
         const combined = [...currentGallery, ...base64List];
 
-        await saveGymToBackend({ galleryPhotos: combined }, `${files.length} photo(s) uploaded to gallery successfully!`);
+        await saveGymToBackend({ galleryPhotos: combined }, `${validFiles.length} photo(s) uploaded to gallery successfully!`);
       } finally {
         setIsUploadingMedia(false);
       }
