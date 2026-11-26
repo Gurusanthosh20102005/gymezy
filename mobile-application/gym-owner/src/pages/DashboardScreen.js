@@ -11,10 +11,19 @@ import { EmployeesTab } from './tabs/EmployeesTab';
 import { SectionsTab } from './tabs/SectionsTab';
 import { notificationService } from '../services/notificationService';
 
-export const DashboardScreen = ({ navigation }) => {
+export const DashboardScreen = ({ navigation, route }) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const [currentTab, setCurrentTab] = useState(0);
+  const [currentTab, setCurrentTab] = useState(
+    typeof route?.params?.initialTab === 'number' ? route.params.initialTab : 0
+  );
+  const [membersMode, setMembersMode] = useState('MEMBERS');
+
+  useEffect(() => {
+    if (typeof route?.params?.initialTab === 'number') {
+      setCurrentTab(route.params.initialTab);
+    }
+  }, [route?.params?.initialTab]);
 
   // Request native notification permission on initial dashboard entry
   useEffect(() => {
@@ -50,7 +59,13 @@ export const DashboardScreen = ({ navigation }) => {
             onNavigateToSections={() => setCurrentTab(4)}
           />
         )}
-        {currentTab === 1 && <MembersTab topInset={topInset} />}
+        {currentTab === 1 && (
+          <MembersTab
+            topInset={topInset}
+            activeMode={membersMode}
+            onChangeMode={setMembersMode}
+          />
+        )}
         {currentTab === 2 && (
           <BookingsTab
             topInset={topInset}
@@ -75,6 +90,11 @@ export const DashboardScreen = ({ navigation }) => {
       <CustomFloatingNavBar
         currentIndex={currentTab}
         onTap={(index) => setCurrentTab(index)}
+        membersMode={membersMode}
+        onSelectMembersMode={(mode) => {
+          setMembersMode(mode);
+          setCurrentTab(1);
+        }}
       />
     </View>
   );

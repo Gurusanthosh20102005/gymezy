@@ -1,0 +1,257 @@
+{
+  "_about": "Shared test vectors. Every implementation of these rules (the JavaScript core, a Flutter or Kotlin client, a Python or Java server) runs this file in CI, so the rules cannot drift apart. Add a case whenever a bug is found.",
+  "password": {
+    "policy": {
+      "minLength": 8,
+      "maxLength": 16,
+      "requireUppercase": true,
+      "requireLowercase": true,
+      "requireNumber": true,
+      "requireSymbol": true,
+      "allowWhitespace": false,
+      "asciiOnly": true
+    },
+    "cases": [
+      {
+        "value": "Abcdef1!",
+        "valid": true
+      },
+      {
+        "value": "Abcdefghijklm1!x",
+        "valid": true
+      },
+      {
+        "value": "Zx9#kLm2!q",
+        "valid": true
+      },
+      {
+        "value": "Abcde1!",
+        "valid": false,
+        "failed": [
+          "length"
+        ]
+      },
+      {
+        "value": "Abcdefghijklmn1!x",
+        "valid": false,
+        "failed": [
+          "length"
+        ]
+      },
+      {
+        "value": "abcdefg1!",
+        "valid": false,
+        "failed": [
+          "uppercase"
+        ]
+      },
+      {
+        "value": "ABCDEFG1!",
+        "valid": false,
+        "failed": [
+          "lowercase"
+        ]
+      },
+      {
+        "value": "Abcdefgh!",
+        "valid": false,
+        "failed": [
+          "number"
+        ]
+      },
+      {
+        "value": "Abcdefg12",
+        "valid": false,
+        "failed": [
+          "symbol"
+        ]
+      },
+      {
+        "value": "Abcd ef1!",
+        "valid": false,
+        "failed": [
+          "no-space"
+        ]
+      },
+      {
+        "value": " Abcdef1!",
+        "valid": false,
+        "failed": [
+          "no-space"
+        ]
+      },
+      {
+        "value": "Abcdéfg1!",
+        "valid": false,
+        "failed": [
+          "charset"
+        ]
+      },
+      {
+        "value": "Password@123",
+        "valid": false,
+        "failed": [
+          "not-common"
+        ]
+      },
+      {
+        "value": "",
+        "valid": false,
+        "failed": [
+          "length",
+          "uppercase",
+          "lowercase",
+          "number",
+          "symbol"
+        ]
+      }
+    ]
+  },
+  "mobile_IN": {
+    "cases": [
+      {
+        "input": "9876543210",
+        "valid": true,
+        "normalized": "+919876543210"
+      },
+      {
+        "input": "98765 43210",
+        "valid": true,
+        "normalized": "+919876543210"
+      },
+      {
+        "input": "98765-43210",
+        "valid": true,
+        "normalized": "+919876543210"
+      },
+      {
+        "input": "+91 98765 43210",
+        "valid": true,
+        "normalized": "+919876543210"
+      },
+      {
+        "input": "919876543210",
+        "valid": true,
+        "normalized": "+919876543210"
+      },
+      {
+        "input": "09876543210",
+        "valid": true,
+        "normalized": "+919876543210"
+      },
+      {
+        "input": "0091 9876543210",
+        "valid": true,
+        "normalized": "+919876543210"
+      },
+      {
+        "input": "5876543210",
+        "valid": false
+      },
+      {
+        "input": "98765",
+        "valid": false
+      },
+      {
+        "input": "98765432101",
+        "valid": false
+      },
+      {
+        "input": "",
+        "valid": false
+      },
+      {
+        "input": "98765abc43210",
+        "valid": false
+      },
+      {
+        "input": "9876543210<script>",
+        "valid": false
+      }
+    ]
+  },
+  "email": {
+    "cases": [
+      {
+        "input": "name@company.com",
+        "valid": true,
+        "normalized": "name@company.com"
+      },
+      {
+        "input": " Name@Company.COM ",
+        "valid": true,
+        "normalized": "name@company.com"
+      },
+      {
+        "input": "first.last+tag@sub.example.co.in",
+        "valid": true,
+        "normalized": "first.last+tag@sub.example.co.in"
+      },
+      {
+        "input": "name@company",
+        "valid": false
+      },
+      {
+        "input": "name@@company.com",
+        "valid": false
+      },
+      {
+        "input": "name@company..com",
+        "valid": false
+      },
+      {
+        "input": ".name@company.com",
+        "valid": false
+      },
+      {
+        "input": "na me@company.com",
+        "valid": false
+      },
+      {
+        "input": "",
+        "valid": false
+      }
+    ]
+  },
+  "name": {
+    "cases": [
+      {
+        "input": "Priya Raman",
+        "valid": true
+      },
+      {
+        "input": "O'Brien",
+        "valid": true
+      },
+      {
+        "input": "Anne-Marie",
+        "valid": true
+      },
+      {
+        "input": "李小龍",
+        "valid": true
+      },
+      {
+        "input": "Zoë",
+        "valid": true
+      },
+      {
+        "input": "  Priya   Raman ",
+        "valid": true,
+        "normalized": "Priya Raman"
+      },
+      {
+        "input": "R2D2",
+        "valid": false
+      },
+      {
+        "input": "Priya_Raman",
+        "valid": false
+      },
+      {
+        "input": "",
+        "valid": false
+      }
+    ]
+  }
+}

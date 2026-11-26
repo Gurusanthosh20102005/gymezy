@@ -423,10 +423,11 @@ const gymSchema = new mongoose.Schema(
     // Subscription & Settlement
     subscriptionType: {
       type: String,
-      enum: ['Hybrid', 'App Only', 'GMS', 'Listing Only'],
+      enum: ['Hybrid', 'App Only', 'GMS', 'Listing Only', 'Custom'],
       default: 'Hybrid',
       index: true,
     },
+    subscriptionPrice: { type: Number, default: null, min: 0 },
     subscriptionStatus: {
       type: String,
       enum: ['Active', 'Inactive', 'Trial', 'Expired'],

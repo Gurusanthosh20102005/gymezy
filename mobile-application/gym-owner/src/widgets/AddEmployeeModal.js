@@ -593,7 +593,7 @@ export const AddEmployeeModal = ({
                     Employee Photo
                   </Text>
                   <Text style={[styles.photoHelpSub, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
-                    {avatar ? 'Photo attached. Tap to change.' : 'Upload Photo (JPG, PNG Max 2MB)'}
+                    {avatar ? 'Photo attached. Tap to change.' : 'Upload Photo (JPG, PNG Max 1MB)'}
                   </Text>
                   <TouchableOpacity onPress={handlePickPhoto} style={{ marginTop: 6 }}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: AppColors.primaryColor }}>
@@ -2062,7 +2062,7 @@ export const AddEmployeeModal = ({
                       Choose Document or Photo
                     </Text>
                     <Text style={{ fontSize: 11, color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B', marginTop: 2 }}>
-                      Supports PDF, JPG, PNG up to 5MB
+                      Supports PDF, JPG, PNG up to 1MB
                     </Text>
                     <View
                       style={{

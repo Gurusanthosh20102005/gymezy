@@ -70,6 +70,7 @@ const mapMembership = (m) => {
     plan: m.membershipTier || 'Standard',
     startDate: startStr,
     expiryDate: endStr,
+    rawEndDate: m.endDate || null,
     daysLeft: m.status === 'Cancelled' ? 'Cancelled' : `${daysRemaining} days left`,
     status: m.status || 'Active',
     paymentType: m.payment?.method || 'Online',
@@ -79,7 +80,15 @@ const mapMembership = (m) => {
     source: m.source || (m.walkInDetails?.bookedBy || m.walkInDetails?.bookedByName ? 'WALK_IN' : 'APP'),
     walkInDetails: m.walkInDetails || null,
     cancellation: m.cancellation || null,
-    trainerName: m.trainerId?.name || (m.hasTrainer ? 'Assigned' : 'None'),
+    trainerName: m.trainerId?.name || (m.hasTrainer ? 'Assigned Trainer' : 'None'),
+    trainerId: m.trainerId?._id || m.trainerId?.id || null,
+    hasTrainer: Boolean(m.hasTrainer || m.trainerId),
+    assignedTrainer: m.trainerId?.name || (m.hasTrainer ? 'Assigned Trainer' : null),
+    trainerAvatar: m.trainerId?.profilePicture || m.trainerId?.avatar || null,
+    trainerSpecialty: m.trainerId?.specialty || null,
+    trainerEmployeeId: m.trainerId?.employeeId || null,
+    trainerSlot: m.trainerSlot || null,
+    trainerFee: Number(m.pricing?.trainerFee || 0),
     emergencyContact: m.userId?.emergencyContact || m.emergencyContact || 'Not Specified',
     gender: m.userId?.gender || 'Not Specified',
     bloodGroup: m.userId?.bloodGroup || 'Not Specified',
@@ -87,14 +96,25 @@ const mapMembership = (m) => {
   };
 };
 
-export const MembersTab = ({ topInset, navigation }) => {
+export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, onChangeMode }) => {
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const { showToast } = useToast();
-  const { gym, refreshGymProfile } = useAuth();
+  const { gym, user, refreshGymProfile } = useAuth();
+  const isManagerUser =
+    String(user?.role || '').toLowerCase() === 'manager' ||
+    user?.role === 'EMPLOYEE' ||
+    (user?.accessType && user.accessType !== 'Admin');
+  const canActOnSwitchStatus = (status) =>
+    status === 'PENDING_GYM_APPROVAL' || (!isManagerUser && status === 'PENDING_GYM_ADMIN_APPROVAL');
 
-  // Mode: 'MEMBERS' | 'SWITCHES' | 'CANCELLATIONS' | 'BOOKINGS'
-  const [activeMode, setActiveMode] = useState('MEMBERS');
+  // Mode: 'MEMBERS' | 'SWITCHES' | 'CANCELLATIONS'
+  const [internalMode, setInternalMode] = useState('MEMBERS');
+  const activeMode = controlledMode || internalMode;
+  const setActiveMode = (mode) => {
+    setInternalMode(mode);
+    onChangeMode?.(mode);
+  };
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -169,9 +189,12 @@ export const MembersTab = ({ topInset, navigation }) => {
   );
 
   // Extend Membership Form State
+  const [extendMember, setExtendMember] = useState(null);
   const [extendPlan, setExtendPlan] = useState(DEFAULT_PLANS[1]);
   const [extendAmount, setExtendAmount] = useState('4499');
-  const [extendPaymentMethod, setExtendPaymentMethod] = useState('UPI');
+  const [extendPaymentMethod, setExtendPaymentMethod] = useState('Cash');
+  const [extendTrainerId, setExtendTrainerId] = useState('none');
+  const [isExtending, setIsExtending] = useState(false);
 
   // Fetch Members Page (Server-side Paginated with Infinite Scroll)
   const fetchMembersPage = useCallback(
@@ -390,48 +413,62 @@ export const MembersTab = ({ topInset, navigation }) => {
 
 
 
-  // Submit Extend Membership
-  const handleExtendSubmit = () => {
-    if (!selectedMember) return;
-
-    const currentExpiry = new Date();
-    const daysToAdd = extendPlan.days || 90;
-    const newExpiry = new Date(currentExpiry.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
-
-    const formatDate = (d) =>
-      d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-
-    const updated = members.map((m) => {
-      if (m.id === selectedMember.id || m.key === selectedMember.key) {
-        return {
-          ...m,
-          plan: extendPlan.name,
-          expiryDate: formatDate(newExpiry),
-          daysLeft: `${daysToAdd} days left`,
-          status: 'Active',
-          amount: `₹${Number(extendAmount || extendPlan.price).toLocaleString('en-IN')}`,
-          paymentMethod: extendPaymentMethod,
-        };
-      }
-      return m;
-    });
-
-    setMembers(updated);
-    if (selectedMember) {
-      setSelectedMember({
-        ...selectedMember,
-        plan: extendPlan.name,
-        expiryDate: formatDate(newExpiry),
-        daysLeft: `${daysToAdd} days left`,
-        status: 'Active',
-      });
+  // Submit Extend Membership (Dual-Lifecycle: WALK_IN direct extend vs APP renewal offer)
+  const handleExtendSubmit = async () => {
+    const target = extendMember || selectedMember;
+    if (!target) return;
+    if (target.status === 'Cancelled') {
+      showToast({ message: 'Cancelled memberships cannot be extended.', isError: true });
+      return;
     }
 
-    setShowExtendModal(false);
-    showToast({
-      message: `Membership extended for ${selectedMember.name} until ${formatDate(newExpiry)}!`,
-      isSuccess: true,
-    });
+    const isWalkIn = target.source === 'WALK_IN' || target.isWalkIn;
+    const targetId = target.id || target.key || target.memberId;
+    const daysToAdd = extendPlan?.days || 30;
+    const planTier = extendPlan?.tier || extendPlan?.name || 'Monthly';
+    const amountNum = Number(extendAmount || extendPlan?.price || 0);
+    const chosenTrainer =
+      extendTrainerId && extendTrainerId !== 'none'
+        ? trainersList.find((t) => String(t._id || t.id) === String(extendTrainerId))
+        : null;
+
+    setIsExtending(true);
+    try {
+      if (isWalkIn) {
+        await apiService.extendMembership(targetId, {
+          planTier,
+          durationDays: daysToAdd,
+          amountPaid: amountNum,
+          paymentMethod: extendPaymentMethod || 'Cash',
+          trainerId: chosenTrainer ? (chosenTrainer._id || chosenTrainer.id) : 'none',
+        });
+        showToast({
+          message: `Walk-in membership extended for ${target.name}!`,
+          isSuccess: true,
+        });
+      } else {
+        await apiService.sendRenewalOffer(targetId, {
+          planTier,
+          durationDays: daysToAdd,
+          amount: amountNum,
+          trainerId: chosenTrainer ? (chosenTrainer._id || chosenTrainer.id) : 'none',
+        });
+        showToast({
+          message: `Renewal offer sent to ${target.name} via GYMEZY App!`,
+          isSuccess: true,
+        });
+      }
+      setShowExtendModal(false);
+      setExtendMember(null);
+      await fetchMembersData();
+    } catch (err) {
+      showToast({
+        message: err.message || 'Failed to process membership extension.',
+        isError: true,
+      });
+    } finally {
+      setIsExtending(false);
+    }
   };
 
   // Membership Cancellation Handler (SSOT: Walk-in direct cancel vs User app negotiation)
@@ -667,27 +704,41 @@ export const MembersTab = ({ topInset, navigation }) => {
     const req = switchReqToAccept;
     try {
       const reqId = req._id || req.requestId;
-      await apiService.respondToSwitchRequest(reqId, {
+      const res = await apiService.respondToSwitchRequest(reqId, {
         action: 'ACCEPT',
-        remarks: 'Accepted by Gym Owner via mobile console',
+        remarks: isManagerUser
+          ? 'Submitted by Manager via mobile console'
+          : 'Approved & executed by Gym Admin via mobile console',
       });
+      const resData = res?.data || res || {};
+      const updatedReq = resData.switchRequest || resData;
+      const nextStatus = updatedReq?.status || (!isManagerUser ? 'APPROVED_AND_EXECUTED' : 'PENDING_GYM_ADMIN_APPROVAL');
+      const successMsg = res?.message || (
+        nextStatus === 'APPROVED_AND_EXECUTED'
+          ? 'Plan switch approved and executed!'
+          : 'Plan switch submitted for Gym Admin approval.'
+      );
+
       setSwitchRequests((prev) =>
         prev.map((r) =>
           r._id === reqId || r.requestId === req.requestId
-            ? { ...r, status: 'PENDING_SUPER_ADMIN_APPROVAL' }
+            ? { ...r, status: nextStatus }
             : r
         )
       );
       if (selectedSwitchRequest && (selectedSwitchRequest._id === reqId || selectedSwitchRequest.requestId === req.requestId)) {
-        setSelectedSwitchRequest((prev) => ({ ...prev, status: 'PENDING_SUPER_ADMIN_APPROVAL' }));
+        setSelectedSwitchRequest((prev) => ({ ...prev, status: nextStatus }));
       }
       setShowSwitchAcceptModal(false);
       setSwitchReqToAccept(null);
       showToast({
-        message: 'Plan switch request accepted & sent to Super Admin for execution',
+        message: successMsg,
         isSuccess: true,
       });
       fetchSupportData();
+      if (nextStatus === 'APPROVED_AND_EXECUTED') {
+        fetchMembersData();
+      }
     } catch (err) {
       Alert.alert('Action Failed', err.message || 'Unable to accept switch request.');
     }
@@ -826,9 +877,9 @@ export const MembersTab = ({ topInset, navigation }) => {
       if (switchFilter === 'Pending Review') {
         matchesFilter = s.status === 'PENDING_GYM_APPROVAL';
       } else if (switchFilter === 'Sent to Admin') {
-        matchesFilter = ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(s.status);
+        matchesFilter = ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(s.status);
       } else if (switchFilter === 'Approved') {
-        matchesFilter = ['APPROVED', 'COMPLETED'].includes(s.status);
+        matchesFilter = ['APPROVED', 'APPROVED_AND_EXECUTED', 'COMPLETED'].includes(s.status);
       } else if (switchFilter === 'Rejected') {
         matchesFilter = ['REJECTED_BY_GYM', 'REJECTED_BY_SUPER_ADMIN', 'REJECTED'].includes(s.status);
       }
@@ -1179,12 +1230,12 @@ export const MembersTab = ({ topInset, navigation }) => {
             <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
               <View style={styles.statCardHeader}>
                 <MaterialIcons name="admin-panel-settings" size={18} color="#6366F1" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Sent to Admin</Text>
+                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Pending Admin</Text>
               </View>
               <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                {switchRequests.filter((r) => ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(r.status)).length}
+                {switchRequests.filter((r) => ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(r.status)).length}
               </Text>
-              <Text style={[styles.statCardSubtitle, { color: '#6366F1' }]}>In Admin review</Text>
+              <Text style={[styles.statCardSubtitle, { color: '#6366F1' }]}>Awaiting Gym Admin</Text>
             </View>
 
             <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
@@ -1293,28 +1344,6 @@ export const MembersTab = ({ topInset, navigation }) => {
               </TouchableOpacity>
             ) : null}
           </View>
-
-          {/* Filter Icon Button (Opens Mode & Section Picker) */}
-          <TouchableOpacity
-            style={[
-              styles.filterIconBtn,
-              {
-                backgroundColor: activeMode !== 'MEMBERS' ? AppColors.primaryColor : isDark ? AppColors.darkCard : '#FFFFFF',
-                borderColor: activeMode !== 'MEMBERS' ? AppColors.primaryColor : isDark ? AppColors.darkBorder : '#E2E8F0',
-              },
-            ]}
-            onPress={() => setShowModeFilterModal(true)}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons
-              name="tune"
-              size={22}
-              color={activeMode !== 'MEMBERS' ? '#FFFFFF' : isDark ? '#FFFFFF' : '#0F172A'}
-            />
-            {activeMode !== 'MEMBERS' && (
-              <View style={styles.filterActiveDot} />
-            )}
-          </TouchableOpacity>
         </View>
 
         {/* 5. FILTER CHIPS */}
@@ -1654,8 +1683,8 @@ export const MembersTab = ({ topInset, navigation }) => {
                 const quote = req.quoteSnapshot || {};
                 const switchType = quote.switchType || 'SWITCH';
                 const isUpgrade = switchType === 'UPGRADE';
-                const isPendingGym = req.status === 'PENDING_GYM_APPROVAL';
-                const isSentAdmin = ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(req.status);
+                const isPendingGym = canActOnSwitchStatus(req.status);
+                const isSentAdmin = ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(req.status);
                 const isApproved = ['APPROVED', 'APPROVED_AND_EXECUTED', 'COMPLETED'].includes(req.status);
                 const isRejected = ['REJECTED_BY_GYM', 'REJECTED_BY_SUPER_ADMIN', 'REJECTED'].includes(req.status);
 
@@ -1664,7 +1693,7 @@ export const MembersTab = ({ topInset, navigation }) => {
 
                 if (isSentAdmin) {
                   statusBadgeText = '#6366F1';
-                  statusLabel = 'Sent to Super Admin';
+                  statusLabel = req.status === 'PENDING_GYM_ADMIN_APPROVAL' ? 'Pending Gym Admin' : 'In Admin Review';
                 } else if (isApproved) {
                   statusBadgeText = '#16A34A';
                   statusLabel = 'Approved & Executed';
@@ -1880,8 +1909,10 @@ export const MembersTab = ({ topInset, navigation }) => {
                           onPress={() => handleOpenAcceptSwitch(req)}
                           activeOpacity={0.8}
                         >
-                          <MaterialIcons name="send" size={15} color="#FFFFFF" />
-                          <Text style={styles.switchAcceptBtnText}>Accept & Send to Admin</Text>
+                          <MaterialIcons name={isManagerUser ? 'send' : 'check'} size={15} color="#FFFFFF" />
+                          <Text style={styles.switchAcceptBtnText}>
+                            {isManagerUser ? 'Accept & Send to Admin' : 'Approve & Execute'}
+                          </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -2426,7 +2457,10 @@ export const MembersTab = ({ topInset, navigation }) => {
                           { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8', marginTop: 2 },
                         ]}
                       >
-                        ID: {selectedMember.memberId || selectedMember.id} • Joined {selectedMember.joinDate || '21 Jul 2025'}
+                        ID: {selectedMember.memberId || selectedMember.id}
+                        {selectedMember.joinDate || selectedMember.startDate
+                          ? ` • Joined ${selectedMember.joinDate || selectedMember.startDate}`
+                          : ''}
                       </Text>
                     </View>
                   </View>
@@ -2514,7 +2548,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                           Start Date
                         </Text>
                         <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {selectedMember.startDate || '21 Jul 2025'}
+                          {selectedMember.startDate || '—'}
                         </Text>
                       </View>
 
@@ -2523,7 +2557,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                           Expiry Date
                         </Text>
                         <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {selectedMember.expiryDate || selectedMember.expiry || '29 Sep 2027'}
+                          {selectedMember.expiryDate || selectedMember.expiry || '—'}
                         </Text>
                       </View>
 
@@ -2543,7 +2577,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                             },
                           ]}
                         >
-                          {selectedMember.daysLeft || '90 days left'}
+                          {selectedMember.daysLeft || '—'}
                         </Text>
                       </View>
 
@@ -2552,98 +2586,152 @@ export const MembersTab = ({ topInset, navigation }) => {
                           Paid Amount
                         </Text>
                         <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {selectedMember.amount || '₹4,499'} (
-                          {selectedMember.paymentMethod || 'Online / UPI'})
+                          {selectedMember.amount || '—'}
+                          {selectedMember.paymentMethod ? ` (${selectedMember.paymentMethod})` : ''}
                         </Text>
                       </View>
                     </View>
                   </View>
 
-                  {/* 2. Trainer & Goals Section */}
-                  <View
-                    style={[
-                      styles.sheetSectionCard,
-                      {
-                        backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
-                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                      },
-                    ]}
-                  >
-                    <View style={styles.sheetSectionHeader}>
-                      <MaterialIcons name="fitness-center" size={17} color={AppColors.primaryColor} />
-                      <Text style={[styles.sheetSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                        Trainer & Fitness Goals
-                      </Text>
-                    </View>
+                  {/* 2. Trainer & Goals Section (only shown if real data exists) */}
+                  {Boolean(
+                    selectedMember.assignedTrainer ||
+                      selectedMember.fitnessGoal ||
+                      (selectedMember.bloodGroup && selectedMember.bloodGroup !== 'Not Specified') ||
+                      (selectedMember.medicalNotes && selectedMember.medicalNotes !== 'None')
+                  ) && (
+                    <View
+                      style={[
+                        styles.sheetSectionCard,
+                        {
+                          backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                          borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        },
+                      ]}
+                    >
+                      <View style={styles.sheetSectionHeader}>
+                        <MaterialIcons name="fitness-center" size={17} color={AppColors.primaryColor} />
+                        <Text style={[styles.sheetSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                          Trainer & Fitness Goals
+                        </Text>
+                      </View>
 
-                    <View style={styles.sheetSectionBox}>
-                      <View
-                        style={[
-                          styles.trainerCardBox,
-                          {
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
-                            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                          },
-                        ]}
-                      >
-                        <MaterialIcons
-                          name="person"
-                          size={24}
-                          color={AppColors.primaryColor}
-                        />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text
+                      <View style={styles.sheetSectionBox}>
+                        {Boolean(selectedMember.assignedTrainer) && (
+                          <View
                             style={[
-                              styles.trainerCardTitle,
-                              { color: isDark ? '#FFFFFF' : '#0F172A' },
+                              styles.trainerCardBox,
+                              {
+                                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF',
+                                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                              },
                             ]}
                           >
-                            {selectedMember.assignedTrainer || 'Floor Head Trainer'}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.trainerCardSub,
-                              { color: isDark ? '#94A3B8' : '#64748B' },
-                            ]}
-                          >
-                            Assigned Personal Coach
-                          </Text>
-                        </View>
-                      </View>
+                            {selectedMember.trainerAvatar ? (
+                              <Image
+                                source={{ uri: selectedMember.trainerAvatar }}
+                                style={{
+                                  width: 42,
+                                  height: 42,
+                                  borderRadius: 21,
+                                  borderWidth: 1,
+                                  borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                                }}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View
+                                style={{
+                                  width: 42,
+                                  height: 42,
+                                  borderRadius: 21,
+                                  backgroundColor: isDark ? 'rgba(37, 99, 235, 0.16)' : '#EFF6FF',
+                                  justifyContent: 'center',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <MaterialIcons
+                                  name="person"
+                                  size={22}
+                                  color={AppColors.primaryColor}
+                                />
+                              </View>
+                            )}
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                              <Text
+                                style={[
+                                  styles.trainerCardTitle,
+                                  { color: isDark ? '#FFFFFF' : '#0F172A' },
+                                ]}
+                              >
+                                {selectedMember.assignedTrainer}
+                                {selectedMember.trainerEmployeeId ? ` (${selectedMember.trainerEmployeeId})` : ''}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.trainerCardSub,
+                                  { color: isDark ? '#94A3B8' : '#64748B' },
+                                ]}
+                              >
+                                {selectedMember.trainerSpecialty || 'Assigned Personal Coach'}
+                                {selectedMember.trainerSlot ? ` • ${selectedMember.trainerSlot}` : ''}
+                              </Text>
+                              {selectedMember.trainerFee > 0 && (
+                                <Text
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: '700',
+                                    color: AppColors.secondaryColor,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  Trainer Fee: ₹{Number(selectedMember.trainerFee).toLocaleString('en-IN')}
+                                </Text>
+                              )}
+                            </View>
+                          </View>
+                        )}
 
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                          Fitness Goal
-                        </Text>
-                        <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {selectedMember.fitnessGoal || 'General Fitness'}
-                        </Text>
-                      </View>
+                        {Boolean(selectedMember.fitnessGoal) && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                              Fitness Goal
+                            </Text>
+                            <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                              {selectedMember.fitnessGoal}
+                            </Text>
+                          </View>
+                        )}
 
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                          Blood Group
-                        </Text>
-                        <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {selectedMember.bloodGroup || 'O+'}
-                        </Text>
-                      </View>
+                        {Boolean(selectedMember.bloodGroup && selectedMember.bloodGroup !== 'Not Specified') && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                              Blood Group
+                            </Text>
+                            <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                              {selectedMember.bloodGroup}
+                            </Text>
+                          </View>
+                        )}
 
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                          Medical Notes
-                        </Text>
-                        <Text
-                          style={[
-                            styles.detailVal,
-                            { color: isDark ? '#FFFFFF' : '#0F172A', flex: 1, textAlign: 'right' },
-                          ]}
-                        >
-                          {selectedMember.medicalNotes || 'None'}
-                        </Text>
+                        {Boolean(selectedMember.medicalNotes && selectedMember.medicalNotes !== 'None') && (
+                          <View style={styles.detailRow}>
+                            <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                              Medical Notes
+                            </Text>
+                            <Text
+                              style={[
+                                styles.detailVal,
+                                { color: isDark ? '#FFFFFF' : '#0F172A', flex: 1, textAlign: 'right' },
+                              ]}
+                            >
+                              {selectedMember.medicalNotes}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     </View>
-                  </View>
+                  )}
 
                   {/* 3. Emergency & Contact Details Section */}
                   <View
@@ -2658,7 +2746,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                     <View style={styles.sheetSectionHeader}>
                       <MaterialIcons name="contact-phone" size={17} color={AppColors.primaryColor} />
                       <Text style={[styles.sheetSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                        Emergency & Contact Details
+                        Contact Details
                       </Text>
                     </View>
 
@@ -2668,7 +2756,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                           Member Phone
                         </Text>
                         <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {selectedMember.phone}
+                          {selectedMember.phone || '—'}
                         </Text>
                       </View>
 
@@ -2677,35 +2765,37 @@ export const MembersTab = ({ topInset, navigation }) => {
                           Member Email
                         </Text>
                         <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {selectedMember.email}
+                          {selectedMember.email || '—'}
                         </Text>
                       </View>
 
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                          Emergency Contact Name
-                        </Text>
-                        <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {selectedMember.emergencyContact?.name || 'Guardian'} (
-                          {selectedMember.emergencyContact?.relation || 'Parent'})
-                        </Text>
-                      </View>
+                      {Boolean(selectedMember.emergencyContact?.name) && (
+                        <View style={styles.detailRow}>
+                          <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                            Emergency Contact
+                          </Text>
+                          <Text style={[styles.detailVal, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                            {selectedMember.emergencyContact.name}
+                            {selectedMember.emergencyContact.relation ? ` (${selectedMember.emergencyContact.relation})` : ''}
+                          </Text>
+                        </View>
+                      )}
 
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                          Emergency Phone
-                        </Text>
-                        <Text
-                          style={[
-                            styles.detailVal,
-                            { color: AppColors.dangerRed, fontWeight: '700' },
-                          ]}
-                        >
-                          {selectedMember.emergencyContact?.phone ||
-                            selectedMember.emergencyContact ||
-                            '+91 98400 00000'}
-                        </Text>
-                      </View>
+                      {Boolean(selectedMember.emergencyContact?.phone) && (
+                        <View style={styles.detailRow}>
+                          <Text style={[styles.detailLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                            Emergency Phone
+                          </Text>
+                          <Text
+                            style={[
+                              styles.detailVal,
+                              { color: AppColors.dangerRed, fontWeight: '700' },
+                            ]}
+                          >
+                            {selectedMember.emergencyContact.phone}
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </View>
 
@@ -2756,7 +2846,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                           <Text
                             style={[styles.sheetStatNum, { color: AppColors.secondaryColor }]}
                           >
-                            {selectedMember.streak || '1 Day'}
+                            {selectedMember.streak || (selectedMember.checkins > 0 ? `${selectedMember.checkins} Day${selectedMember.checkins > 1 ? 's' : ''}` : '0 Days')}
                           </Text>
                           <Text
                             style={[
@@ -2831,17 +2921,33 @@ export const MembersTab = ({ topInset, navigation }) => {
 
                   {/* Primary Action Buttons */}
                   <View style={styles.sheetBottomActionRow}>
-                    <TouchableOpacity
-                      style={[styles.sheetMainBtn, { backgroundColor: AppColors.primaryColor }]}
-                      onPress={() => {
-                        setExtendPlan(availablePlans[1] || availablePlans[0]);
-                        setExtendAmount(String(availablePlans[1]?.price || 4499));
-                        setShowExtendModal(true);
-                      }}
-                    >
-                      <MaterialIcons name="autorenew" size={18} color="#FFFFFF" />
-                      <Text style={styles.sheetMainBtnText}>Extend / Renew Plan</Text>
-                    </TouchableOpacity>
+                    {selectedMember.status !== 'Cancelled' && (
+                      <TouchableOpacity
+                        style={[styles.sheetMainBtn, { backgroundColor: AppColors.primaryColor }]}
+                        onPress={() => {
+                          const target = selectedMember;
+                          const matched =
+                            availablePlans.find((p) => p.tier === target.plan || p.name === target.plan) ||
+                            availablePlans[0];
+                          setExtendMember(target);
+                          setExtendPlan(matched);
+                          setExtendAmount(String(matched?.price || target.rawAmount || 0));
+                          setExtendTrainerId(target.trainerId || 'none');
+                          setExtendPaymentMethod('Cash');
+                          setSelectedMember(null);
+                          setTimeout(() => {
+                            setShowExtendModal(true);
+                          }, 120);
+                        }}
+                      >
+                        <MaterialIcons name="autorenew" size={18} color="#FFFFFF" />
+                        <Text style={styles.sheetMainBtnText}>
+                          {(selectedMember.source === 'WALK_IN' || selectedMember.isWalkIn)
+                            ? 'Extend / Renew Plan'
+                            : 'Send Renewal Offer'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
 
                     {selectedMember.status !== 'Cancelled' ? (
                       <TouchableOpacity
@@ -3183,6 +3289,39 @@ export const MembersTab = ({ topInset, navigation }) => {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              {Boolean(extendMember) && (() => {
+                const isWalkInTarget = extendMember.source === 'WALK_IN' || extendMember.isWalkIn;
+                const now = new Date();
+                const curEnd = extendMember.rawEndDate ? new Date(extendMember.rawEndDate) : now;
+                const base = curEnd > now ? curEnd : now;
+                const nextEnd = new Date(base.getTime() + (extendPlan?.days || 30) * 24 * 60 * 60 * 1000);
+                const nextEndStr = nextEnd.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                return (
+                  <View
+                    style={{
+                      padding: 12,
+                      borderRadius: 10,
+                      marginBottom: 14,
+                      backgroundColor: isDark ? '#1E293B' : '#EFF6FF',
+                      borderWidth: 1,
+                      borderColor: isDark ? '#334155' : '#BFDBFE',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0F172A' }}>
+                      {extendMember.name} ({isWalkInTarget ? 'Walk-in POS' : 'Online App'})
+                    </Text>
+                    <Text style={{ fontSize: 12, color: isDark ? '#94A3B8' : '#475569', marginTop: 2 }}>
+                      New Stacked Expiry: {nextEndStr} (+{extendPlan?.days || 30} days)
+                    </Text>
+                    {!isWalkInTarget && (
+                      <Text style={{ fontSize: 11.5, color: isDark ? '#93C5FD' : '#1D4ED8', marginTop: 4 }}>
+                        Online App Member: Sends a Renewal Offer &amp; Payment Request to their GYMEZY App.
+                      </Text>
+                    )}
+                  </View>
+                );
+              })()}
+
               <Text
                 style={[
                   styles.fieldLabel,
@@ -3268,62 +3407,73 @@ export const MembersTab = ({ topInset, navigation }) => {
                 keyboardType="numeric"
               />
 
-              <Text
-                style={[
-                  styles.fieldLabel,
-                  { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155', marginTop: 14 },
-                ]}
-              >
-                Payment Method
-              </Text>
-              <View style={styles.chipsRow}>
-                {PAYMENT_METHODS.map((method) => {
-                  const isSelected = extendPaymentMethod === method;
-                  return (
-                    <TouchableOpacity
-                      key={method}
-                      style={[
-                        styles.chipBtn,
-                        {
-                          backgroundColor: isSelected
-                            ? AppColors.primaryColor
-                            : isDark
-                            ? AppColors.darkSurface
-                            : '#F8FAFC',
-                          borderColor: isSelected
-                            ? AppColors.primaryColor
-                            : isDark
-                            ? AppColors.darkBorder
-                            : '#E2E8F0',
-                        },
-                      ]}
-                      onPress={() => setExtendPaymentMethod(method)}
-                    >
-                      <Text
-                        style={[
-                          styles.chipBtnText,
-                          {
-                            color: isSelected
-                              ? '#FFFFFF'
-                              : isDark
-                              ? '#94A3B8'
-                              : '#64748B',
-                          },
-                        ]}
-                      >
-                        {method}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              {(extendMember?.source === 'WALK_IN' || extendMember?.isWalkIn) && (
+                <>
+                  <Text
+                    style={[
+                      styles.fieldLabel,
+                      { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155', marginTop: 14 },
+                    ]}
+                  >
+                    Payment Method
+                  </Text>
+                  <View style={styles.chipsRow}>
+                    {PAYMENT_METHODS.map((method) => {
+                      const isSelected = extendPaymentMethod === method;
+                      return (
+                        <TouchableOpacity
+                          key={method}
+                          style={[
+                            styles.chipBtn,
+                            {
+                              backgroundColor: isSelected
+                                ? AppColors.primaryColor
+                                : isDark
+                                ? AppColors.darkSurface
+                                : '#F8FAFC',
+                              borderColor: isSelected
+                                ? AppColors.primaryColor
+                                : isDark
+                                ? AppColors.darkBorder
+                                : '#E2E8F0',
+                            },
+                          ]}
+                          onPress={() => setExtendPaymentMethod(method)}
+                        >
+                          <Text
+                            style={[
+                              styles.chipBtnText,
+                              {
+                                color: isSelected
+                                  ? '#FFFFFF'
+                                  : isDark
+                                  ? '#94A3B8'
+                                  : '#64748B',
+                              },
+                            ]}
+                          >
+                            {method}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
 
               <TouchableOpacity
-                style={[styles.submitBtn, { backgroundColor: AppColors.primaryColor, marginTop: 22 }]}
+                style={[styles.submitBtn, { backgroundColor: AppColors.primaryColor, marginTop: 22, opacity: isExtending ? 0.7 : 1 }]}
                 onPress={handleExtendSubmit}
+                disabled={isExtending}
               >
                 <MaterialIcons name="done" size={20} color="#FFFFFF" />
-                <Text style={styles.submitBtnText}>Confirm Renewal & Extend</Text>
+                <Text style={styles.submitBtnText}>
+                  {isExtending
+                    ? 'Processing...'
+                    : (extendMember?.source === 'WALK_IN' || extendMember?.isWalkIn)
+                    ? 'Confirm Renewal & Extend'
+                    : 'Send Renewal Offer'}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -3610,8 +3760,10 @@ export const MembersTab = ({ topInset, navigation }) => {
                     <Text style={[styles.detailVal, { color: AppColors.primaryColor, fontWeight: '700' }]}>
                       {selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
                         ? 'Pending Gym Review'
+                        : selectedSwitchRequest.status === 'PENDING_GYM_ADMIN_APPROVAL'
+                        ? 'Pending Gym Admin'
                         : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(selectedSwitchRequest.status)
-                        ? 'Sent to Super Admin'
+                        ? 'In Admin Review'
                         : ['APPROVED', 'APPROVED_AND_EXECUTED', 'COMPLETED'].includes(selectedSwitchRequest.status)
                         ? 'Approved & Executed'
                         : 'Rejected'}
@@ -3626,13 +3778,13 @@ export const MembersTab = ({ topInset, navigation }) => {
                         backgroundColor:
                           selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
                             ? isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7'
-                            : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                            : ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
                             ? isDark ? 'rgba(99, 102, 241, 0.12)' : '#EEF2FF'
                             : isDark ? 'rgba(16, 185, 129, 0.12)' : '#ECFDF5',
                         borderColor:
                           selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
                             ? isDark ? 'rgba(245, 158, 11, 0.3)' : '#FDE68A'
-                            : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                            : ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
                             ? isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE'
                             : isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0',
                       },
@@ -3644,7 +3796,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                       color={
                         selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
                           ? '#D97706'
-                          : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                          : ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
                           ? '#6366F1'
                           : '#10B981'
                       }
@@ -3656,23 +3808,23 @@ export const MembersTab = ({ topInset, navigation }) => {
                           color:
                             selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
                               ? isDark ? '#FCD34D' : '#92400E'
-                              : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                              : ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
                               ? isDark ? '#A5B4FC' : '#3730A3'
                               : isDark ? '#6EE7B7' : '#065F46',
                         },
                       ]}
                     >
                       {selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL'
-                        ? 'Stage 1 of 2: Awaiting Gym Owner review before dispatching to Super Admin.'
-                        : ['PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
-                        ? 'Stage 2 of 2: Forwarded to Super Admin for final verification and atomic execution.'
+                        ? 'Pending Review: Owner approval executes immediately; Manager approval routes to Gym Admin.'
+                        : ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN'].includes(selectedSwitchRequest.status)
+                        ? 'Pending Gym Admin: Submitted by Manager. Awaiting Gym Admin final approval and execution.'
                         : ['APPROVED', 'APPROVED_AND_EXECUTED', 'COMPLETED'].includes(selectedSwitchRequest.status)
                         ? 'Completed: Plan switch verified and executed. Member pass is updated.'
                         : `Rejected: ${selectedSwitchRequest.rejectionReason || 'Switch request was declined.'}`}
                     </Text>
                   </View>
 
-                  {selectedSwitchRequest.status === 'PENDING_GYM_APPROVAL' && (
+                  {canActOnSwitchStatus(selectedSwitchRequest.status) && (
                     <View style={styles.sheetBottomActionRow}>
                       <TouchableOpacity
                         style={[styles.sheetMainBtn, { backgroundColor: AppColors.primaryColor }]}
@@ -3682,8 +3834,10 @@ export const MembersTab = ({ topInset, navigation }) => {
                           handleOpenAcceptSwitch(req);
                         }}
                       >
-                        <MaterialIcons name="send" size={18} color="#FFFFFF" />
-                        <Text style={styles.sheetMainBtnText}>Accept & Send to Admin</Text>
+                        <MaterialIcons name={isManagerUser ? 'send' : 'check'} size={18} color="#FFFFFF" />
+                        <Text style={styles.sheetMainBtnText}>
+                          {isManagerUser ? 'Accept & Send to Admin' : 'Approve & Execute'}
+                        </Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -3911,7 +4065,7 @@ export const MembersTab = ({ topInset, navigation }) => {
                 <MaterialIcons name="send" size={22} color={AppColors.primaryColor} />
               </View>
               <Text style={[styles.dialogTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                Accept Plan Switch Request
+                {isManagerUser ? 'Submit Plan Switch for Admin Approval' : 'Approve & Execute Plan Switch'}
               </Text>
             </View>
 
@@ -3959,7 +4113,9 @@ export const MembersTab = ({ topInset, navigation }) => {
                 </View>
 
                 <Text style={[styles.dialogNoticeText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                  Once forwarded, Super Admin will perform final verification and execute the membership transition atomically.
+                  {isManagerUser
+                    ? 'Once submitted, Gym Admin will review and execute the membership transition (unless you have direct approval permission).'
+                    : 'Approving will immediately execute the membership plan switch and update the member’s pass.'}
                 </Text>
 
                 <View style={styles.dialogActionsRow}>
@@ -3982,8 +4138,10 @@ export const MembersTab = ({ topInset, navigation }) => {
                     style={[styles.dialogSubmitBtn, { backgroundColor: AppColors.primaryColor }]}
                     onPress={handleConfirmAcceptSwitch}
                   >
-                    <MaterialIcons name="send" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.dialogSubmitBtnText}>Accept & Send</Text>
+                    <MaterialIcons name={isManagerUser ? 'send' : 'check'} size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.dialogSubmitBtnText}>
+                      {isManagerUser ? 'Accept & Send' : 'Approve & Execute'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </>

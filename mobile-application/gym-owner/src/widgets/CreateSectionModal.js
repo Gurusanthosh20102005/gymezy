@@ -218,113 +218,112 @@ export const CreateSectionModal = ({
     const list = trainers.length > 0 ? trainers : allEvaluatedTrainers;
     return list.find((t) => (t._id || t.id) === trainerId) || null;
   }, [trainers, allEvaluatedTrainers, trainerId]);
-}, [trainers, trainerId]);
 
-// Estimated End Date calculation in DD-MM-YYYY taking weekly active days into account
-const estimatedEndDate = useMemo(() => {
-  if (!startDate) return '—';
-  const end = calculateScheduleEndDate(startDate, durationDays, activeDays);
-  if (!end) return '—';
-  return formatToDDMMYYYY(end);
-}, [startDate, durationDays, activeDays]);
+  // Estimated End Date calculation in DD-MM-YYYY taking weekly active days into account
+  const estimatedEndDate = useMemo(() => {
+    if (!startDate) return '—';
+    const end = calculateScheduleEndDate(startDate, durationDays, activeDays);
+    if (!end) return '—';
+    return formatToDDMMYYYY(end);
+  }, [startDate, durationDays, activeDays]);
 
-// Toggle Day Selection
-const toggleDay = useCallback((dayId) => {
-  setActiveDays((prev) => {
-    if (prev.includes(dayId)) {
-      if (prev.length === 1) {
-        Alert.alert('Required', 'At least one active day of the week must be selected.');
-        return prev;
+  // Toggle Day Selection
+  const toggleDay = useCallback((dayId) => {
+    setActiveDays((prev) => {
+      if (prev.includes(dayId)) {
+        if (prev.length === 1) {
+          Alert.alert('Required', 'At least one active day of the week must be selected.');
+          return prev;
+        }
+        return prev.filter((d) => d !== dayId);
       }
-      return prev.filter((d) => d !== dayId);
+      return [...prev, dayId];
+    });
+  }, []);
+
+  // Submit Handler
+  const handleSubmit = async () => {
+    if (!title.trim()) {
+      Alert.alert('Validation Error', 'Please enter section name.');
+      return;
     }
-    return [...prev, dayId];
-  });
-}, []);
 
-// Submit Handler
-const handleSubmit = async () => {
-  if (!title.trim()) {
-    Alert.alert('Validation Error', 'Please enter section name.');
-    return;
-  }
+    if (!trainerId) {
+      Alert.alert('Validation Error', 'Please assign a trainer for this section.');
+      return;
+    }
 
-  if (!trainerId) {
-    Alert.alert('Validation Error', 'Please assign a trainer for this section.');
-    return;
-  }
+    const parsedCost = Number(cost);
+    if (Number.isNaN(parsedCost) || parsedCost < 0) {
+      Alert.alert('Validation Error', 'Please enter a valid section cost.');
+      return;
+    }
 
-  const parsedCost = Number(cost);
-  if (Number.isNaN(parsedCost) || parsedCost < 0) {
-    Alert.alert('Validation Error', 'Please enter a valid section cost.');
-    return;
-  }
+    const standardStartDate = parseDDMMYYYYtoStandard(startDate);
+    if (!standardStartDate) {
+      Alert.alert('Validation Error', 'Please enter a valid starting date in DD-MM-YYYY format (e.g. 21-10-2026).');
+      return;
+    }
 
-  const standardStartDate = parseDDMMYYYYtoStandard(startDate);
-  if (!standardStartDate) {
-    Alert.alert('Validation Error', 'Please enter a valid starting date in DD-MM-YYYY format (e.g. 21-10-2026).');
-    return;
-  }
+    const daysCount = Math.max(1, Number(durationDays) || 20);
+    const calculatedEnd = calculateScheduleEndDate(standardStartDate, daysCount, activeDays) || new Date(standardStartDate);
 
-  const daysCount = Math.max(1, Number(durationDays) || 20);
-  const calculatedEnd = calculateScheduleEndDate(standardStartDate, daysCount, activeDays) || new Date(standardStartDate);
+    const payload = {
+      gymId,
+      trainerId, // Connected strictly by ID only
+      title: title.trim(),
+      category,
+      cost: parsedCost,
+      startDate: standardStartDate,
+      endDate: calculatedEnd.toISOString(),
+      durationDays: daysCount,
+      startTime,
+      endTime,
+      activeDays,
+      maxCapacity: Math.max(1, Number(maxCapacity) || 25),
+      description: description.trim(),
+      inclusions: inclusions ? inclusions.split('\n').map((s) => s.trim()).filter(Boolean) : [],
+      instructions: instructions.trim(),
+      isActive: true,
+    };
 
-  const payload = {
-    gymId,
-    trainerId, // Connected strictly by ID only
-    title: title.trim(),
-    category,
-    cost: parsedCost,
-    startDate: standardStartDate,
-    endDate: calculatedEnd.toISOString(),
-    durationDays: daysCount,
-    startTime,
-    endTime,
-    activeDays,
-    maxCapacity: Math.max(1, Number(maxCapacity) || 25),
-    description: description.trim(),
-    inclusions: inclusions ? inclusions.split('\n').map((s) => s.trim()).filter(Boolean) : [],
-    instructions: instructions.trim(),
-    isActive: true,
+    setIsSubmitting(true);
+    try {
+      let result;
+      if (initialSection?._id) {
+        result = await apiService.updateSection(initialSection._id, payload);
+      } else {
+        result = await apiService.createSection(payload);
+      }
+
+      Alert.alert(
+        'Success',
+        `Section "${payload.title}" has been ${initialSection?._id ? 'updated' : 'published'} successfully!`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (onSuccess) onSuccess(result);
+              if (onClose) onClose();
+            },
+          },
+        ]
+      );
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to create section.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  setIsSubmitting(true);
-  try {
-    let result;
-    if (initialSection?._id) {
-      result = await apiService.updateSection(initialSection._id, payload);
-    } else {
-      result = await apiService.createSection(payload);
-    }
+  // Card background and border dynamic styles
+  const cardBg = isDark ? AppColors.darkCard : '#FFFFFF';
+  const inputBg = isDark ? '#1E293B' : '#F8FAFC';
+  const borderCol = isDark ? AppColors.darkBorder : '#E2E8F0';
+  const textCol = isDark ? '#FFFFFF' : '#0F172A';
+  const subTextCol = isDark ? '#94A3B8' : '#64748B';
 
-    Alert.alert(
-      'Success',
-      `Section "${payload.title}" has been ${initialSection?._id ? 'updated' : 'published'} successfully!`,
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            if (onSuccess) onSuccess(result);
-            if (onClose) onClose();
-          },
-        },
-      ]
-    );
-  } catch (err) {
-    Alert.alert('Error', err.message || 'Failed to create section.');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
-
-// Card background and border dynamic styles
-const cardBg = isDark ? AppColors.darkCard : '#FFFFFF';
-const inputBg = isDark ? '#1E293B' : '#F8FAFC';
-const borderCol = isDark ? AppColors.darkBorder : '#E2E8F0';
-const textCol = isDark ? '#FFFFFF' : '#0F172A';
-const subTextCol = isDark ? '#94A3B8' : '#64748B';
-
-return (
+  return (
   <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
     <View style={styles.modalOverlay}>
       <View

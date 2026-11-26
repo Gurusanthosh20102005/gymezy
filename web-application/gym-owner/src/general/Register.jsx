@@ -1,6 +1,19 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { BANKS, getBankByName } from '../utils/bankData';
 import {
+  stripEmojis,
+  containsEmoji,
+  validateEmail,
+  validatePhone,
+  validateUpiId,
+  validatePersonName,
+  validatePassword,
+  validatePostalCode,
+  validateAccountNumber,
+  validateConfirmAccountNumber,
+  MEDIA_FIELDS,
+} from '../utils/validationUtils';
+import {
   Row,
   Col,
   Input,
@@ -52,8 +65,10 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import confetti from 'canvas-confetti';
 import { useTheme } from '../theme/ThemeContext';
+import { loginUser } from '../redux/slices/authSlice';
 import { apiClient } from '../services/apiClient';
 import gymezyLogo from '../assets/logo/gymezy.png';
 
@@ -233,11 +248,11 @@ const DEFAULT_SAFETY = [
 ];
 
 const STEP_FIELDS = {
-  1: ['subscriptionType', 'gymName', 'ownerName', 'phone', 'email', 'password', 'confirmPassword', 'gstNumber', 'panNumber'],
-  2: ['address', 'area', 'city', 'state', 'pincode'],
-  3: ['floorSpaceSqFt', 'maxFloorCapacity', 'logo', 'facilities'],
+  1: ['subscriptionType', 'gymName', 'tagline', 'ownerName', 'phone', 'email', 'password', 'confirmPassword', 'gstNumber', 'panNumber'],
+  2: ['address', 'area', 'city', 'state', 'pincode', 'landmark'],
+  3: ['floorSpaceSqFt', 'maxFloorCapacity', 'logo', 'facilities', 'aboutText'],
   4: ['workouts', 'monthlyPrice'],
-  5: ['accountHolder', 'bankName', 'accountNumber', 'confirmAccountNumber', 'ifscCode', 'agreedToTerms'],
+  5: ['accountHolder', 'bankName', 'accountNumber', 'confirmAccountNumber', 'ifscCode', 'upiId', 'agreedToTerms'],
 };
 
 const STEP_REQUIRED_FIELDS = {
@@ -284,29 +299,21 @@ const validateField = (field, value, form) => {
       return '';
     case 'gymName':
       if (!value || !value.trim()) return 'Gym / Studio name is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in Gym / Studio name';
       if (value.trim().length < 2) return 'Must be at least 2 characters';
+      return '';
+    case 'tagline':
+      if (value && containsEmoji(value)) return 'Emojis are not allowed in Tagline';
       return '';
     case 'ownerName':
-      if (!value || !value.trim()) return 'Owner / MD name is required';
-      if (value.trim().length < 2) return 'Must be at least 2 characters';
-      return '';
+      return validatePersonName(value, 'Owner / MD name', 2, 100);
     case 'phone':
-      if (!value || !value.trim()) return 'Mobile number is required';
-      if (!/^\d{10}$/.test(value.trim())) return 'Must be a valid 10-digit mobile number';
-      return '';
+      return validatePhone(value);
     case 'email':
-      if (!value || !value.trim()) return 'Email address is required';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) return 'Enter a valid email (e.g. owner@gym.com)';
-      return '';
-    case 'password': {
+      return validateEmail(value);
+    case 'password':
       if (form?.isGoogleSso) return '';
-      if (!value) return 'Password is required';
-      if (value.length < 8 || value.length > 16) return 'Must be 8 to 16 characters';
-      if (!/[A-Z]/.test(value)) return 'Must contain at least 1 uppercase letter';
-      if (!/\d/.test(value)) return 'Must contain at least 1 number';
-      if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(value)) return 'Must contain 1 special character';
-      return '';
-    }
+      return validatePassword(value, { name: form?.ownerName, email: form?.email, phone: form?.phone });
     case 'confirmPassword':
       if (form?.isGoogleSso) return '';
       if (!value) return 'Please confirm your password';
@@ -324,21 +331,29 @@ const validateField = (field, value, form) => {
       return '';
     case 'address':
       if (!value || !value.trim()) return 'Street address is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in address';
       if (value.trim().length < 5) return 'Enter full street address (min 5 characters)';
       return '';
     case 'area':
       if (!value || !value.trim()) return 'Area / Locality is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in Area / Locality';
       return '';
     case 'city':
       if (!value || !value.trim()) return 'City is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in City';
       return '';
     case 'state':
       if (!value || !value.trim()) return 'State is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in State';
+      return '';
+    case 'landmark':
+      if (value && containsEmoji(value)) return 'Emojis are not allowed in Landmark';
+      return '';
+    case 'aboutText':
+      if (value && containsEmoji(value)) return 'Emojis are not allowed in description';
       return '';
     case 'pincode':
-      if (!value || !value.trim()) return 'Pincode is required';
-      if (!/^\d{6}$/.test(value.trim())) return 'Pincode must be exactly 6 digits';
-      return '';
+      return validatePostalCode(value);
     case 'floorSpaceSqFt':
       if (!value || Number(value) < 200) return 'Floor area must be at least 200 sq. ft.';
       if (Number(value) > 100000) return 'Floor area cannot exceed 100,000 sq. ft.';
@@ -361,22 +376,21 @@ const validateField = (field, value, form) => {
       return '';
     case 'accountHolder':
       if (!value || !value.trim()) return 'Account holder name is required';
+      if (containsEmoji(value)) return 'Emojis are not allowed in Account holder name';
       return '';
     case 'bankName':
       if (!value || !value.trim()) return 'Bank name is required';
       return '';
     case 'accountNumber':
-      if (!value || !value.trim()) return 'Account number is required';
-      if (value.trim().length < 8) return 'Account number must be at least 8 digits';
-      return '';
+      return validateAccountNumber(value);
     case 'confirmAccountNumber':
-      if (!value || !value.trim()) return 'Please confirm account number';
-      if (value.trim() !== form.accountNumber?.trim()) return 'Account numbers do not match';
-      return '';
+      return validateConfirmAccountNumber(value, form?.accountNumber);
     case 'ifscCode':
       if (!value || !value.trim()) return 'IFSC code is required';
       if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(value.trim())) return 'Invalid IFSC (e.g. HDFC0001234)';
       return '';
+    case 'upiId':
+      return validateUpiId(value);
     case 'agreedToTerms':
       if (!value) return 'You must accept the terms to proceed';
       return '';
@@ -394,7 +408,7 @@ const INITIAL_FORM_DATA = {
   password: '',
   confirmPassword: '',
   businessType: 'Private Limited',
-  yearEstablished: '2024',
+  yearEstablished: '',
   gstNumber: '',
   panNumber: '',
   branches: '1',
@@ -449,7 +463,6 @@ const INITIAL_FORM_DATA = {
     '24/7 CCTV surveillance coverage',
   ],
   singleSessionPrice: 199,
-  weeklyPassPrice: 799,
   fiveSessionPrice: 899,
   monthlyPrice: 1999,
   quarterlyPrice: 4999,
@@ -496,6 +509,7 @@ const format24HourTime = (value) => {
 export const Register = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useDispatch();
   const { isDarkMode, toggleTheme } = useTheme();
 
   // Google SSO Onboarding State passed from Login redirect
@@ -504,8 +518,6 @@ export const Register = () => {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [registeredGymData, setRegisteredGymData] = useState(null);
 
   // GPS Auto-detect loading state and pinned visibility state
   const [isFetchingGps, setIsFetchingGps] = useState(false);
@@ -694,12 +706,17 @@ export const Register = () => {
   }, [formData, emailCheckError]);
 
   const updateField = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    const sanitized = typeof value === 'string' && !MEDIA_FIELDS.has(field) ? stripEmojis(value) : value;
+    setFormData((prev) => ({ ...prev, [field]: sanitized }));
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
 
   const updateFields = (fieldsObj) => {
-    setFormData((prev) => ({ ...prev, ...fieldsObj }));
+    const sanitizedObj = {};
+    for (const [k, v] of Object.entries(fieldsObj)) {
+      sanitizedObj[k] = typeof v === 'string' && !MEDIA_FIELDS.has(k) ? stripEmojis(v) : v;
+    }
+    setFormData((prev) => ({ ...prev, ...sanitizedObj }));
   };
 
   const markFieldTouched = (field) => {
@@ -797,7 +814,8 @@ export const Register = () => {
       if (isGoogleSso && (field === 'password' || field === 'confirmPassword')) return false;
       const val = formData[field];
       if (Array.isArray(val)) return !val || val.length === 0;
-      return !val || String(val).trim() === '';
+      if (!val || String(val).trim() === '') return true;
+      return validateField(field, val, formData) !== '';
     });
     return {
       isValid: missing.length === 0,
@@ -901,9 +919,9 @@ export const Register = () => {
 
   const handleBusinessDocUpload = async (file) => {
     try {
-      const isLt10M = file.size / 1024 / 1024 < 10;
-      if (!isLt10M) {
-        message.error('Document size must be less than 10MB');
+      const isLt1M = file.size / 1024 / 1024 < 1;
+      if (!isLt1M) {
+        message.error('Document size must be less than 1MB');
         return false;
       }
       const b64 = await fileToBase64(file);
@@ -924,8 +942,23 @@ export const Register = () => {
     return false;
   };
 
+  const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+  const isAllowedImageFile = (file) => {
+    if (!file) return false;
+    if (file.type && ALLOWED_IMAGE_TYPES.has(file.type.toLowerCase())) return true;
+    return /\.(jpe?g|png|webp)$/i.test(file.name || '');
+  };
+
   const handleLogoUpload = async (file) => {
     try {
+      if (!isAllowedImageFile(file)) {
+        message.error('Only image files (JPG, PNG, WEBP) are allowed.');
+        return false;
+      }
+      if (file.size > 1024 * 1024) {
+        message.error('Logo image must be less than 1MB.');
+        return false;
+      }
       const b64 = await fileToBase64(file);
       updateField('logo', b64);
       message.success('Brand logo uploaded.');
@@ -937,6 +970,14 @@ export const Register = () => {
 
   const handleCoverUpload = async (file) => {
     try {
+      if (!isAllowedImageFile(file)) {
+        message.error('Only image files (JPG, PNG, WEBP) are allowed.');
+        return false;
+      }
+      if (file.size > 1024 * 1024) {
+        message.error('Cover photo must be less than 1MB.');
+        return false;
+      }
       const b64 = await fileToBase64(file);
       updateField('coverPhoto', b64);
       message.success('Cover photo uploaded.');
@@ -948,6 +989,14 @@ export const Register = () => {
 
   const handleFacilityPhotoUpload = async (file) => {
     try {
+      if (!isAllowedImageFile(file)) {
+        message.error('Only image files (JPG, PNG, WEBP) are allowed.');
+        return false;
+      }
+      if (file.size > 1024 * 1024) {
+        message.error('Facility photo must be less than 1MB.');
+        return false;
+      }
       const b64 = await fileToBase64(file);
       setFormData((prev) => ({
         ...prev,
@@ -1057,7 +1106,6 @@ export const Register = () => {
         aboutText: formData.aboutText,
 
         singleSessionPrice: Number(formData.singleSessionPrice),
-        weeklyPassPrice: Number(formData.weeklyPassPrice),
         fiveSessionPrice: Number(formData.fiveSessionPrice),
         monthlyPrice: Number(formData.monthlyPrice),
         quarterlyPrice: Number(formData.quarterlyPrice),
@@ -1085,19 +1133,32 @@ export const Register = () => {
       const res = await apiClient.post('/gyms/register', payload);
 
       if (res.data?.success) {
-        setRegisteredGymData({
-          ...res.data.data,
-          gymName: formData.gymName,
-          ownerName: formData.ownerName,
-          email: formData.email,
-        });
-        setIsSuccess(true);
-        resetForm();
         confetti({
           particleCount: 100,
           spread: 70,
           origin: { y: 0.6 },
         });
+
+        try {
+          if (!isGoogleSso && formData.email && formData.password) {
+            await dispatch(
+              loginUser({
+                identifier: formData.email.trim().toLowerCase(),
+                password: formData.password,
+              })
+            ).unwrap();
+            resetForm();
+            message.success('Application submitted! Redirecting to your application status.');
+            navigate('/application-status', { replace: true });
+            return;
+          }
+        } catch {
+          // Fall through to login redirect if auto-login fails
+        }
+
+        resetForm();
+        message.success('Application submitted! Please sign in to track your application status.');
+        navigate('/login', { replace: true });
       } else {
         message.error(res.data?.message || 'Registration failed. Please review your details.');
       }
@@ -1164,129 +1225,6 @@ export const Register = () => {
     }
     return null;
   };
-
-  if (isSuccess) {
-    return (
-      <div
-        style={{
-          minHeight: '100vh',
-          backgroundColor: isDarkMode ? '#09090b' : '#f8fafc',
-          color: isDarkMode ? '#ffffff' : '#0f172a',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 24,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 580,
-            width: '100%',
-            borderRadius: 16,
-            backgroundColor: isDarkMode ? '#121214' : '#ffffff',
-            border: `1px solid ${isDarkMode ? '#27272a' : '#e2e8f0'}`,
-            padding: '40px 32px',
-            textAlign: 'center',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.06)',
-          }}
-        >
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: '50%',
-              backgroundColor: '#e6f4ea',
-              color: '#16a34a',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 32,
-              marginBottom: 16,
-            }}
-          >
-            <CheckCircleFilled />
-          </div>
-
-          <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px 0' }}>
-            Application Submitted for Approval
-          </h2>
-
-          <p style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5, margin: '0 0 24px 0' }}>
-            Thank you for registering <strong>{registeredGymData?.gymName || 'your gym'}</strong>. Your gym profile and facility photos have been routed to the GYMEZY Super Admin review desk.
-          </p>
-
-          <div
-            style={{
-              backgroundColor: isDarkMode ? '#18181b' : '#f8fafc',
-              border: `1px solid ${isDarkMode ? '#27272a' : '#e2e8f0'}`,
-              borderRadius: 12,
-              padding: '16px 20px',
-              marginBottom: 24,
-              textAlign: 'left',
-            }}
-          >
-            <Row gutter={[16, 12]}>
-              <Col span={12}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                  Partner Ref ID
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#003882', marginTop: 2 }}>
-                  {registeredGymData?.partnerId || registeredGymData?.gymId || 'GYM-REG'}
-                </div>
-              </Col>
-              <Col span={12}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                  Initial Publication Status
-                </div>
-                <div style={{ marginTop: 2 }}>
-                  <Tag color="warning" style={{ fontWeight: 700, borderRadius: 6 }}>
-                    Pending Approval
-                  </Tag>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                  Owner Name
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2 }}>
-                  {registeredGymData?.ownerName || '-'}
-                </div>
-              </Col>
-              <Col span={12}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                  Login Email
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2 }}>
-                  {registeredGymData?.email || '-'}
-                </div>
-              </Col>
-            </Row>
-          </div>
-
-          <Button
-            type="primary"
-            size="large"
-            block
-            onClick={() => {
-              setIsSuccess(false);
-              setRegisteredGymData(null);
-              resetForm();
-              navigate('/login');
-            }}
-            style={{
-              height: 46,
-              backgroundColor: '#003882',
-              borderColor: '#003882',
-              fontWeight: 700,
-              borderRadius: 8,
-            }}
-          >
-            Back to Sign In
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -1558,8 +1496,10 @@ export const Register = () => {
                   <Input
                     value={formData.tagline}
                     onChange={(e) => updateField('tagline', e.target.value)}
+                    onBlur={() => markFieldTouched('tagline')}
                     style={getInputStyle('tagline')}
                   />
+                  {renderFieldError('tagline')}
                 </Col>
 
                 <Col xs={24} sm={12}>
@@ -1627,7 +1567,7 @@ export const Register = () => {
                           Click or drag document to upload
                         </p>
                         <p style={{ fontSize: 12, color: '#94a3b8', margin: 0 }}>
-                          PDF, PNG, or JPG up to 10MB (GST, Trade License, or Shop Act)
+                          PDF, PNG, or JPG up to 1MB (GST, Trade License, or Shop Act)
                         </p>
                       </Upload.Dragger>
                     ) : (
@@ -2432,7 +2372,7 @@ export const Register = () => {
                     </div>
                   ) : (
                     <Upload.Dragger
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp"
                       showUploadList={false}
                       beforeUpload={handleLogoUpload}
                       style={{
@@ -2488,7 +2428,7 @@ export const Register = () => {
                     </div>
                   ) : (
                     <Upload.Dragger
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp"
                       showUploadList={false}
                       beforeUpload={handleCoverUpload}
                       style={{
@@ -2539,7 +2479,7 @@ export const Register = () => {
                   }}
                 >
                   <Upload
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     showUploadList={false}
                     beforeUpload={handleFacilityPhotoUpload}
                   >
@@ -2915,7 +2855,7 @@ export const Register = () => {
                       <Input
                         placeholder="Add gym rule..."
                         value={newRuleInput}
-                        onChange={(e) => setNewRuleInput(e.target.value)}
+                        onChange={(e) => setNewRuleInput(stripEmojis(e.target.value))}
                         style={{ height: 34, borderRadius: 6 }}
                         onPressEnter={() => {
                           if (newRuleInput.trim()) {
@@ -2961,7 +2901,7 @@ export const Register = () => {
                       <Input
                         placeholder="Add safety measure..."
                         value={newSafetyInput}
-                        onChange={(e) => setNewSafetyInput(e.target.value)}
+                        onChange={(e) => setNewSafetyInput(stripEmojis(e.target.value))}
                         style={{ height: 34, borderRadius: 6 }}
                         onPressEnter={() => {
                           if (newSafetyInput.trim()) {
@@ -3043,6 +2983,7 @@ export const Register = () => {
                     value={formData.accountNumber}
                     maxLength={18}
                     inputMode="numeric"
+                    onKeyDown={handleNumericKeyDown}
                     onChange={(e) => updateField('accountNumber', e.target.value.replace(/\D/g, '').slice(0, 18))}
                     onBlur={() => markFieldTouched('accountNumber')}
                     style={getInputStyle('accountNumber')}
@@ -3059,6 +3000,7 @@ export const Register = () => {
                     value={formData.confirmAccountNumber}
                     maxLength={18}
                     inputMode="numeric"
+                    onKeyDown={handleNumericKeyDown}
                     onChange={(e) => updateField('confirmAccountNumber', e.target.value.replace(/\D/g, '').slice(0, 18))}
                     onBlur={() => markFieldTouched('confirmAccountNumber')}
                     style={getInputStyle('confirmAccountNumber')}
@@ -3102,8 +3044,10 @@ export const Register = () => {
                     placeholder="e.g. apexfitness@okaxis"
                     value={formData.upiId}
                     onChange={(e) => updateField('upiId', e.target.value)}
+                    onBlur={() => markFieldTouched('upiId')}
                     style={getInputStyle('upiId')}
                   />
+                  {renderFieldError('upiId')}
                 </Col>
               </Row>
 

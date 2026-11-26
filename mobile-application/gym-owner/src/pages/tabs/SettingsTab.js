@@ -28,7 +28,13 @@ import { notificationService } from '../../services/notificationService';
 import { getSafeImageUri, getGymLogoUri } from '../../utils/mediaUtils';
 import { pickImageFromDevice, capturePhotoFromCamera } from '../../utils/filePickerUtils';
 import { AddEmployeeModal } from '../../widgets/AddEmployeeModal';
-import { SectionsSubView } from './SectionsSubView';
+import { BANKS } from '../../utils/bankData';
+import {
+  containsEmoji,
+  validateUpiId,
+  validateAccountNumber,
+  validateConfirmAccountNumber,
+} from '../../utils/validationUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -78,6 +84,31 @@ const ALL_AMENITIES = [
 ];
 
 
+const PRIMARY_SESSION_CATEGORIES = [
+  { label: 'Gym Access (Weight room, cardio floor, open gym)', value: 'Gym Access' },
+  { label: 'Group Classes (Trainer-led batches & scheduled workout sections)', value: 'Group Classes' },
+  { label: 'Yoga Classes (Certified yoga instructor sessions)', value: 'Yoga Classes' },
+  { label: 'Zumba Sessions (High-energy dance workout)', value: 'Zumba Sessions' },
+];
+
+const SPECIALIZED_SESSION_CATEGORIES = [
+  { label: 'HIIT (High Intensity Interval Training)', value: 'HIIT' },
+  { label: 'CrossFit Training (WOD & Functional Conditioning)', value: 'CrossFit' },
+  { label: 'Pilates Core (Strength, Posture & Mat Work)', value: 'Pilates' },
+  { label: 'Kickboxing Cardio (Bag & Pad Work)', value: 'Kickboxing' },
+  { label: 'Dance Fitness (Aerobic Dance Routine)', value: 'Dance Fitness' },
+];
+
+const DEFAULT_WEEKLY_SCHEDULE = [
+  { day: 'Monday', isOpen: true, openTime: '', closeTime: '', morningShift: { openTime: '', closeTime: '' }, eveningShift: { openTime: '', closeTime: '' } },
+  { day: 'Tuesday', isOpen: true, openTime: '', closeTime: '', morningShift: { openTime: '', closeTime: '' }, eveningShift: { openTime: '', closeTime: '' } },
+  { day: 'Wednesday', isOpen: true, openTime: '', closeTime: '', morningShift: { openTime: '', closeTime: '' }, eveningShift: { openTime: '', closeTime: '' } },
+  { day: 'Thursday', isOpen: true, openTime: '', closeTime: '', morningShift: { openTime: '', closeTime: '' }, eveningShift: { openTime: '', closeTime: '' } },
+  { day: 'Friday', isOpen: true, openTime: '', closeTime: '', morningShift: { openTime: '', closeTime: '' }, eveningShift: { openTime: '', closeTime: '' } },
+  { day: 'Saturday', isOpen: true, openTime: '', closeTime: '', morningShift: { openTime: '', closeTime: '' }, eveningShift: { openTime: '', closeTime: '' } },
+  { day: 'Sunday', isOpen: true, openTime: '', closeTime: '', morningShift: { openTime: '', closeTime: '' }, eveningShift: { openTime: '', closeTime: '' } },
+];
+
 const getNormalizedPricingPlans = (data) => {
   if (!data) return [];
   if (Array.isArray(data.customPricingPlans) && data.customPricingPlans.length > 0) {
@@ -94,7 +125,7 @@ const getNormalizedPricingPlans = (data) => {
         id: 'plan-single',
         name: 'Walk-In Day Pass',
         badge: 'Walk-In',
-        price: Number(p.singleSession) || 199,
+        price: Number(p.singleSession) || 0,
         duration: '1 Day',
       });
     }
@@ -103,7 +134,7 @@ const getNormalizedPricingPlans = (data) => {
         id: 'plan-weekly',
         name: 'Weekly Workout Pass',
         badge: 'Weekly',
-        price: Number(p.weeklyPass) || 799,
+        price: Number(p.weeklyPass) || 0,
         duration: '7 Days',
       });
     }
@@ -112,7 +143,7 @@ const getNormalizedPricingPlans = (data) => {
         id: 'plan-monthly',
         name: '1-Month Membership',
         badge: 'Monthly',
-        price: Number(p.monthly) || 1999,
+        price: Number(p.monthly) || 0,
         duration: '30 Days',
       });
     }
@@ -121,7 +152,7 @@ const getNormalizedPricingPlans = (data) => {
         id: 'plan-quarterly',
         name: '3-Month Membership',
         badge: 'Quarterly',
-        price: Number(p.quarterly) || 4999,
+        price: Number(p.quarterly) || 0,
         duration: '90 Days',
       });
     }
@@ -130,7 +161,7 @@ const getNormalizedPricingPlans = (data) => {
         id: 'plan-halfYearly',
         name: '6-Month Membership',
         badge: 'Half-Yearly',
-        price: Number(p.halfYearly) || 8999,
+        price: Number(p.halfYearly) || 0,
         duration: '180 Days',
       });
     }
@@ -139,7 +170,7 @@ const getNormalizedPricingPlans = (data) => {
         id: 'plan-annual',
         name: '1-Year Annual Pass',
         badge: 'Annual',
-        price: Number(p.annual) || 14999,
+        price: Number(p.annual) || 0,
         duration: '365 Days',
       });
     }
@@ -180,8 +211,8 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
   const [isSavingTrainerPricing, setIsSavingTrainerPricing] = useState(false);
 
   // Operational Toggles
-  const [audioBeep, setAudioBeep] = useState(true);
-  const [smsReminders, setSmsReminders] = useState(true);
+  const [isSsoActive, setIsSsoActive] = useState(user?.isSsoEnabled !== false);
+  const [isTogglingSso, setIsTogglingSso] = useState(false);
 
   // Native Notification Permission State
   const [isNotificationsEnabled, setIsNotificationsEnabled] = useState(false);
@@ -241,6 +272,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
   const [showAuditHistoryModal, setShowAuditHistoryModal] = useState(false);
   const [showEditTimingsModal, setShowEditTimingsModal] = useState(false);
   const [showEditBankModal, setShowEditBankModal] = useState(false);
+  const [showSocialLinksModal, setShowSocialLinksModal] = useState(false);
   const [showAddPlanModal, setShowAddPlanModal] = useState(false);
   const [showFacilitiesModal, setShowFacilitiesModal] = useState(false);
   const [showWorkoutsModal, setShowWorkoutsModal] = useState(false);
@@ -261,36 +293,66 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
   const [basicAddress, setBasicAddress] = useState('');
   const [basicArea, setBasicArea] = useState('');
   const [basicCity, setBasicCity] = useState('');
-  const [basicState, setBasicState] = useState('Tamil Nadu');
+  const [basicState, setBasicState] = useState('');
   const [basicPincode, setBasicPincode] = useState('');
   const [basicGst, setBasicGst] = useState('');
   const [basicPan, setBasicPan] = useState('');
   const [basicFloorSpace, setBasicFloorSpace] = useState('');
   const [basicCapacity, setBasicCapacity] = useState('');
+  const [basicGenderAllowed, setBasicGenderAllowed] = useState('Unisex');
   const [basicMapsUrl, setBasicMapsUrl] = useState('');
   const [basicAbout, setBasicAbout] = useState('');
   const [isSavingBasic, setIsSavingBasic] = useState(false);
 
   // Timings Form Fields
   const [timingMode, setTimingMode] = useState('REGULAR');
-  const [weekdayOpen, setWeekdayOpen] = useState('05:30 AM');
-  const [weekdayClose, setWeekdayClose] = useState('10:30 PM');
-  const [weekendOpen, setWeekendOpen] = useState('06:00 AM');
-  const [weekendClose, setWeekendClose] = useState('09:00 PM');
-  const [morningOpen, setMorningOpen] = useState('05:30 AM');
-  const [morningClose, setMorningClose] = useState('11:30 AM');
-  const [eveningOpen, setEveningOpen] = useState('04:30 PM');
-  const [eveningClose, setEveningClose] = useState('10:30 PM');
+  const [weeklySchedule, setWeeklySchedule] = useState(DEFAULT_WEEKLY_SCHEDULE);
+  const [isOpenHolidays, setIsOpenHolidays] = useState(true);
+  const [weekdayOpen, setWeekdayOpen] = useState('');
+  const [weekdayClose, setWeekdayClose] = useState('');
+  const [weekendOpen, setWeekendOpen] = useState('');
+  const [weekendClose, setWeekendClose] = useState('');
+  const [morningOpen, setMorningOpen] = useState('');
+  const [morningClose, setMorningClose] = useState('');
+  const [eveningOpen, setEveningOpen] = useState('');
+  const [eveningClose, setEveningClose] = useState('');
   const [is24Hours, setIs24Hours] = useState(false);
 
   // Bank Form Fields
   const [accountHolder, setAccountHolder] = useState('');
   const [bankName, setBankName] = useState('');
+  const [branchName, setBranchName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+  const [confirmAccountNumber, setConfirmAccountNumber] = useState('');
   const [ifscCode, setIfscCode] = useState('');
   const [upiId, setUpiId] = useState('');
+  const [bankPickerModalVisible, setBankPickerModalVisible] = useState(false);
+  const [bankSearchQuery, setBankSearchQuery] = useState('');
+  const [bankTouched, setBankTouched] = useState({});
 
-  // Add Pricing Plan Fields
+  const filteredBanks = useMemo(() => {
+    const q = bankSearchQuery.trim().toLowerCase();
+    if (!q) return BANKS;
+    return BANKS.filter(
+      (b) => b.name.toLowerCase().includes(q) || b.ifscPrefix.toLowerCase().includes(q)
+    );
+  }, [bankSearchQuery]);
+
+  // Social Links Form Fields
+  const [socialInstagram, setSocialInstagram] = useState('');
+  const [socialWhatsapp, setSocialWhatsapp] = useState('');
+  const [socialWebsite, setSocialWebsite] = useState('');
+  const [socialFacebook, setSocialFacebook] = useState('');
+  const [socialYoutube, setSocialYoutube] = useState('');
+  const [socialGoogleMaps, setSocialGoogleMaps] = useState('');
+
+  // Per-Session / Day Pass Pricing
+  const [singleSessionPrice, setSingleSessionPrice] = useState('');
+  const [enabledSessionCategories, setEnabledSessionCategories] = useState([]);
+  const [isSavingSessionConfig, setIsSavingSessionConfig] = useState(false);
+
+  // Add / Edit Pricing Plan Fields
+  const [editingPlan, setEditingPlan] = useState(null);
   const [planName, setPlanName] = useState('');
   const [planPrice, setPlanPrice] = useState('');
   const [planDuration, setPlanDuration] = useState('30 Days');
@@ -301,18 +363,8 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
   const [selectedFacilities, setSelectedFacilities] = useState([]);
   const [selectedWorkouts, setSelectedWorkouts] = useState([]);
   const [selectedAmenities, setSelectedAmenities] = useState([]);
-  const [gymRules, setGymRules] = useState([
-    'Carry clean indoor training shoes',
-    'Mandatory personal gym towel on workout benches',
-    'Re-rack dumbbells and plates after set completion',
-    'No outside food or beverages allowed on gym floor',
-  ]);
-  const [safetyMeasures, setSafetyMeasures] = useState([
-    'Daily multi-session equipment sanitization',
-    'Certified First Aid & CPR staff available on floor',
-    '24/7 CCTV surveillance coverage',
-    'Emergency exits clearly marked and accessible',
-  ]);
+  const [gymRules, setGymRules] = useState([]);
+  const [safetyMeasures, setSafetyMeasures] = useState([]);
   const [newRuleText, setNewRuleText] = useState('');
   const [newSafetyText, setNewSafetyText] = useState('');
 
@@ -354,43 +406,100 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         setBasicAddress(data.address || data.fullAddress || '');
         setBasicArea(data.area || '');
         setBasicCity(data.city || '');
-        setBasicState(data.state || 'Tamil Nadu');
+        setBasicState(data.state || '');
         setBasicPincode(data.pincode || '');
         setBasicGst(data.gstNumber || '');
         setBasicPan(data.panNumber || '');
         setBasicFloorSpace(String(data.floorSpaceSqFt || ''));
         setBasicCapacity(String(data.maxFloorCapacity || ''));
+        setBasicGenderAllowed(data.genderAllowed || 'Unisex');
         setBasicMapsUrl(data.googleMapsUrl || '');
         setBasicAbout(data.aboutText || '');
 
         setSelectedFacilities(Array.isArray(data.facilities) ? data.facilities : []);
         setSelectedWorkouts(Array.isArray(data.workouts) ? data.workouts : []);
         setSelectedAmenities(Array.isArray(data.amenities) ? data.amenities : []);
-        if (Array.isArray(data.rules) && data.rules.length > 0) setGymRules(data.rules);
-        if (Array.isArray(data.safetyMeasures) && data.safetyMeasures.length > 0) setSafetyMeasures(data.safetyMeasures);
+        const rawRules = Array.isArray(data.rules) ? data.rules : (Array.isArray(data.gymRules) ? data.gymRules : []);
+        setGymRules(rawRules);
+        setSafetyMeasures(Array.isArray(data.safetyMeasures) ? data.safetyMeasures : []);
+
+        if (data.socialLinks || data.googleMapsUrl) {
+          setSocialInstagram(data.socialLinks?.instagramHandle || data.socialLinks?.instagram || '');
+          setSocialWhatsapp(data.socialLinks?.whatsapp || '');
+          setSocialWebsite(data.socialLinks?.website || '');
+          setSocialFacebook(data.socialLinks?.facebook || '');
+          setSocialYoutube(data.socialLinks?.youtube || '');
+          setSocialGoogleMaps(data.socialLinks?.googleBusinessUrl || data.googleMapsUrl || '');
+        }
+        setSingleSessionPrice(
+          data.singleSessionPrice !== undefined
+            ? String(data.singleSessionPrice)
+            : data.pricingPlans?.singleSession !== undefined
+            ? String(data.pricingPlans.singleSession)
+            : ''
+        );
+        setEnabledSessionCategories(Array.isArray(data.enabledSessionCategories) ? data.enabledSessionCategories : []);
 
         if (data.openingHours) {
-          const mode = data.openingHours.mode || (data.openingHours.is24Hours ? '24_HOURS' : (data.openingHours.morningShift ? 'SPLIT_SHIFT' : 'REGULAR'));
+          const oh = data.openingHours;
+          const mode = oh.mode || (oh.is24Hours ? '24_HOURS' : (oh.isSplitShift || oh.morningShift || oh.morningOpen ? 'SPLIT_SHIFT' : 'REGULAR'));
           setTimingMode(mode);
-          setWeekdayOpen(data.openingHours.weekdayOpen || '05:30 AM');
-          setWeekdayClose(data.openingHours.weekdayClose || '10:30 PM');
-          setWeekendOpen(data.openingHours.weekendOpen || '06:00 AM');
-          setWeekendClose(data.openingHours.weekendClose || '09:00 PM');
-          setIs24Hours(Boolean(data.openingHours.is24Hours || mode === '24_HOURS'));
-          if (data.openingHours.morningShift) {
-            setMorningOpen(data.openingHours.morningShift.open || '05:30 AM');
-            setMorningClose(data.openingHours.morningShift.close || '11:30 AM');
-          }
-          if (data.openingHours.eveningShift) {
-            setEveningOpen(data.openingHours.eveningShift.open || '04:30 PM');
-            setEveningClose(data.openingHours.eveningShift.close || '10:30 PM');
+          setIsOpenHolidays(oh.isOpenHolidays !== false);
+          setWeekdayOpen(oh.weekdayOpen || '');
+          setWeekdayClose(oh.weekdayClose || '');
+          setWeekendOpen(oh.weekendOpen || '');
+          setWeekendClose(oh.weekendClose || '');
+          setIs24Hours(Boolean(oh.is24Hours || mode === '24_HOURS'));
+          setMorningOpen(oh.morningOpen || oh.morningShift?.openTime || oh.morningShift?.open || '');
+          setMorningClose(oh.morningClose || oh.morningShift?.closeTime || oh.morningShift?.close || '');
+          setEveningOpen(oh.eveningOpen || oh.eveningShift?.openTime || oh.eveningShift?.open || '');
+          setEveningClose(oh.eveningClose || oh.eveningShift?.closeTime || oh.eveningShift?.close || '');
+          if (Array.isArray(oh.schedule) && oh.schedule.length > 0) {
+            setWeeklySchedule(
+              oh.schedule.map((d) => ({
+                day: d.day,
+                isOpen: d.isOpen !== false,
+                openTime: d.openTime || oh.weekdayOpen || '',
+                closeTime: d.closeTime || oh.weekdayClose || '',
+                morningShift: {
+                  openTime: d.morningShift?.openTime || oh.morningOpen || '',
+                  closeTime: d.morningShift?.closeTime || oh.morningClose || '',
+                },
+                eveningShift: {
+                  openTime: d.eveningShift?.openTime || oh.eveningOpen || '',
+                  closeTime: d.eveningShift?.closeTime || oh.eveningClose || '',
+                },
+              }))
+            );
+          } else {
+            setWeeklySchedule(
+              DEFAULT_WEEKLY_SCHEDULE.map((d, idx) => {
+                const isWeekend = idx >= 5;
+                return {
+                  ...d,
+                  openTime: (isWeekend ? oh.weekendOpen : oh.weekdayOpen) || '',
+                  closeTime: (isWeekend ? oh.weekendClose : oh.weekdayClose) || '',
+                  morningShift: {
+                    openTime: oh.morningOpen || oh.morningShift?.open || '',
+                    closeTime: oh.morningClose || oh.morningShift?.close || '',
+                  },
+                  eveningShift: {
+                    openTime: oh.eveningOpen || oh.eveningShift?.open || '',
+                    closeTime: oh.eveningClose || oh.eveningShift?.close || '',
+                  },
+                };
+              })
+            );
           }
         }
 
         if (data.bankDetails) {
+          const loadedAcct = data.bankDetails.accountNumber || '';
           setAccountHolder(data.bankDetails.accountHolderName || data.bankDetails.accountHolder || '');
           setBankName(data.bankDetails.bankName || '');
-          setAccountNumber(data.bankDetails.accountNumber || '');
+          setBranchName(data.bankDetails.branchName || '');
+          setAccountNumber(loadedAcct);
+          setConfirmAccountNumber(loadedAcct);
           setIfscCode(data.bankDetails.ifscCode || '');
           setUpiId(data.bankDetails.upiId || '');
         }
@@ -669,6 +778,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
         panNumber: basicPan.trim(),
         floorSpaceSqFt: Number(basicFloorSpace) || 0,
         maxFloorCapacity: Number(basicCapacity) || 0,
+        genderAllowed: basicGenderAllowed || 'Unisex',
         googleMapsUrl: basicMapsUrl.trim(),
         aboutText: basicAbout.trim(),
       };
@@ -680,39 +790,88 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
   };
 
   const handleSaveOperatingHours = async () => {
-    let displayText = `${weekdayOpen} - ${weekdayClose}`;
-    if (timingMode === '24_HOURS') {
+    const mon = weeklySchedule[0] || {};
+    const sat = weeklySchedule[5] || mon;
+    const is24h = timingMode === '24_HOURS';
+    const isSplit = timingMode === 'SPLIT_SHIFT';
+
+    let displayText = `${mon.openTime || weekdayOpen} - ${mon.closeTime || weekdayClose}`;
+    if (is24h) {
       displayText = 'Open 24 Hours';
-    } else if (timingMode === 'SPLIT_SHIFT') {
-      displayText = `${morningOpen} - ${morningClose} & ${eveningOpen} - ${eveningClose}`;
+    } else if (isSplit) {
+      displayText = `${mon.morningShift?.openTime || morningOpen} - ${mon.morningShift?.closeTime || morningClose} & ${mon.eveningShift?.openTime || eveningOpen} - ${mon.eveningShift?.closeTime || eveningClose}`;
     }
 
     const payload = {
       openingHours: {
         mode: timingMode,
-        weekdayOpen: timingMode === 'SPLIT_SHIFT' ? morningOpen : (timingMode === '24_HOURS' ? '12:00 AM' : weekdayOpen),
-        weekdayClose: timingMode === 'SPLIT_SHIFT' ? eveningClose : (timingMode === '24_HOURS' ? '11:59 PM' : weekdayClose),
-        weekendOpen: timingMode === 'SPLIT_SHIFT' ? morningOpen : (timingMode === '24_HOURS' ? '12:00 AM' : weekendOpen),
-        weekendClose: timingMode === 'SPLIT_SHIFT' ? eveningClose : (timingMode === '24_HOURS' ? '11:59 PM' : weekendClose),
-        is24Hours: timingMode === '24_HOURS',
-        morningShift: timingMode === 'SPLIT_SHIFT' ? { open: morningOpen, close: morningClose } : undefined,
-        eveningShift: timingMode === 'SPLIT_SHIFT' ? { open: eveningOpen, close: eveningClose } : undefined,
+        is24Hours: is24h,
+        isSplitShift: isSplit,
+        isOpenHolidays,
+        weekdayOpen: is24h ? '12:00 AM' : (isSplit ? (mon.morningShift?.openTime || morningOpen) : (mon.openTime || weekdayOpen)),
+        weekdayClose: is24h ? '11:59 PM' : (isSplit ? (mon.eveningShift?.closeTime || eveningClose) : (mon.closeTime || weekdayClose)),
+        weekendOpen: is24h ? '12:00 AM' : (isSplit ? (sat.morningShift?.openTime || morningOpen) : (sat.openTime || weekendOpen)),
+        weekendClose: is24h ? '11:59 PM' : (isSplit ? (sat.eveningShift?.closeTime || eveningClose) : (sat.closeTime || weekendClose)),
+        morningOpen: mon.morningShift?.openTime || morningOpen,
+        morningClose: mon.morningShift?.closeTime || morningClose,
+        eveningOpen: mon.eveningShift?.openTime || eveningOpen,
+        eveningClose: mon.eveningShift?.closeTime || eveningClose,
+        schedule: weeklySchedule.map((d) => ({ ...d, mode: timingMode })),
         displayText,
       },
     };
-    await handleSaveGymUpdate(payload, 'Operating hours submitted for Super Admin review.');
+    await handleSaveGymUpdate(payload, 'Operating hours and weekly schedule saved!');
     setShowEditTimingsModal(false);
   };
 
+  const bankErrors = useMemo(() => {
+    const errs = {};
+    if (!accountHolder || !accountHolder.trim()) errs.accountHolder = 'Account holder name is required';
+    else if (containsEmoji(accountHolder)) errs.accountHolder = 'Emojis are not allowed in Account holder name';
+    else if (accountHolder.trim().length < 2) errs.accountHolder = 'Must be at least 2 characters';
+
+    if (!bankName || !bankName.trim()) errs.bankName = 'Bank name is required';
+
+    const acctErr = validateAccountNumber(accountNumber);
+    if (acctErr) errs.accountNumber = acctErr;
+
+    const confirmAcctErr = validateConfirmAccountNumber(confirmAccountNumber, accountNumber);
+    if (confirmAcctErr) errs.confirmAccountNumber = confirmAcctErr;
+
+    if (!ifscCode || !ifscCode.trim()) errs.ifscCode = 'IFSC code is required';
+    else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode.trim())) errs.ifscCode = 'Invalid IFSC (e.g. HDFC0001234)';
+
+    const upiErr = validateUpiId(upiId);
+    if (upiErr) errs.upiId = upiErr;
+
+    return errs;
+  }, [accountHolder, bankName, accountNumber, confirmAccountNumber, ifscCode, upiId]);
+
   const handleSaveBankDetails = async () => {
-    if (!accountNumber.trim() || !ifscCode.trim()) {
-      showToast({ message: 'Account number and IFSC code are required', isError: true });
+    setBankTouched({
+      accountHolder: true,
+      bankName: true,
+      accountNumber: true,
+      confirmAccountNumber: true,
+      ifscCode: true,
+      upiId: true,
+    });
+    const firstError =
+      bankErrors.accountHolder ||
+      bankErrors.bankName ||
+      bankErrors.accountNumber ||
+      bankErrors.confirmAccountNumber ||
+      bankErrors.ifscCode ||
+      bankErrors.upiId;
+    if (firstError) {
+      showToast({ message: firstError, isError: true });
       return;
     }
     const payload = {
       bankDetails: {
         accountHolderName: accountHolder.trim(),
         bankName: bankName.trim(),
+        branchName: branchName.trim(),
         accountNumber: accountNumber.trim(),
         ifscCode: ifscCode.trim(),
         upiId: upiId.trim(),
@@ -720,6 +879,36 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
     };
     await handleSaveGymUpdate(payload, 'Bank details submitted for Super Admin review.');
     setShowEditBankModal(false);
+  };
+
+  const handleSaveSocialLinks = async () => {
+    const payload = {
+      socialLinks: {
+        ...(gymData?.socialLinks || {}),
+        instagramHandle: socialInstagram.trim(),
+        whatsapp: socialWhatsapp.trim(),
+        website: socialWebsite.trim(),
+        facebook: socialFacebook.trim(),
+        youtube: socialYoutube.trim(),
+        googleBusinessUrl: socialGoogleMaps.trim(),
+      },
+      googleMapsUrl: socialGoogleMaps.trim() || basicMapsUrl.trim(),
+    };
+    await handleSaveGymUpdate(payload, 'Social links updated successfully.');
+    setShowSocialLinksModal(false);
+  };
+
+  const handleToggleSso = async (newVal) => {
+    setIsTogglingSso(true);
+    try {
+      await apiService.toggleSso(newVal);
+      setIsSsoActive(newVal);
+      showToast({ message: `Google SSO ${newVal ? 'enabled' : 'disabled'} successfully.`, isSuccess: true });
+    } catch (err) {
+      showToast({ message: err.message || 'Failed to update SSO setting.', isError: true });
+    } finally {
+      setIsTogglingSso(false);
+    }
   };
 
   const handleSaveFacilities = async () => {
@@ -747,27 +936,116 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
     setShowSafetyModal(false);
   };
 
-  const handleAddPricingPlan = async () => {
-    if (!planName.trim() || !planPrice.trim()) {
+  const handleSaveSessionPricing = async () => {
+    setIsSavingSessionConfig(true);
+    try {
+      await handleSaveGymUpdate(
+        {
+          singleSessionBookingEnabled: true,
+          singleSessionPrice: Number(singleSessionPrice) || 0,
+          enabledSessionCategories,
+        },
+        'Day pass settings updated successfully!'
+      );
+    } finally {
+      setIsSavingSessionConfig(false);
+    }
+  };
+
+  const toggleSessionCategory = (val) => {
+    setEnabledSessionCategories((prev) =>
+      prev.includes(val) ? prev.filter((item) => item !== val) : [...prev, val]
+    );
+  };
+
+  const handleOpenAddPlan = () => {
+    setEditingPlan(null);
+    setPlanName('');
+    setPlanPrice('');
+    setPlanDuration('30 Days');
+    setPlanBadge('Monthly');
+    setPlanFeatures('');
+    setShowAddPlanModal(true);
+  };
+
+  const handleOpenEditPlan = (plan) => {
+    setEditingPlan(plan);
+    setPlanName(plan.name || plan.badge || '');
+    setPlanPrice(String(plan.price ?? ''));
+    setPlanDuration(plan.duration || '30 Days');
+    setPlanBadge(plan.badge || 'Monthly');
+    setPlanFeatures(Array.isArray(plan.features) ? plan.features.join('\n') : (plan.description || ''));
+    setShowAddPlanModal(true);
+  };
+
+  const handleSavePricingPlan = async () => {
+    if (!planName.trim() || !String(planPrice).trim()) {
       showToast({ message: 'Plan name and price are required', isError: true });
       return;
     }
-    const newPlanObj = {
-      id: `plan-${Date.now()}`,
-      name: planName.trim(),
-      price: Number(planPrice) || 0,
-      duration: planDuration,
-      badge: planBadge,
-      description: planFeatures,
-      features: planFeatures ? planFeatures.split('\n').filter(Boolean) : [],
-    };
+    const parsedFeatures = planFeatures
+      ? planFeatures.split('\n').map((f) => f.trim()).filter(Boolean)
+      : (editingPlan?.features || []);
     const currentPlans = normalizedPricingPlans;
-    const updatedPlans = [...currentPlans, newPlanObj];
-    await handleSaveGymUpdate({ customPricingPlans: updatedPlans }, `Plan "${planName}" submitted for approval.`);
+
+    let updatedPlans;
+    if (editingPlan) {
+      updatedPlans = currentPlans.map((p, idx) => {
+        const isMatch = (editingPlan.id && p.id === editingPlan.id) || (!editingPlan.id && p.name === editingPlan.name);
+        if (!isMatch && idx !== currentPlans.indexOf(editingPlan)) return p;
+        return {
+          ...p,
+          id: p.id || `plan-${Date.now()}`,
+          name: planName.trim(),
+          price: Number(planPrice) || 0,
+          duration: planDuration.trim() || '30 Days',
+          badge: planBadge || p.badge || 'Monthly',
+          description: parsedFeatures.join(', '),
+          features: parsedFeatures,
+        };
+      });
+    } else {
+      const newPlanObj = {
+        id: `plan-${Date.now()}`,
+        name: planName.trim(),
+        price: Number(planPrice) || 0,
+        duration: planDuration.trim() || '30 Days',
+        badge: planBadge || 'Monthly',
+        description: parsedFeatures.join(', '),
+        features: parsedFeatures,
+      };
+      updatedPlans = [...currentPlans, newPlanObj];
+    }
+
+    await handleSaveGymUpdate(
+      { customPricingPlans: updatedPlans },
+      editingPlan ? `Plan "${planName.trim()}" updated successfully!` : `Plan "${planName.trim()}" created successfully!`
+    );
     setShowAddPlanModal(false);
+    setEditingPlan(null);
     setPlanName('');
     setPlanPrice('');
     setPlanFeatures('');
+  };
+
+  const handleDeletePricingPlan = (plan, index) => {
+    Alert.alert(
+      'Delete Membership Plan',
+      `Remove "${plan.name || plan.badge}" from your gym plans?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const updatedPlans = normalizedPricingPlans.filter((p, idx) =>
+              plan.id ? p.id !== plan.id : idx !== index
+            );
+            await handleSaveGymUpdate({ customPricingPlans: updatedPlans }, 'Membership plan removed.');
+          },
+        },
+      ]
+    );
   };
 
   // -------------------------------------------------------------------------
@@ -1111,7 +1389,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
           {/* Workout Sections & Batches */}
           <TouchableOpacity
             style={styles.menuItemRow}
-            onPress={() => setActiveSection('SECTIONS')}
+            onPress={() => navigation?.navigate('Dashboard', { initialTab: 4 })}
             activeOpacity={0.7}
           >
             <View style={[styles.menuIconBox, { backgroundColor: 'rgba(0, 56, 130, 0.1)' }]}>
@@ -1152,30 +1430,26 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
 
           <View style={[styles.menuDivider, { backgroundColor: isDark ? AppColors.darkBorder : '#F1F5F9' }]} />
 
-          {/* Audit Log History */}
+          {/* Social & Online Presence */}
           <TouchableOpacity
             style={styles.menuItemRow}
-            onPress={() => setShowAuditHistoryModal(true)}
+            onPress={() => setShowSocialLinksModal(true)}
             activeOpacity={0.7}
           >
-            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(14, 165, 233, 0.1)' }]}>
-              <MaterialIcons name="history" size={20} color="#0EA5E9" />
+            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(236, 72, 153, 0.1)' }]}>
+              <MaterialIcons name="share" size={20} color="#EC4899" />
             </View>
             <View style={styles.menuTextBox}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[styles.menuTitleText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                  Audit Log History
-                </Text>
-                <View style={styles.badgePill}>
-                  <Text style={styles.badgePillText}>{auditHistory.length}</Text>
-                </View>
-              </View>
+              <Text style={[styles.menuTitleText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Social & Online Links
+              </Text>
               <Text style={[styles.menuSubText, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
-                Inspect complete audit trail of submitted changes
+                Instagram, WhatsApp, Website & Google Maps
               </Text>
             </View>
             <MaterialIcons name="chevron-right" size={20} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
           </TouchableOpacity>
+
         </View>
       </View>
 
@@ -1262,6 +1536,37 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
               thumbColor="#FFFFFF"
             />
           </View>
+
+          <View
+            style={{
+              height: 1,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+              marginHorizontal: 16,
+            }}
+          />
+
+          {/* Google One-Tap SSO Row */}
+          <View style={styles.menuItemRow}>
+            <View style={[styles.menuIconBox, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+              <MaterialIcons name="verified-user" size={20} color="#3B82F6" />
+            </View>
+            <View style={styles.menuTextBox}>
+              <Text style={[styles.menuTitleText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Google Sign-In (SSO)
+              </Text>
+              <Text style={[styles.menuSubText, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
+                {isSsoActive ? 'One-tap Google sign-in enabled' : 'Google sign-in disabled'}
+              </Text>
+            </View>
+            <Switch
+              value={isSsoActive}
+              onValueChange={handleToggleSso}
+              disabled={isTogglingSso}
+              trackColor={{ false: '#CBD5E1', true: AppColors.primaryColor }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
         </View>
       </View>
 
@@ -1473,25 +1778,134 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
             <Text style={[styles.timingsDays, { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155' }]}>
               Gym facility operates 24 hours round the clock, 7 days a week.
             </Text>
-          ) : timingMode === 'SPLIT_SHIFT' ? (
-            <View>
-              <Text style={[styles.timingsDays, { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155' }]}>
-                Morning Shift: {gymData?.openingHours?.morningShift?.open || morningOpen} - {gymData?.openingHours?.morningShift?.close || morningClose}
-              </Text>
-              <Text style={[styles.timingsDays, { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155', marginTop: 4 }]}>
-                Evening Shift: {gymData?.openingHours?.eveningShift?.open || eveningOpen} - {gymData?.openingHours?.eveningShift?.close || eveningClose}
-              </Text>
-            </View>
           ) : (
-            <View>
-              <Text style={[styles.timingsDays, { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155' }]}>
-                Weekday: {gymData?.openingHours?.weekdayOpen || weekdayOpen} - {gymData?.openingHours?.weekdayClose || weekdayClose}
-              </Text>
-              <Text style={[styles.timingsDays, { color: isDark ? 'rgba(255,255,255,0.7)' : '#334155', marginTop: 4 }]}>
-                Weekend: {gymData?.openingHours?.weekendOpen || weekendOpen} - {gymData?.openingHours?.weekendClose || weekendClose}
-              </Text>
+            <View style={{ gap: 6, marginTop: 4 }}>
+              {weeklySchedule.map((item) => (
+                <View key={item.day} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '600', color: isDark ? '#E2E8F0' : '#334155', width: 92 }}>
+                    {item.day}
+                  </Text>
+                  {!item.isOpen ? (
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#EF4444' }}>Closed</Text>
+                  ) : timingMode === 'SPLIT_SHIFT' ? (
+                    <Text style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.7)' : '#475569', flex: 1, textAlign: 'right' }}>
+                      {(item.morningShift?.openTime || morningOpen || '—')} - {(item.morningShift?.closeTime || morningClose || '—')} & {(item.eveningShift?.openTime || eveningOpen || '—')} - {(item.eveningShift?.closeTime || eveningClose || '—')}
+                    </Text>
+                  ) : (
+                    <Text style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.7)' : '#475569', flex: 1, textAlign: 'right' }}>
+                      {(item.openTime || weekdayOpen || 'Not set')} - {(item.closeTime || weekdayClose || 'Not set')}
+                    </Text>
+                  )}
+                </View>
+              ))}
             </View>
           )}
+        </View>
+      </View>
+
+      {/* 2B. Per-Session / Day Pass Pricing Card (Matches Web) */}
+      <View style={[styles.card, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
+        <View style={styles.cardHeaderWithEdit}>
+          <View style={styles.cardHeaderLeft}>
+            <MaterialIcons name="confirmation-number" size={20} color="#0EA5E9" />
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={[styles.cardHeaderTitleText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Per-Session / Day Pass Pricing
+              </Text>
+              <Text style={[styles.cardSubText, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
+                Configure base day pass pricing & booking categories
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[styles.editPillBtn, { backgroundColor: AppColors.primaryColor, borderColor: AppColors.primaryColor }]}
+            onPress={handleSaveSessionPricing}
+            disabled={isSavingSessionConfig}
+          >
+            {isSavingSessionConfig ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={[styles.editPillText, { color: '#FFFFFF' }]}>Save</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 10 }]}>
+          Day Pass Base Price (₹ / day)
+        </Text>
+        <TextInput
+          value={singleSessionPrice}
+          onChangeText={setSingleSessionPrice}
+          keyboardType="numeric"
+          placeholder="0"
+          placeholderTextColor="#94A3B8"
+          style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+        />
+
+        <View style={{ padding: 10, borderRadius: 8, backgroundColor: isDark ? 'rgba(14, 165, 233, 0.12)' : '#F0F9FF', borderWidth: 1, borderColor: isDark ? 'rgba(14, 165, 233, 0.3)' : '#BAE6FD', marginBottom: 12 }}>
+          <Text style={{ fontSize: 11.5, color: isDark ? '#7DD3FC' : '#0369A1', lineHeight: 16 }}>
+            <Text style={{ fontWeight: '700' }}>Trainer Session Fee: </Text>
+            When a user chooses a personal trainer with their day pass, the trainer single session rate configured below is automatically added.
+          </Text>
+        </View>
+
+        <Text style={{ fontSize: 12.5, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0F172A', marginBottom: 4 }}>
+          Active Day Pass Booking Categories
+        </Text>
+        <Text style={{ fontSize: 11.5, color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B', marginBottom: 10 }}>
+          Unchecked categories or classes will be hidden from the User App.
+        </Text>
+
+        <Text style={{ fontSize: 11, fontWeight: '700', color: AppColors.primaryColor, letterSpacing: 0.5, marginBottom: 6 }}>
+          PRIMARY PASS TYPES
+        </Text>
+        <View style={{ gap: 6, marginBottom: 12 }}>
+          {PRIMARY_SESSION_CATEGORIES.map((cat) => {
+            const checked = enabledSessionCategories.includes(cat.value);
+            return (
+              <TouchableOpacity
+                key={cat.value}
+                onPress={() => toggleSessionCategory(cat.value)}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}
+              >
+                <MaterialIcons
+                  name={checked ? 'check-box' : 'check-box-outline-blank'}
+                  size={20}
+                  color={checked ? AppColors.primaryColor : '#94A3B8'}
+                />
+                <Text style={{ fontSize: 12.5, color: isDark ? '#E2E8F0' : '#334155', flex: 1 }}>
+                  {cat.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={{ fontSize: 11, fontWeight: '700', color: '#10B981', letterSpacing: 0.5, marginBottom: 6 }}>
+          SPECIALIZED / OTHER FITNESS CLASSES
+        </Text>
+        <View style={{ gap: 6 }}>
+          {SPECIALIZED_SESSION_CATEGORIES.map((cat) => {
+            const checked = enabledSessionCategories.includes(cat.value);
+            return (
+              <TouchableOpacity
+                key={cat.value}
+                onPress={() => toggleSessionCategory(cat.value)}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}
+              >
+                <MaterialIcons
+                  name={checked ? 'check-box' : 'check-box-outline-blank'}
+                  size={20}
+                  color={checked ? AppColors.primaryColor : '#94A3B8'}
+                />
+                <Text style={{ fontSize: 12.5, color: isDark ? '#E2E8F0' : '#334155', flex: 1 }}>
+                  {cat.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
@@ -1511,7 +1925,7 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
           </View>
           <TouchableOpacity
             style={styles.editPillBtn}
-            onPress={() => setShowAddPlanModal(true)}
+            onPress={handleOpenAddPlan}
           >
             <Text style={styles.editPillText}>+ Add Plan</Text>
           </TouchableOpacity>
@@ -1525,17 +1939,38 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
               i === normalizedPricingPlans.length - 1 && { borderBottomWidth: 0 },
             ]}
           >
-            <View>
-              <Text style={[styles.priceDurationLabel, { color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: '700' }]}>
-                {plan.name || plan.badge}
-              </Text>
-              <Text style={{ fontSize: 11, color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.priceDurationLabel, { color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: '700' }]}>
+                  {plan.name || plan.badge}
+                </Text>
+                {plan.badge && (
+                  <View style={{ backgroundColor: 'rgba(0, 56, 130, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: AppColors.primaryColor }}>{plan.badge}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={{ fontSize: 11, color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B', marginTop: 2 }}>
                 {plan.duration || '30 Days'}
               </Text>
             </View>
-            <Text style={[styles.priceAmountVal, { color: '#16a34a' }]}>
-              ₹ {Number(plan.price || 0).toLocaleString('en-IN')}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={[styles.priceAmountVal, { color: '#16a34a' }]}>
+                ₹ {Number(plan.price || 0).toLocaleString('en-IN')}
+              </Text>
+              <TouchableOpacity
+                onPress={() => handleOpenEditPlan(plan)}
+                style={{ padding: 6, borderRadius: 8, backgroundColor: isDark ? '#1E293B' : '#EFF6FF' }}
+              >
+                <MaterialIcons name="edit" size={16} color={AppColors.primaryColor} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleDeletePricingPlan(plan, i)}
+                style={{ padding: 6, borderRadius: 8, backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2' }}
+              >
+                <MaterialIcons name="delete-outline" size={16} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
           </View>
         ))}
       </View>
@@ -1839,11 +2274,13 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
             <Text style={styles.editPillText}>Manage</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ gap: 6 }}>
+        <View style={{ gap: 8 }}>
           {gymRules.slice(0, 3).map((r, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <MaterialIcons name="check" size={14} color="#6366F1" />
-              <Text style={{ fontSize: 12, color: isDark ? '#CBD5E1' : '#475569', flex: 1 }}>{r}</Text>
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+              <MaterialIcons name="check" size={14} color="#6366F1" style={{ marginTop: 2 }} />
+              <Text style={{ fontSize: 12, lineHeight: 18, color: isDark ? '#CBD5E1' : '#475569', flex: 1 }}>
+                {String(r || '').trim()}
+              </Text>
             </View>
           ))}
           {gymRules.length > 3 && (
@@ -1865,11 +2302,13 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
             <Text style={styles.editPillText}>Manage</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ gap: 6 }}>
+        <View style={{ gap: 8 }}>
           {safetyMeasures.slice(0, 3).map((s, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <MaterialIcons name="check-circle" size={14} color="#10B981" />
-              <Text style={{ fontSize: 12, color: isDark ? '#CBD5E1' : '#166534', flex: 1 }}>{s}</Text>
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+              <MaterialIcons name="check-circle" size={14} color="#10B981" style={{ marginTop: 2 }} />
+              <Text style={{ fontSize: 12, lineHeight: 18, color: isDark ? '#CBD5E1' : '#166534', flex: 1 }}>
+                {String(s || '').trim()}
+              </Text>
             </View>
           ))}
           {safetyMeasures.length > 3 && (
@@ -2092,6 +2531,32 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
           placeholderTextColor="#94A3B8"
           style={[styles.formInput, { height: 80, textAlignVertical: 'top', color: isDark ? '#FFFFFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
         />
+
+        <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 10 }]}>Gender Policy</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+          {['Unisex', 'Men Only', 'Women Only'].map((gp) => {
+            const active = basicGenderAllowed === gp;
+            return (
+              <TouchableOpacity
+                key={gp}
+                onPress={() => setBasicGenderAllowed(gp)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  alignItems: 'center',
+                  borderColor: active ? AppColors.primaryColor : (isDark ? AppColors.darkBorder : '#E2E8F0'),
+                  backgroundColor: active ? 'rgba(0, 56, 130, 0.12)' : (isDark ? '#0F172A' : '#F8FAFC'),
+                }}
+              >
+                <Text style={{ fontSize: 12.5, fontWeight: active ? '700' : '500', color: active ? AppColors.primaryColor : (isDark ? '#CBD5E1' : '#334155') }}>
+                  {gp}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <TouchableOpacity
           style={[styles.submitBtn, { backgroundColor: AppColors.primaryColor, marginTop: 18 }]}
@@ -2451,13 +2916,6 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
       {activeSection === 'BASIC_PROFILE' && renderBasicProfileSubView()}
       {activeSection === 'TRAINER_PROFILE' && renderTrainerProfileSubView()}
       {activeSection === 'EMPLOYEES' && renderEmployeesSubView()}
-      {activeSection === 'SECTIONS' && (
-        <SectionsSubView
-          topInset={topInset}
-          onBack={() => setActiveSection('MAIN')}
-          gymId={targetGymId}
-        />
-      )}
 
       {/* ==================== REUSABLE ADD EMPLOYEE / TRAINER MODAL ==================== */}
       <AddEmployeeModal
@@ -2735,81 +3193,144 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
                     Members can book slots and access the gym at any hour of the day or night.
                   </Text>
                 </View>
-              ) : timingMode === 'SPLIT_SHIFT' ? (
-                <View>
-                  <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A' }]}>Morning Shift - Open</Text>
-                  <TextInput
-                    value={morningOpen}
-                    onChangeText={setMorningOpen}
-                    placeholder="05:30 AM"
-                    placeholderTextColor="#94A3B8"
-                    style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-                  />
-
-                  <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Morning Shift - Close</Text>
-                  <TextInput
-                    value={morningClose}
-                    onChangeText={setMorningClose}
-                    placeholder="11:30 AM"
-                    placeholderTextColor="#94A3B8"
-                    style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-                  />
-
-                  <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Evening Shift - Open</Text>
-                  <TextInput
-                    value={eveningOpen}
-                    onChangeText={setEveningOpen}
-                    placeholder="04:30 PM"
-                    placeholderTextColor="#94A3B8"
-                    style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-                  />
-
-                  <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Evening Shift - Close</Text>
-                  <TextInput
-                    value={eveningClose}
-                    onChangeText={setEveningClose}
-                    placeholder="10:30 PM"
-                    placeholderTextColor="#94A3B8"
-                    style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-                  />
-                </View>
               ) : (
-                <View>
-                  <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A' }]}>Weekday Open Time</Text>
-                  <TextInput
-                    value={weekdayOpen}
-                    onChangeText={setWeekdayOpen}
-                    placeholder="05:30 AM"
-                    placeholderTextColor="#94A3B8"
-                    style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-                  />
+                <View style={{ gap: 10 }}>
+                  {/* Quick Schedule Actions (Matches Web) */}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 4 }}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const mon = weeklySchedule[0];
+                        if (!mon) return;
+                        setWeeklySchedule((prev) =>
+                          prev.map((item, i) => (i >= 1 ? { ...item, isOpen: mon.isOpen, openTime: mon.openTime, closeTime: mon.closeTime, morningShift: { ...mon.morningShift }, eveningShift: { ...mon.eveningShift } } : item))
+                        );
+                        showToast({ message: 'Monday schedule copied to all days!', isSuccess: true });
+                      }}
+                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? '#1E293B' : '#EFF6FF', borderWidth: 1, borderColor: AppColors.primaryColor }}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: AppColors.primaryColor }}>Copy Mon to All</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setWeeklySchedule((prev) =>
+                          prev.map((item) =>
+                            item.day === 'Sunday'
+                              ? { ...item, isOpen: true, openTime: '06:00 AM', closeTime: '01:00 PM', morningShift: { openTime: '06:00 AM', closeTime: '01:00 PM' } }
+                              : item
+                          )
+                        );
+                        showToast({ message: 'Sunday set to Morning Half-Day!', isSuccess: true });
+                      }}
+                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? '#1E293B' : '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B' }}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#D97706' }}>Sunday Half-Day</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setWeeklySchedule((prev) => prev.map((item) => (item.day === 'Sunday' ? { ...item, isOpen: false } : item)));
+                        showToast({ message: 'Sunday marked Closed!', isSuccess: true });
+                      }}
+                      style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#FEF2F2', borderWidth: 1, borderColor: '#EF4444' }}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#EF4444' }}>Sunday Closed</Text>
+                    </TouchableOpacity>
+                  </ScrollView>
 
-                  <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Weekday Close Time</Text>
-                  <TextInput
-                    value={weekdayClose}
-                    onChangeText={setWeekdayClose}
-                    placeholder="10:30 PM"
-                    placeholderTextColor="#94A3B8"
-                    style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-                  />
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? '#E2E8F0' : '#334155' }}>Open on Public Holidays</Text>
+                    <Switch value={isOpenHolidays} onValueChange={setIsOpenHolidays} trackColor={{ false: '#CBD5E1', true: AppColors.primaryColor }} thumbColor="#FFFFFF" />
+                  </View>
 
-                  <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Weekend Open Time</Text>
-                  <TextInput
-                    value={weekendOpen}
-                    onChangeText={setWeekendOpen}
-                    placeholder="06:00 AM"
-                    placeholderTextColor="#94A3B8"
-                    style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-                  />
-
-                  <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Weekend Close Time</Text>
-                  <TextInput
-                    value={weekendClose}
-                    onChangeText={setWeekendClose}
-                    placeholder="09:00 PM"
-                    placeholderTextColor="#94A3B8"
-                    style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-                  />
+                  {weeklySchedule.map((item, idx) => (
+                    <View
+                      key={item.day}
+                      style={{
+                        padding: 10,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: item.isOpen ? 8 : 0 }}>
+                        <Text style={{ fontSize: 13.5, fontWeight: '700', color: isDark ? '#FFFFFF' : '#0F172A' }}>{item.day}</Text>
+                        <Switch
+                          value={item.isOpen}
+                          onValueChange={(val) =>
+                            setWeeklySchedule((prev) => prev.map((d, i) => (i === idx ? { ...d, isOpen: val } : d)))
+                          }
+                          trackColor={{ false: '#CBD5E1', true: '#10B981' }}
+                          thumbColor="#FFFFFF"
+                        />
+                      </View>
+                      {item.isOpen && timingMode === 'REGULAR' && (
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TextInput
+                            value={item.openTime}
+                            onChangeText={(val) =>
+                              setWeeklySchedule((prev) => prev.map((d, i) => (i === idx ? { ...d, openTime: val } : d)))
+                            }
+                            placeholder="05:30 AM"
+                            placeholderTextColor="#94A3B8"
+                            style={[styles.modalInput, { flex: 1, height: 38, marginBottom: 0, color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                          />
+                          <TextInput
+                            value={item.closeTime}
+                            onChangeText={(val) =>
+                              setWeeklySchedule((prev) => prev.map((d, i) => (i === idx ? { ...d, closeTime: val } : d)))
+                            }
+                            placeholder="10:30 PM"
+                            placeholderTextColor="#94A3B8"
+                            style={[styles.modalInput, { flex: 1, height: 38, marginBottom: 0, color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                          />
+                        </View>
+                      )}
+                      {item.isOpen && timingMode === 'SPLIT_SHIFT' && (
+                        <View style={{ gap: 6 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TextInput
+                              value={item.morningShift?.openTime || ''}
+                              onChangeText={(val) =>
+                                setWeeklySchedule((prev) => prev.map((d, i) => (i === idx ? { ...d, morningShift: { ...d.morningShift, openTime: val } } : d)))
+                              }
+                              placeholder="Morning Open (05:30 AM)"
+                              placeholderTextColor="#94A3B8"
+                              style={[styles.modalInput, { flex: 1, height: 38, marginBottom: 0, color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                            />
+                            <TextInput
+                              value={item.morningShift?.closeTime || ''}
+                              onChangeText={(val) =>
+                                setWeeklySchedule((prev) => prev.map((d, i) => (i === idx ? { ...d, morningShift: { ...d.morningShift, closeTime: val } } : d)))
+                              }
+                              placeholder="Morning Close (11:30 AM)"
+                              placeholderTextColor="#94A3B8"
+                              style={[styles.modalInput, { flex: 1, height: 38, marginBottom: 0, color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                            />
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TextInput
+                              value={item.eveningShift?.openTime || ''}
+                              onChangeText={(val) =>
+                                setWeeklySchedule((prev) => prev.map((d, i) => (i === idx ? { ...d, eveningShift: { ...d.eveningShift, openTime: val } } : d)))
+                              }
+                              placeholder="Evening Open (04:30 PM)"
+                              placeholderTextColor="#94A3B8"
+                              style={[styles.modalInput, { flex: 1, height: 38, marginBottom: 0, color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                            />
+                            <TextInput
+                              value={item.eveningShift?.closeTime || ''}
+                              onChangeText={(val) =>
+                                setWeeklySchedule((prev) => prev.map((d, i) => (i === idx ? { ...d, eveningShift: { ...d.eveningShift, closeTime: val } } : d)))
+                              }
+                              placeholder="Evening Close (10:30 PM)"
+                              placeholderTextColor="#94A3B8"
+                              style={[styles.modalInput, { flex: 1, height: 38, marginBottom: 0, color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                            />
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  ))}
                 </View>
               )}
 
@@ -2842,41 +3363,129 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 10 }}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ marginTop: 10 }}>
               <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A' }]}>Account Holder Name *</Text>
               <TextInput
                 value={accountHolder}
-                onChangeText={setAccountHolder}
+                onChangeText={(val) => setAccountHolder(val)}
+                onBlur={() => setBankTouched((prev) => ({ ...prev, accountHolder: true }))}
                 placeholder="Name as in Bank Account"
                 placeholderTextColor="#94A3B8"
-                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                style={[
+                  styles.modalInput,
+                  {
+                    color: isDark ? '#FFF' : '#0F172A',
+                    borderColor: bankTouched.accountHolder && bankErrors.accountHolder ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
+                  },
+                ]}
               />
+              {bankTouched.accountHolder && bankErrors.accountHolder ? (
+                <Text style={{ fontSize: 11.5, color: '#EF4444', marginTop: 4 }}>{bankErrors.accountHolder}</Text>
+              ) : null}
 
-              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Bank Name</Text>
-              <TextInput
-                value={bankName}
-                onChangeText={setBankName}
-                placeholder="e.g. HDFC Bank / ICICI Bank"
-                placeholderTextColor="#94A3B8"
-                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
-              />
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Bank Name *</Text>
+              <TouchableOpacity
+                style={[
+                  styles.modalInput,
+                  {
+                    borderColor: bankTouched.bankName && bankErrors.bankName ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  },
+                ]}
+                onPress={() => {
+                  setBankSearchQuery('');
+                  setBankPickerModalVisible(true);
+                  setBankTouched((prev) => ({ ...prev, bankName: true }));
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: bankName ? (isDark ? '#FFF' : '#0F172A') : '#94A3B8',
+                    fontWeight: bankName ? '600' : '400',
+                    flex: 1,
+                  }}
+                  numberOfLines={1}
+                >
+                  {bankName || 'Select bank'}
+                </Text>
+                <MaterialIcons name="arrow-drop-down" size={22} color="#94A3B8" />
+              </TouchableOpacity>
+              {bankTouched.bankName && bankErrors.bankName ? (
+                <Text style={{ fontSize: 11.5, color: '#EF4444', marginTop: 4 }}>{bankErrors.bankName}</Text>
+              ) : null}
 
               <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Account Number *</Text>
               <TextInput
                 value={accountNumber}
-                onChangeText={setAccountNumber}
+                onChangeText={(val) => setAccountNumber(val.replace(/\D/g, '').slice(0, 18))}
+                onBlur={() => setBankTouched((prev) => ({ ...prev, accountNumber: true }))}
                 placeholder="Bank Account Number"
                 keyboardType="number-pad"
+                maxLength={18}
                 placeholderTextColor="#94A3B8"
-                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                style={[
+                  styles.modalInput,
+                  {
+                    color: isDark ? '#FFF' : '#0F172A',
+                    borderColor: bankTouched.accountNumber && bankErrors.accountNumber ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
+                  },
+                ]}
               />
+              {bankTouched.accountNumber && bankErrors.accountNumber ? (
+                <Text style={{ fontSize: 11.5, color: '#EF4444', marginTop: 4 }}>{bankErrors.accountNumber}</Text>
+              ) : null}
+
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Confirm Account Number *</Text>
+              <TextInput
+                value={confirmAccountNumber}
+                onChangeText={(val) => setConfirmAccountNumber(val.replace(/\D/g, '').slice(0, 18))}
+                onBlur={() => setBankTouched((prev) => ({ ...prev, confirmAccountNumber: true }))}
+                placeholder="Re-enter bank account number"
+                keyboardType="number-pad"
+                maxLength={18}
+                placeholderTextColor="#94A3B8"
+                style={[
+                  styles.modalInput,
+                  {
+                    color: isDark ? '#FFF' : '#0F172A',
+                    borderColor: bankTouched.confirmAccountNumber && bankErrors.confirmAccountNumber ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
+                  },
+                ]}
+              />
+              {bankTouched.confirmAccountNumber && bankErrors.confirmAccountNumber ? (
+                <Text style={{ fontSize: 11.5, color: '#EF4444', marginTop: 4 }}>{bankErrors.confirmAccountNumber}</Text>
+              ) : null}
 
               <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>IFSC Code *</Text>
               <TextInput
                 value={ifscCode}
-                onChangeText={setIfscCode}
+                onChangeText={(val) => setIfscCode(val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11))}
+                onBlur={() => setBankTouched((prev) => ({ ...prev, ifscCode: true }))}
                 placeholder="HDFC0001234"
                 autoCapitalize="characters"
+                maxLength={11}
+                placeholderTextColor="#94A3B8"
+                style={[
+                  styles.modalInput,
+                  {
+                    color: isDark ? '#FFF' : '#0F172A',
+                    borderColor: bankTouched.ifscCode && bankErrors.ifscCode ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
+                  },
+                ]}
+              />
+              {bankTouched.ifscCode && bankErrors.ifscCode ? (
+                <Text style={{ fontSize: 11.5, color: '#EF4444', marginTop: 4 }}>{bankErrors.ifscCode}</Text>
+              ) : null}
+
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Branch Name</Text>
+              <TextInput
+                value={branchName}
+                onChangeText={setBranchName}
+                placeholder="e.g. Anna Nagar Branch"
                 placeholderTextColor="#94A3B8"
                 style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
               />
@@ -2885,16 +3494,225 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
               <TextInput
                 value={upiId}
                 onChangeText={setUpiId}
+                onBlur={() => setBankTouched((prev) => ({ ...prev, upiId: true }))}
                 placeholder="gym@okhdfcbank"
+                autoCapitalize="none"
                 placeholderTextColor="#94A3B8"
-                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+                style={[
+                  styles.modalInput,
+                  {
+                    color: isDark ? '#FFF' : '#0F172A',
+                    borderColor: bankTouched.upiId && bankErrors.upiId ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
+                  },
+                ]}
               />
+              {bankTouched.upiId && bankErrors.upiId ? (
+                <Text style={{ fontSize: 11.5, color: '#EF4444', marginTop: 4 }}>{bankErrors.upiId}</Text>
+              ) : null}
 
               <TouchableOpacity
                 style={[styles.submitBtn, { backgroundColor: AppColors.primaryColor, marginTop: 14 }]}
                 onPress={handleSaveBankDetails}
               >
                 <Text style={styles.submitBtnText}>Submit Bank Details for Approval</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==================== MODAL: BANK PICKER (MATCHES ONBOARDING) ==================== */}
+      <Modal
+        visible={bankPickerModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBankPickerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 540, paddingBottom: modalSheetBottomPadding }]}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Select Bank
+              </Text>
+              <TouchableOpacity onPress={() => setBankPickerModalVisible(false)}>
+                <MaterialIcons name="close" size={22} color={isDark ? '#94A3B8' : '#64748B'} />
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={[
+                styles.modalInput,
+                {
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 10,
+                  marginBottom: 8,
+                  borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                },
+              ]}
+            >
+              <MaterialIcons name="search" size={20} color="#94A3B8" />
+              <TextInput
+                style={{ flex: 1, fontSize: 14, color: isDark ? '#FFF' : '#0F172A', paddingVertical: 0 }}
+                placeholder="Search bank name or IFSC..."
+                placeholderTextColor="#94A3B8"
+                value={bankSearchQuery}
+                onChangeText={setBankSearchQuery}
+              />
+              {bankSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setBankSearchQuery('')}>
+                  <MaterialIcons name="cancel" size={18} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {filteredBanks.map((b) => {
+                const isSelected = bankName === b.name;
+                return (
+                  <TouchableOpacity
+                    key={b.name}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 12,
+                      paddingHorizontal: 10,
+                      borderBottomWidth: 1,
+                      borderBottomColor: isDark ? '#27272A' : '#F1F5F9',
+                      backgroundColor: isSelected ? (isDark ? 'rgba(0, 56, 130, 0.25)' : '#EFF6FF') : 'transparent',
+                      borderRadius: 8,
+                    }}
+                    onPress={() => {
+                      setBankName(b.name);
+                      if (b.ifscPrefix) {
+                        setIfscCode(b.ifscPrefix);
+                      }
+                      setBankTouched((prev) => ({ ...prev, bankName: true }));
+                      setBankPickerModalVisible(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, color: isDark ? '#FFF' : '#0F172A', fontWeight: isSelected ? '700' : '500' }}>
+                        {b.name}
+                      </Text>
+                      <Text style={{ fontSize: 11.5, color: '#64748B', marginTop: 2 }}>
+                        IFSC Prefix: {b.ifscPrefix}
+                      </Text>
+                    </View>
+                    {isSelected && <MaterialIcons name="check-circle" size={20} color={AppColors.primaryColor} />}
+                  </TouchableOpacity>
+                );
+              })}
+
+              {filteredBanks.length === 0 && bankSearchQuery.trim().length > 0 && (
+                <View style={{ padding: 24, alignItems: 'center' }}>
+                  <Text style={{ color: '#64748B', fontSize: 13, textAlign: 'center', marginBottom: 12 }}>
+                    No bank found matching "{bankSearchQuery}"
+                  </Text>
+                  <TouchableOpacity
+                    style={{ paddingVertical: 10, paddingHorizontal: 16, backgroundColor: AppColors.primaryColor, borderRadius: 8 }}
+                    onPress={() => {
+                      setBankName(bankSearchQuery.trim());
+                      setBankTouched((prev) => ({ ...prev, bankName: true }));
+                      setBankPickerModalVisible(false);
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>
+                      Use "{bankSearchQuery.trim()}"
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==================== MODAL: SOCIAL & ONLINE LINKS ==================== */}
+      <Modal
+        visible={showSocialLinksModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSocialLinksModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 580, paddingBottom: modalSheetBottomPadding }]}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                Social & Online Links
+              </Text>
+              <TouchableOpacity onPress={() => setShowSocialLinksModal(false)}>
+                <MaterialIcons name="close" size={22} color={isDark ? '#94A3B8' : '#64748B'} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 10 }}>
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A' }]}>Instagram Handle</Text>
+              <TextInput
+                value={socialInstagram}
+                onChangeText={setSocialInstagram}
+                placeholder="@yourgym"
+                placeholderTextColor="#94A3B8"
+                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+              />
+
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>WhatsApp Business Number</Text>
+              <TextInput
+                value={socialWhatsapp}
+                onChangeText={setSocialWhatsapp}
+                placeholder="+91 98765 43210"
+                keyboardType="phone-pad"
+                placeholderTextColor="#94A3B8"
+                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+              />
+
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Website URL</Text>
+              <TextInput
+                value={socialWebsite}
+                onChangeText={setSocialWebsite}
+                placeholder="https://yourgym.com"
+                autoCapitalize="none"
+                placeholderTextColor="#94A3B8"
+                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+              />
+
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Google Business / Maps URL</Text>
+              <TextInput
+                value={socialGoogleMaps}
+                onChangeText={setSocialGoogleMaps}
+                placeholder="https://maps.google.com/..."
+                autoCapitalize="none"
+                placeholderTextColor="#94A3B8"
+                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+              />
+
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>Facebook URL</Text>
+              <TextInput
+                value={socialFacebook}
+                onChangeText={setSocialFacebook}
+                placeholder="https://facebook.com/yourgym"
+                autoCapitalize="none"
+                placeholderTextColor="#94A3B8"
+                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+              />
+
+              <Text style={[styles.inputLabel, { color: isDark ? '#FFF' : '#0F172A', marginTop: 8 }]}>YouTube URL</Text>
+              <TextInput
+                value={socialYoutube}
+                onChangeText={setSocialYoutube}
+                placeholder="https://youtube.com/@yourgym"
+                autoCapitalize="none"
+                placeholderTextColor="#94A3B8"
+                style={[styles.modalInput, { color: isDark ? '#FFF' : '#0F172A', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}
+              />
+
+              <TouchableOpacity
+                style={[styles.submitBtn, { backgroundColor: AppColors.primaryColor, marginTop: 14 }]}
+                onPress={handleSaveSocialLinks}
+              >
+                <Text style={styles.submitBtnText}>Save Social & Online Links</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -2912,9 +3730,9 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
           <View style={[styles.pickerModalCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', maxHeight: 480, paddingBottom: modalSheetBottomPadding }]}>
             <View style={styles.pickerModalHeader}>
               <Text style={[styles.pickerModalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                Add Membership Plan
+                {editingPlan ? 'Edit Membership Plan' : 'Add Membership Plan'}
               </Text>
-              <TouchableOpacity onPress={() => setShowAddPlanModal(false)}>
+              <TouchableOpacity onPress={() => { setShowAddPlanModal(false); setEditingPlan(null); }}>
                 <MaterialIcons name="close" size={22} color={isDark ? '#94A3B8' : '#64748B'} />
               </TouchableOpacity>
             </View>
@@ -2966,9 +3784,9 @@ export const SettingsTab = ({ topInset, navigation, onBack }) => {
 
               <TouchableOpacity
                 style={[styles.submitBtn, { backgroundColor: AppColors.primaryColor, marginTop: 14 }]}
-                onPress={handleAddPricingPlan}
+                onPress={handleSavePricingPlan}
               >
-                <Text style={styles.submitBtnText}>Save Plan for Approval</Text>
+                <Text style={styles.submitBtnText}>{editingPlan ? 'Update Membership Plan' : 'Save Plan for Approval'}</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
