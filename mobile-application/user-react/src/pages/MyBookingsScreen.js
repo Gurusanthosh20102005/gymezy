@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useBookingRepository } from '../data/BookingContext';
-import { SkeletonBookingCard } from '../widgets/Skeleton';
+import { SkeletonBookingCard, SmoothFadeIn } from '../widgets/Skeleton';
 import { getSafeImageUri, getGymLogoUri } from '../utils/mediaUtils';
 
 const TABS = ['Upcoming', 'Completed', 'Cancelled'];
@@ -174,22 +174,25 @@ export const MyBookingsScreen = ({ navigation }) => {
             }
           >
             {isLoadingBookings && bookings.length === 0 ? (
-              <View style={{ paddingTop: 8 }}>
+              <SmoothFadeIn duration={200} translateY={4} style={{ paddingTop: 8 }}>
                 <SkeletonBookingCard />
                 <SkeletonBookingCard />
-              </View>
+              </SmoothFadeIn>
             ) : filteredBookings.length === 0 ? (
-              <View style={styles.emptyStateContainer}>
-                <MaterialIcons name="event-busy" size={54} color={colors.subtitle} />
-                <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
-                  No {selectedTab} Bookings
-                </Text>
-                <Text style={[styles.emptyStateSub, { color: colors.subtitle }]}>
-                  When you book workout sessions, your digital passes will appear here.
-                </Text>
-              </View>
+              <SmoothFadeIn key={`empty_${selectedTab}`} duration={280} translateY={10}>
+                <View style={styles.emptyStateContainer}>
+                  <MaterialIcons name="event-busy" size={54} color={colors.subtitle} />
+                  <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
+                    No {selectedTab} Bookings
+                  </Text>
+                  <Text style={[styles.emptyStateSub, { color: colors.subtitle }]}>
+                    When you book workout sessions, your digital passes will appear here.
+                  </Text>
+                </View>
+              </SmoothFadeIn>
             ) : (
-              filteredBookings.map((booking) => {
+              <SmoothFadeIn key={`list_${selectedTab}`} duration={260} translateY={8}>
+                {filteredBookings.map((booking) => {
                 const isUpcoming =
                   booking.status === 'Upcoming' ||
                   booking.status === 'Active' ||
@@ -379,7 +382,8 @@ export const MyBookingsScreen = ({ navigation }) => {
                     </View>
                   </TouchableOpacity>
                 );
-              })
+              })}
+              </SmoothFadeIn>
             )}
           </ScrollView>
         </View>

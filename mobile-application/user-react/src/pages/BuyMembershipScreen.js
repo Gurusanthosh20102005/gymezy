@@ -22,6 +22,7 @@ import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { membershipService } from '../services/membershipService';
 import { apiService } from '../services/apiService';
+import { gymService } from '../services/gymService';
 import { walletService } from '../services/walletService';
 import { getSafeImageUri, DEFAULT_TRAINER_AVATAR } from '../utils/mediaUtils';
 
@@ -44,15 +45,37 @@ const buildGymPlans = (gym) => {
   const custom = Array.isArray(gym?.customPricingPlans) ? gym.customPricingPlans : [];
   const flat = gym?.pricingPlans || {};
 
-  const monthlyTier = custom.find((p) => p?.tierId === 'monthly' || p?.badge?.toLowerCase().includes('month') || p?.duration?.includes('30'));
-  const quarterlyTier = custom.find((p) => p?.tierId === 'quarterly' || p?.badge?.toLowerCase().includes('quarter') || p?.duration?.includes('90'));
-  const halfYearlyTier = custom.find((p) => p?.tierId === 'half_yearly' || p?.badge?.toLowerCase().includes('half') || p?.duration?.includes('180'));
-  const annualTier = custom.find((p) => p?.tierId === 'annual' || p?.badge?.toLowerCase().includes('annual') || p?.badge?.toLowerCase().includes('year') || p?.duration?.includes('365'));
+  const findTier = (tierId, fallbackMatcher) =>
+    custom.find((p) => p?.tierId === tierId) || custom.find(fallbackMatcher);
 
-  const monthlyPrice = Number(monthlyTier?.price ?? flat.monthly ?? 1299);
-  const quarterlyPrice = Number(quarterlyTier?.price ?? flat.quarterly ?? 3299);
-  const halfYearlyPrice = Number(halfYearlyTier?.price ?? flat.halfYearly ?? 5999);
-  const annualPrice = Number(annualTier?.price ?? flat.annual ?? 11999);
+  const monthlyTier = findTier(
+    'monthly',
+    (p) => p?.badge?.toLowerCase().includes('month') || p?.duration?.includes('30')
+  );
+  const quarterlyTier = findTier(
+    'quarterly',
+    (p) => p?.badge?.toLowerCase().includes('quarter') || p?.duration?.includes('90')
+  );
+  const halfYearlyTier = findTier(
+    'half_yearly',
+    (p) => p?.badge?.toLowerCase().includes('half') || p?.duration?.includes('180')
+  );
+  const annualTier = findTier(
+    'annual',
+    (p) => {
+      const badge = p?.badge?.toLowerCase() || '';
+      return (
+        badge.includes('annual') ||
+        (badge.includes('year') && !badge.includes('half')) ||
+        p?.duration?.includes('365')
+      );
+    }
+  );
+
+  const monthlyPrice = Number(monthlyTier?.price ?? flat.monthly ?? flat.monthlyPrice ?? 1299);
+  const quarterlyPrice = Number(quarterlyTier?.price ?? flat.quarterly ?? flat.quarterlyPrice ?? 3299);
+  const halfYearlyPrice = Number(halfYearlyTier?.price ?? flat.halfYearly ?? flat.halfYearlyPrice ?? 5999);
+  const annualPrice = Number(annualTier?.price ?? flat.annual ?? flat.annualPrice ?? flat.yearly ?? 11999);
 
   const calcSavings = (price, months) => {
     const diff = monthlyPrice * months - price;
@@ -189,7 +212,8 @@ export const generateTrainerSlots = (startTime, endTime) => {
 
 export const BuyMembershipScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { gym, initialWithTrainer = true } = route.params;
+  const { gym: routeGym, initialWithTrainer = true } = route.params;
+  const [gym, setGym] = useState(routeGym);
   const { isDark, colors } = useTheme();
   const { addMembership } = useBookingRepository();
   const { showToast } = useToast();
@@ -209,9 +233,14 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
   const [gymTrainers, setGymTrainers] = useState(gym?.trainers || []);
 
   useEffect(() => {
-    const gymId = gym?._id || gym?.id || gym?.partnerId;
+    const gymId = routeGym?._id || routeGym?.id || routeGym?.partnerId;
     if (!gymId) return;
     let isMounted = true;
+    gymService.fetchGymById(gymId).then((freshGym) => {
+      if (isMounted && freshGym) {
+        setGym((prev) => ({ ...prev, ...freshGym }));
+      }
+    }).catch(() => {});
     apiService.getGymTrainers(gymId).then((fetched) => {
       if (isMounted && Array.isArray(fetched) && fetched.length > 0) {
         setGymTrainers(fetched);
@@ -220,7 +249,7 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
     return () => {
       isMounted = false;
     };
-  }, [gym?._id, gym?.id, gym?.partnerId]);
+  }, [routeGym?._id, routeGym?.id, routeGym?.partnerId]);
 
   // Compute trainer rate mapped to the chosen membership tier (0 means not available)
   const getTrainerFeeForPlan = useCallback((trainer, planKey) => {
@@ -484,11 +513,20 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
 
       const isSelectedWithTrainer = withTrainer && selectedTrainer && selectedTrainer !== 'No Personal Trainer';
       const resolvedTrainerId = isSelectedWithTrainer ? (activeSelectedTrainerObj?._id || activeSelectedTrainerObj?.id || null) : null;
+      const validStartDate = startDate instanceof Date && !Number.isNaN(startDate.getTime()) ? startDate : new Date();
+      // Use 12:00 UTC for the user's selected calendar date so UTC/local servers never shift it to the previous day
+      const startDateIso = new Date(
+        Date.UTC(validStartDate.getFullYear(), validStartDate.getMonth(), validStartDate.getDate(), 12, 0, 0)
+      ).toISOString();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const selectedDayStart = new Date(validStartDate.getFullYear(), validStartDate.getMonth(), validStartDate.getDate());
+      const expectedStatus = selectedDayStart > todayStart ? 'Upcoming' : 'Active';
 
       const payload = {
         gymId: gym?._id || gym?.id || gym?.partnerId,
         membershipTier: selectedPlan,
-        startDate: (startDate instanceof Date ? startDate : new Date()).toISOString(),
+        startDate: startDateIso,
         trainerId: resolvedTrainerId,
         trainerSlot: isSelectedWithTrainer ? selectedSlot : null,
         paymentMethod: isFullWalletPayment ? 'Wallet' : (selectedPaymentMethod || 'UPI'),
@@ -514,10 +552,11 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
         planName: `${selectedPlan} Membership`,
         durationDays: plans[selectedPlan]?.duration,
         amountPaid: result?.pricing?.totalAmount || totalAmount,
-        startDate: formatDate(startDate),
+        startDate: formatDate(validStartDate),
         endDate: formatDate(endDate),
+        rawStartDate: result?.startDate || startDateIso,
         paymentMode: selectedPaymentMethod,
-        status: result?.status || 'Active',
+        status: result?.status || expectedStatus,
         hasPersonalTrainer: isSelectedWithTrainer,
         trainerName: isSelectedWithTrainer ? selectedTrainer : null,
         trainerSchedule: isSelectedWithTrainer ? trainerSchedule : null,
@@ -530,6 +569,11 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
       console.warn('[BUY MEMBERSHIP] Purchase error, completing with 200 OK simulated confirmation:', error.message);
       const isSelectedWithTrainer = withTrainer && selectedTrainer && selectedTrainer !== 'No Personal Trainer';
       const fallbackDocId = `mock_mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const validStartDate = startDate instanceof Date && !Number.isNaN(startDate.getTime()) ? startDate : new Date();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const selectedDayStart = new Date(validStartDate.getFullYear(), validStartDate.getMonth(), validStartDate.getDate());
+      const fallbackStatus = selectedDayStart > todayStart ? 'Upcoming' : 'Active';
       const fallbackMembership = {
         id: fallbackDocId,
         membershipId: `MEM00${Math.floor(100 + Math.random() * 900)}`,
@@ -541,10 +585,10 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
         planName: `${selectedPlan} Membership`,
         durationDays: plans[selectedPlan]?.duration,
         amountPaid: totalAmount,
-        startDate: formatDate(startDate),
+        startDate: formatDate(validStartDate),
         endDate: formatDate(endDate),
         paymentMode: selectedPaymentMethod,
-        status: 'Active',
+        status: fallbackStatus,
         hasPersonalTrainer: isSelectedWithTrainer,
         trainerName: isSelectedWithTrainer ? selectedTrainer : null,
         trainerSchedule: isSelectedWithTrainer ? trainerSchedule : null,
