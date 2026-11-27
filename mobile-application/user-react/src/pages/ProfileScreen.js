@@ -28,6 +28,15 @@ import { BrandWatermarkFooter } from '../widgets/BrandWatermarkFooter';
 import { BookmarkedGymsModal } from '../widgets/BookmarkedGymsModal';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
+import {
+  EMOJI_REGEX,
+  normalizePhone,
+  validateEmail,
+  validateEmergencyContact,
+  validateFullName,
+  validatePhone,
+  validateProfileForm,
+} from '../utils/authValidation';
 import { attendanceService } from '../services/attendanceService';
 import { notificationService } from '../services/notificationService';
 import { biometricService } from '../services/biometricService';
@@ -528,6 +537,7 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
   const [tempGoal, setTempGoal] = useState(fitnessGoal);
   const [metricsModalError, setMetricsModalError] = useState('');
   const [editProfileError, setEditProfileError] = useState('');
+  const [editFieldErrors, setEditFieldErrors] = useState({});
 
   // Computed BMI values from real-time database metrics
   const bmi = (heightCm > 0 && weightKg > 0)
@@ -679,14 +689,37 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
     setTempTargetWeight(targetWeightKg > 0 ? String(targetWeightKg) : '');
     setTempGoal(fitnessGoal || 'Muscle Building & Hypertrophy');
     setEditProfileError('');
+    setEditFieldErrors({});
     setShowEditProfileModal(true);
   };
 
+  const setProfileFieldError = (field, errorMessage) => {
+    setEditFieldErrors((prev) => ({ ...prev, [field]: errorMessage || null }));
+  };
+
   const handleSaveProfile = async () => {
-    const updatedName = tempName.trim() || userName;
-    const updatedEmail = tempEmail.trim() || userEmail;
-    const updatedPhone = tempPhone.trim() || userPhone;
-    const updatedEmergency = tempEmergency.trim() || userEmergencyContact;
+    const validationErrors = validateProfileForm({
+      fullName: tempName,
+      email: tempEmail,
+      phone: tempPhone,
+      emergencyContact: tempEmergency,
+    });
+
+    if (Object.keys(validationErrors).length > 0) {
+      setEditFieldErrors(validationErrors);
+      const firstError = Object.values(validationErrors)[0];
+      setEditProfileError(firstError);
+      showToast({ message: firstError, isError: true });
+      return;
+    }
+
+    setEditFieldErrors({});
+    setEditProfileError('');
+
+    const updatedName = tempName.trim();
+    const updatedEmail = tempEmail.trim().toLowerCase();
+    const updatedPhone = normalizePhone(tempPhone);
+    const updatedEmergency = tempEmergency.trim();
 
     setUserName(updatedName);
     setUserEmail(updatedEmail);
@@ -1600,24 +1633,57 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
 
               {/* Full Name */}
               <Text style={[styles.fieldLabel, { color: subtitleColor }]}>Full Name</Text>
-              <View style={[styles.inputContainer, { backgroundColor: inputBgColor, borderColor: borderColor }]}>
+              <View
+                style={[
+                  styles.inputContainer,
+                  {
+                    backgroundColor: inputBgColor,
+                    borderColor: editFieldErrors.fullName ? '#EF4444' : borderColor,
+                    marginBottom: editFieldErrors.fullName ? 4 : 14,
+                  },
+                ]}
+              >
                 <MaterialIcons name="person-outline" size={20} color={isDark ? '#93C5FD' : '#003882'} style={{ marginRight: 10 }} />
                 <TextInput
                   value={tempName}
-                  onChangeText={setTempName}
+                  onChangeText={(text) => {
+                    setTempName(text);
+                    if (EMOJI_REGEX.test(text) || editFieldErrors.fullName) {
+                      setProfileFieldError('fullName', validateFullName(text));
+                    }
+                  }}
+                  onBlur={() => setProfileFieldError('fullName', validateFullName(tempName))}
                   style={[styles.textInput, { color: textColor }]}
                   placeholder="Full Name"
                   placeholderTextColor={subtitleColor}
                 />
               </View>
+              {editFieldErrors.fullName && (
+                <Text style={styles.fieldErrorText}>{editFieldErrors.fullName}</Text>
+              )}
 
               {/* Email Address */}
               <Text style={[styles.fieldLabel, { color: subtitleColor }]}>Email Address</Text>
-              <View style={[styles.inputContainer, { backgroundColor: inputBgColor, borderColor: borderColor }]}>
+              <View
+                style={[
+                  styles.inputContainer,
+                  {
+                    backgroundColor: inputBgColor,
+                    borderColor: editFieldErrors.email ? '#EF4444' : borderColor,
+                    marginBottom: editFieldErrors.email ? 4 : 14,
+                  },
+                ]}
+              >
                 <MaterialIcons name="mail-outline" size={20} color={isDark ? '#93C5FD' : '#003882'} style={{ marginRight: 10 }} />
                 <TextInput
                   value={tempEmail}
-                  onChangeText={setTempEmail}
+                  onChangeText={(text) => {
+                    setTempEmail(text);
+                    if (editFieldErrors.email) {
+                      setProfileFieldError('email', validateEmail(text));
+                    }
+                  }}
+                  onBlur={() => setProfileFieldError('email', validateEmail(tempEmail))}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   style={[styles.textInput, { color: textColor }]}
@@ -1625,33 +1691,76 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
                   placeholderTextColor={subtitleColor}
                 />
               </View>
+              {editFieldErrors.email && (
+                <Text style={styles.fieldErrorText}>{editFieldErrors.email}</Text>
+              )}
 
               {/* Phone Number */}
               <Text style={[styles.fieldLabel, { color: subtitleColor }]}>Phone Number</Text>
-              <View style={[styles.inputContainer, { backgroundColor: inputBgColor, borderColor: borderColor }]}>
+              <View
+                style={[
+                  styles.inputContainer,
+                  {
+                    backgroundColor: inputBgColor,
+                    borderColor: editFieldErrors.phone ? '#EF4444' : borderColor,
+                    marginBottom: editFieldErrors.phone ? 4 : 14,
+                  },
+                ]}
+              >
                 <MaterialIcons name="phone" size={20} color={isDark ? '#93C5FD' : '#003882'} style={{ marginRight: 10 }} />
                 <TextInput
                   value={tempPhone}
-                  onChangeText={setTempPhone}
+                  onChangeText={(text) => {
+                    setTempPhone(text);
+                    if (editFieldErrors.phone) {
+                      setProfileFieldError('phone', validatePhone(text));
+                    }
+                  }}
+                  onBlur={() => setProfileFieldError('phone', validatePhone(tempPhone))}
                   keyboardType="phone-pad"
+                  maxLength={15}
                   style={[styles.textInput, { color: textColor }]}
                   placeholder="Phone"
                   placeholderTextColor={subtitleColor}
                 />
               </View>
+              {editFieldErrors.phone && (
+                <Text style={styles.fieldErrorText}>{editFieldErrors.phone}</Text>
+              )}
 
               {/* Emergency Contact */}
               <Text style={[styles.fieldLabel, { color: subtitleColor }]}>Emergency Contact</Text>
-              <View style={[styles.inputContainer, { backgroundColor: inputBgColor, borderColor: borderColor }]}>
+              <View
+                style={[
+                  styles.inputContainer,
+                  {
+                    backgroundColor: inputBgColor,
+                    borderColor: editFieldErrors.emergencyContact ? '#EF4444' : borderColor,
+                    marginBottom: editFieldErrors.emergencyContact ? 4 : 14,
+                  },
+                ]}
+              >
                 <MaterialIcons name="contact-phone" size={20} color={isDark ? '#93C5FD' : '#003882'} style={{ marginRight: 10 }} />
                 <TextInput
                   value={tempEmergency}
-                  onChangeText={setTempEmergency}
+                  onChangeText={(text) => {
+                    setTempEmergency(text);
+                    if (editFieldErrors.emergencyContact) {
+                      setProfileFieldError('emergencyContact', validateEmergencyContact(text));
+                    }
+                  }}
+                  onBlur={() =>
+                    setProfileFieldError('emergencyContact', validateEmergencyContact(tempEmergency))
+                  }
+                  keyboardType="phone-pad"
                   style={[styles.textInput, { color: textColor }]}
                   placeholder="Emergency Contact"
                   placeholderTextColor={subtitleColor}
                 />
               </View>
+              {editFieldErrors.emergencyContact && (
+                <Text style={styles.fieldErrorText}>{editFieldErrors.emergencyContact}</Text>
+              )}
 
               {/* Gender */}
               <Text style={[styles.fieldLabel, { color: subtitleColor }]}>Gender</Text>
@@ -3180,5 +3289,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  fieldErrorText: {
+    color: '#EF4444',
+    fontSize: 11.5,
+    marginTop: 0,
+    marginBottom: 10,
+    marginLeft: 4,
   },
 });

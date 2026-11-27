@@ -3,7 +3,14 @@
  * Keeps Sign In and Create Account validation rules in a single source of truth.
  */
 
-export const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+export const EMAIL_REGEX =
+  /^[a-zA-Z0-9](?:[a-zA-Z0-9._%+-]*[a-zA-Z0-9])?@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/;
+
+export const isValidEmail = (email) => {
+  const clean = (email || '').trim();
+  if (!clean || clean.includes('..')) return false;
+  return EMAIL_REGEX.test(clean);
+};
 export const PHONE_CHARS_REGEX = /^\+?[\d\s()-]+$/;
 export const TEN_DIGIT_PHONE_REGEX = /^\d{10}$/;
 export const EMOJI_REGEX = /\p{Extended_Pictographic}/u;
@@ -41,7 +48,7 @@ export const validateEmail = (email) => {
   if (!cleanEmail) {
     return 'Please enter your email address';
   }
-  if (!EMAIL_REGEX.test(cleanEmail)) {
+  if (!isValidEmail(cleanEmail)) {
     return 'Please enter a valid email address';
   }
   return null;
@@ -62,13 +69,29 @@ export const validatePhone = (phone) => {
   return null;
 };
 
+export const validateEmergencyContact = (contact) => {
+  const cleanContact = (contact || '').trim();
+  if (!cleanContact) {
+    return 'Please enter an emergency contact number';
+  }
+  const withoutRelation = cleanContact.replace(/\s*\([a-zA-Z\s]+\)$/, '').trim();
+  if (!PHONE_CHARS_REGEX.test(withoutRelation)) {
+    return 'Emergency contact must be a valid phone number';
+  }
+  const normalized = normalizePhone(withoutRelation);
+  if (!TEN_DIGIT_PHONE_REGEX.test(normalized)) {
+    return 'Please enter a valid 10-digit emergency contact number';
+  }
+  return null;
+};
+
 export const validateIdentifier = (identifier) => {
   const cleanId = (identifier || '').trim();
   if (!cleanId) {
     return 'Please enter your email or phone number';
   }
   if (cleanId.includes('@')) {
-    return EMAIL_REGEX.test(cleanId) ? null : 'Please enter a valid email address';
+    return isValidEmail(cleanId) ? null : 'Please enter a valid email address';
   }
   if (/[a-zA-Z]/.test(cleanId)) {
     return 'Please enter a valid email address or 10-digit phone number';
@@ -123,6 +146,21 @@ export const validateSignUpForm = ({ fullName, email, phone, password }) => {
   if (emailError) errors.signupEmail = emailError;
   if (phoneError) errors.signupPhone = phoneError;
   if (passwordError) errors.signupPassword = passwordError;
+
+  return errors;
+};
+
+export const validateProfileForm = ({ fullName, email, phone, emergencyContact }) => {
+  const errors = {};
+  const nameError = validateFullName(fullName);
+  const emailError = validateEmail(email);
+  const phoneError = validatePhone(phone);
+  const emergencyError = validateEmergencyContact(emergencyContact);
+
+  if (nameError) errors.fullName = nameError;
+  if (emailError) errors.email = emailError;
+  if (phoneError) errors.phone = phoneError;
+  if (emergencyError) errors.emergencyContact = emergencyError;
 
   return errors;
 };
