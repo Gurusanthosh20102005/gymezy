@@ -59,6 +59,18 @@ import { addGym } from '../redux/slices/gymSlice';
 import { useTheme } from '../theme/ThemeContext';
 import { apiClient } from '../services/apiClient';
 import { BANKS, getBankByName } from '../utils/bankData';
+import {
+  stripEmojis,
+  containsEmoji,
+  validateEmail,
+  validatePhone,
+  validateUpiId,
+  validatePersonName,
+  validatePassword,
+  validatePostalCode,
+  validateAccountNumber,
+  MEDIA_FIELDS,
+} from '../utils/validationUtils';
 
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
@@ -161,8 +173,8 @@ const WORKOUT_OPTIONS = [
 const BADGE_OPTIONS = ['Trending', 'Top Rated', 'Verified SuperGym', 'Popular', 'Premium Club', '24/7 Access', 'CrossFit Ready'];
 
 const AT_COORDS_REGEX = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/;
-const DOCUMENT_MAX_SIZE = 10 * 1024 * 1024;
-const IMAGE_MAX_SIZE = 5 * 1024 * 1024;
+const DOCUMENT_MAX_SIZE = 1024 * 1024;
+const IMAGE_MAX_SIZE = 1024 * 1024;
 
 const parse12HourTime = (value) => {
   const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -277,7 +289,7 @@ const INITIAL_FORM_DATA = {
   phone: '',
   email: '',
   password: '',
-  yearEstablished: '2026',
+  yearEstablished: '',
   gstNumber: '',
   panNumber: '',
   branches: '1',
@@ -330,7 +342,6 @@ const INITIAL_FORM_DATA = {
 
   // Step 5: Sessions & Pricing
   singleSessionPrice: '',
-  weeklyPassPrice: '',
   fiveSessionPrice: '',
   monthlyPrice: '',
   quarterlyPrice: '',
@@ -358,6 +369,8 @@ const INITIAL_FORM_DATA = {
 
   // Step 7: Payout & Tier
   subscriptionType: 'Hybrid',
+  subscriptionPrice: 4999,
+  subscriptionStatus: 'Active',
   commissionRate: 10,
   settlementCycle: 'Daily (T+1)',
   accountHolder: '',
@@ -611,49 +624,30 @@ export const GymOnboarding = () => {
       // Step 1: Business
       case 'gymName':
         if (!strVal) error = 'Gym / Studio Name is required';
+        else if (containsEmoji(strVal)) error = 'Emojis are not allowed in Gym / Studio Name';
         else if (strVal.length < 3) error = 'Gym Name must be at least 3 characters';
         break;
-      case 'ownerName':
-        if (!strVal) error = 'Primary Owner / MD Name is required';
-        else if (strVal.length < 2) error = 'Owner Name must be at least 2 characters';
+      case 'tagline':
+        if (strVal && containsEmoji(strVal)) error = 'Emojis are not allowed in Tagline';
         break;
-      case 'phone':
-        if (!strVal) {
-          error = 'Contact Mobile Number is required';
-        } else {
-          const normalizedPhone = strVal.replace(/[\s()-]/g, '');
-          const phoneDigits = /^(?:\+91|91)\d{10}$/.test(normalizedPhone)
-            ? normalizedPhone.replace(/^(?:\+91|91)/, '')
-            : normalizedPhone;
-          if (!/^[6-9]\d{9}$/.test(phoneDigits)) {
-            error = 'Enter a valid 10-digit Indian mobile number (e.g. 9876543210)';
-          }
-        }
+      case 'ownerName': {
+        const nameErr = validatePersonName(strVal, 'Primary Owner / MD Name', 2, 100);
+        if (nameErr) error = nameErr;
         break;
-      case 'email':
-        if (!strVal) {
-          error = 'Official Email Address is required';
-        } else if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(strVal)) {
-          error = 'Please enter a valid email address (e.g. owner@gym.com)';
-        }
+      }
+      case 'phone': {
+        const phoneErr = validatePhone(strVal);
+        if (phoneErr) error = phoneErr;
         break;
+      }
+      case 'email': {
+        const emailErr = validateEmail(strVal);
+        if (emailErr) error = emailErr;
+        break;
+      }
       case 'password': {
-        const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]|[^\x20-\x7E]/u;
-        if (!strVal) {
-          error = 'Account Password is required';
-        } else if (emojiRegex.test(strVal)) {
-          error = 'Emojis and non-standard characters are not allowed in password';
-        } else if (strVal.length < 8) {
-          error = 'Password must be at least 8 characters';
-        } else if (strVal.length > 16) {
-          error = 'Password cannot exceed 16 characters (max 16)';
-        } else if (!/[A-Z]/.test(strVal)) {
-          error = 'Password must contain at least 1 uppercase letter (A-Z)';
-        } else if (!/\d/.test(strVal)) {
-          error = 'Password must contain at least 1 number (0-9)';
-        } else if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(strVal)) {
-          error = 'Password must contain at least 1 symbol / special character';
-        }
+        const pwErr = validatePassword(value, { name: allData?.ownerName, email: allData?.email, phone: allData?.phone });
+        if (pwErr) error = pwErr;
         break;
       }
       case 'gstNumber':
@@ -670,24 +664,32 @@ export const GymOnboarding = () => {
       // Step 2: Location & Geolocation
       case 'address':
         if (!strVal) error = 'Street Address is required';
+        else if (containsEmoji(strVal)) error = 'Emojis are not allowed in Street Address';
         else if (strVal.length < 5) error = 'Address must be at least 5 characters';
         break;
       case 'area':
         if (!strVal) error = 'Area / Locality is required';
+        else if (containsEmoji(strVal)) error = 'Emojis are not allowed in Area / Locality';
         break;
       case 'city':
         if (!strVal) error = 'City is required';
+        else if (containsEmoji(strVal)) error = 'Emojis are not allowed in City';
         break;
       case 'state':
         if (!strVal) error = 'State is required';
+        else if (containsEmoji(strVal)) error = 'Emojis are not allowed in State';
         break;
-      case 'pincode':
-        if (!strVal) {
-          error = 'Pincode is required';
-        } else if (!/^[1-9][0-9]{5}$/.test(strVal)) {
-          error = 'Enter a valid 6-digit postal pincode (e.g. 600040)';
-        }
+      case 'landmark':
+        if (strVal && containsEmoji(strVal)) error = 'Emojis are not allowed in Landmark';
         break;
+      case 'aboutText':
+        if (strVal && containsEmoji(strVal)) error = 'Emojis are not allowed in Description';
+        break;
+      case 'pincode': {
+        const pinErr = validatePostalCode(strVal);
+        if (pinErr) error = pinErr;
+        break;
+      }
 
       // Step 3: Facilities, Photos & Space
       case 'floorSpaceSqFt':
@@ -714,14 +716,13 @@ export const GymOnboarding = () => {
       // Step 5: Payout & Subscription
       case 'accountHolder':
         if (!strVal) error = 'Bank account holder name is required';
+        else if (containsEmoji(strVal)) error = 'Emojis are not allowed in Account holder name';
         break;
-      case 'accountNumber':
-        if (!strVal) {
-          error = 'Bank account number is required';
-        } else if (!/^\d{9,18}$/.test(strVal)) {
-          error = 'Enter a valid bank account number (9 to 18 digits)';
-        }
+      case 'accountNumber': {
+        const acctErr = validateAccountNumber(strVal);
+        if (acctErr) error = acctErr;
         break;
+      }
       case 'ifscCode':
         if (!strVal) {
           error = 'IFSC code is required';
@@ -729,6 +730,11 @@ export const GymOnboarding = () => {
           error = 'Enter a valid 11-character IFSC code (e.g. HDFC0001234)';
         }
         break;
+      case 'upiId': {
+        const upiErr = validateUpiId(strVal);
+        if (upiErr) error = upiErr;
+        break;
+      }
 
       default:
         break;
@@ -739,11 +745,13 @@ export const GymOnboarding = () => {
 
   // Live Field Change Handler
   const handleFieldChange = (name, value) => {
-    const updatedData = { ...formData, [name]: value };
+    const sanitizedValue =
+      typeof value === 'string' && !MEDIA_FIELDS.has(name) ? stripEmojis(value) : value;
+    const updatedData = { ...formData, [name]: sanitizedValue };
     setFormData(updatedData);
     setTouched((prev) => ({ ...prev, [name]: true }));
 
-    const fieldErr = validateField(name, value, updatedData);
+    const fieldErr = validateField(name, sanitizedValue, updatedData);
     setErrors((prev) => {
       const next = { ...prev };
       if (fieldErr) {
@@ -756,10 +764,14 @@ export const GymOnboarding = () => {
   };
 
   const handleFieldsChange = (changes) => {
-    const updatedData = { ...formData, ...changes };
+    const sanitizedChanges = {};
+    Object.entries(changes).forEach(([k, v]) => {
+      sanitizedChanges[k] = typeof v === 'string' && !MEDIA_FIELDS.has(k) ? stripEmojis(v) : v;
+    });
+    const updatedData = { ...formData, ...sanitizedChanges };
     setFormData(updatedData);
 
-    Object.entries(changes).forEach(([name, value]) => {
+    Object.entries(sanitizedChanges).forEach(([name, value]) => {
       setTouched((prev) => ({ ...prev, [name]: true }));
 
       const fieldErr = validateField(name, value, updatedData);
@@ -1116,8 +1128,9 @@ export const GymOnboarding = () => {
         status: formData.initialApprovalStatus === 'Approved' ? 'Active' : 'Pending',
         approvalStatus: formData.initialApprovalStatus || 'Approved',
         subscriptionType: formData.subscriptionType || 'Hybrid',
-        subscriptionStatus: 'Active',
-        commissionRate: Number(formData.commissionRate) || 10,
+        subscriptionPrice: formData.subscriptionPrice !== '' && formData.subscriptionPrice != null ? Number(formData.subscriptionPrice) : undefined,
+        subscriptionStatus: formData.subscriptionStatus || 'Active',
+        commissionRate: formData.commissionRate !== '' && formData.commissionRate != null ? Number(formData.commissionRate) : 10,
         settlementCycle: formData.settlementCycle || 'Daily (T+1)',
         logo: formData.logo || formData.coverPhoto,
         coverPhoto: formData.logo || formData.coverPhoto,
@@ -1132,7 +1145,6 @@ export const GymOnboarding = () => {
         trainers: formData.trainers,
         pricingPlans: {
           singleSession: Number(formData.singleSessionPrice) || 199,
-          weeklyPass: Number(formData.weeklyPassPrice) || 799,
           fiveSessions: Number(formData.fiveSessionPrice) || 899,
           monthly: Number(formData.monthlyPrice) || 1999,
           quarterly: Number(formData.quarterlyPrice) || 4999,
@@ -1563,9 +1575,12 @@ export const GymOnboarding = () => {
                     </div>
                     <Input
                       value={formData.tagline}
+                      status={touched.tagline && errors.tagline ? 'error' : ''}
                       onChange={(e) => handleFieldChange('tagline', e.target.value)}
+                      onBlur={() => handleFieldBlur('tagline')}
                       style={{ height: 40, borderRadius: 'var(--radius-base)' }}
                     />
+                    {renderFieldError('tagline')}
                   </Col>
 
                   <Col xs={24} md={12}>
@@ -1741,7 +1756,7 @@ export const GymOnboarding = () => {
                         Click or drag document to upload
                       </p>
                       <p style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', margin: 0 }}>
-                        PDF, PNG, or JPG up to 10MB
+                        PDF, PNG, or JPG up to 1MB
                       </p>
                     </Dragger>
                   ) : (
@@ -2390,6 +2405,7 @@ export const GymOnboarding = () => {
                             Preview
                           </Button>
                           <Upload
+                            accept="image/jpeg,image/png,image/webp"
                             showUploadList={false}
                             beforeUpload={async (file) => {
                               if (!validateUpload(file, ['image/jpeg', 'image/png', 'image/webp'], IMAGE_MAX_SIZE, 'Logo')) return false;
@@ -2435,7 +2451,7 @@ export const GymOnboarding = () => {
 
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
                       <Upload
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         showUploadList={false}
                         beforeUpload={async (file) => {
                           if (!validateUpload(file, ['image/jpeg', 'image/png', 'image/webp'], IMAGE_MAX_SIZE, 'Facility photo')) return false;
@@ -2741,7 +2757,7 @@ export const GymOnboarding = () => {
                         <Input
                           placeholder="Add gym rule..."
                           value={newRuleInput}
-                          onChange={(e) => setNewRuleInput(e.target.value)}
+                          onChange={(e) => setNewRuleInput(stripEmojis(e.target.value))}
                           style={{ height: 36 }}
                           onPressEnter={() => {
                             if (newRuleInput.trim()) {
@@ -2789,7 +2805,7 @@ export const GymOnboarding = () => {
                         <Input
                           placeholder="Add safety measure..."
                           value={newSafetyInput}
-                          onChange={(e) => setNewSafetyInput(e.target.value)}
+                          onChange={(e) => setNewSafetyInput(stripEmojis(e.target.value))}
                           style={{ height: 36 }}
                           onPressEnter={() => {
                             if (newSafetyInput.trim()) {
@@ -2835,16 +2851,22 @@ export const GymOnboarding = () => {
 
                 <Row gutter={[16, 16]}>
                   {[
-                    { key: 'Hybrid', title: 'Hybrid Plan', price: '₹ 4,999/mo', desc: 'Full Cloud GMS + App Marketplace + QR Turnstile Integration + Trainers Hub', recommended: true },
-                    { key: 'App Only', title: 'App Only', price: '₹ 2,999/mo', desc: 'GYMEZY User App Marketplace Listing + Walk-In Pass revenue' },
-                    { key: 'GMS', title: 'GMS Only', price: '₹ 1,999/mo', desc: 'Gym Management Software for existing members' },
-                    { key: 'Listing Only', title: 'Listing Only', price: '₹ 999/mo', desc: 'Basic directory listing and search presence' },
+                    { key: 'Hybrid', title: 'Hybrid Plan', price: '₹ 4,999/mo', defaultPrice: 4999, desc: 'Full Cloud GMS + App Marketplace + QR Turnstile Integration + Trainers Hub', recommended: true },
+                    { key: 'App Only', title: 'App Only', price: '₹ 2,999/mo', defaultPrice: 2999, desc: 'GYMEZY User App Marketplace Listing + Walk-In Pass revenue' },
+                    { key: 'GMS', title: 'GMS Only', price: '₹ 1,999/mo', defaultPrice: 1999, desc: 'Gym Management Software for existing members' },
+                    { key: 'Listing Only', title: 'Listing Only', price: '₹ 999/mo', defaultPrice: 999, desc: 'Basic directory listing and search presence' },
+                    { key: 'Custom', title: 'Custom Plan', price: formData.subscriptionType === 'Custom' && formData.subscriptionPrice != null ? `₹ ${Number(formData.subscriptionPrice).toLocaleString('en-IN')}/mo` : 'Custom Rate', defaultPrice: formData.subscriptionPrice ?? 0, desc: 'Negotiated enterprise subscription fee, custom commission & payout terms' },
                   ].map((tier) => {
                     const isSelected = formData.subscriptionType === tier.key;
                     return (
                       <Col xs={24} sm={12} key={tier.key} style={{ display: 'flex' }}>
                         <Card
-                          onClick={() => handleFieldChange('subscriptionType', tier.key)}
+                          onClick={() => {
+                            handleFieldChange('subscriptionType', tier.key);
+                            if (tier.key !== 'Custom') {
+                              handleFieldChange('subscriptionPrice', tier.defaultPrice);
+                            }
+                          }}
                           style={{
                             width: '100%',
                             minHeight: 136,
@@ -2917,6 +2939,84 @@ export const GymOnboarding = () => {
                   })}
                 </Row>
 
+                {/* Customizable Subscription & Commission Settings */}
+                <div
+                  style={{
+                    marginTop: 20,
+                    padding: '16px 18px',
+                    borderRadius: 10,
+                    backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
+                    border: `1px solid ${isDarkMode ? '#27272a' : '#e2e8f0'}`,
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a', marginBottom: 12 }}>
+                    Customize Tier Pricing, Commission & Settlement
+                  </div>
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} sm={12} md={6}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155' }}>
+                        Monthly Fee (₹)
+                      </div>
+                      <InputNumber
+                        min={0}
+                        step={100}
+                        value={formData.subscriptionPrice}
+                        onChange={(val) => handleFieldChange('subscriptionPrice', val ?? 0)}
+                        style={{ width: '100%', height: 40 }}
+                        prefix="₹"
+                        placeholder="e.g. 4999"
+                      />
+                    </Col>
+
+                    <Col xs={24} sm={12} md={6}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155' }}>
+                        Platform Commission (%)
+                      </div>
+                      <InputNumber
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={formData.commissionRate}
+                        onChange={(val) => handleFieldChange('commissionRate', val ?? 10)}
+                        style={{ width: '100%', height: 40 }}
+                        suffix="%"
+                        placeholder="10"
+                      />
+                    </Col>
+
+                    <Col xs={24} sm={12} md={6}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155' }}>
+                        Subscription Status
+                      </div>
+                      <Select
+                        value={formData.subscriptionStatus || 'Active'}
+                        onChange={(val) => handleFieldChange('subscriptionStatus', val)}
+                        style={{ width: '100%', height: 40 }}
+                      >
+                        <Option value="Active">Active</Option>
+                        <Option value="Trial">Trial</Option>
+                        <Option value="Inactive">Inactive</Option>
+                      </Select>
+                    </Col>
+
+                    <Col xs={24} sm={12} md={6}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: isDarkMode ? '#cccccc' : '#334155' }}>
+                        Settlement Cycle
+                      </div>
+                      <Select
+                        value={formData.settlementCycle || 'Daily (T+1)'}
+                        onChange={(val) => handleFieldChange('settlementCycle', val)}
+                        style={{ width: '100%', height: 40 }}
+                      >
+                        <Option value="Daily (T+1)">Daily (T+1)</Option>
+                        <Option value="Weekly (Mon)">Weekly (Mon)</Option>
+                        <Option value="Bi-Weekly">Bi-Weekly</Option>
+                        <Option value="Monthly">Monthly</Option>
+                      </Select>
+                    </Col>
+                  </Row>
+                </div>
+
                 <Divider style={{ margin: '24px 0 20px 0' }} />
 
                 <div style={{ fontSize: 14, fontWeight: 800, color: isDarkMode ? '#ffffff' : '#0f172a', marginBottom: 12 }}>
@@ -2972,6 +3072,7 @@ export const GymOnboarding = () => {
                       maxLength={18}
                       inputMode="numeric"
                       status={touched.accountNumber && errors.accountNumber ? 'error' : ''}
+                      onKeyDown={handleNumericKeyDown}
                       onChange={(e) => handleFieldChange('accountNumber', e.target.value.replace(/\D/g, '').slice(0, 18))}
                       onBlur={() => handleFieldBlur('accountNumber')}
                       style={{ height: 40 }}
@@ -3017,9 +3118,12 @@ export const GymOnboarding = () => {
                     <Input
                       placeholder="fitzone@okhdfc"
                       value={formData.upiId}
+                      status={touched.upiId && errors.upiId ? 'error' : ''}
                       onChange={(e) => handleFieldChange('upiId', e.target.value)}
+                      onBlur={() => handleFieldBlur('upiId')}
                       style={{ height: 40 }}
                     />
+                    {renderFieldError('upiId')}
                   </Col>
                 </Row>
               </div>

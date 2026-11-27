@@ -18,17 +18,19 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
+import { signInWithGoogle } from '../services/googleAuthService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export const LoginScreen = ({ navigation }) => {
   const { isDark, toggleTheme } = useTheme();
   const { showToast } = useToast();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef(null);
   const passwordInputRef = useRef(null);
@@ -38,6 +40,7 @@ export const LoginScreen = ({ navigation }) => {
   const [obscurePassword, setObscurePassword] = useState(true);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
@@ -139,6 +142,66 @@ export const LoginScreen = ({ navigation }) => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    try {
+      const { idToken } = await signInWithGoogle();
+      const result = await loginWithGoogle({ idToken });
+
+      if (result.success) {
+        if (result.exists === false) {
+          showToast({
+            message: `Welcome, ${result.profile?.fullName || 'Partner'}! Please complete your gym details to finish onboarding.`,
+            isInfo: true,
+          });
+          navigation.navigate('Register', {
+            googleProfile: result.profile,
+          });
+          return;
+        }
+
+        const loggedInUser = result.data?.user;
+        const loggedInGym = result.data?.gym;
+        const displayName =
+          loggedInUser?.fullName ||
+          loggedInGym?.name ||
+          'Partner';
+        const approvalStatus = loggedInGym?.approvalStatus || 'Pending Approval';
+        const isApproved = approvalStatus === 'Approved';
+
+        if (!isApproved) {
+          showToast({
+            message: `Welcome ${displayName}. Application status: ${approvalStatus}.`,
+            isInfo: true,
+          });
+          navigation.replace('ApplicationStatus');
+        } else {
+          const roleTitle = loggedInUser?.role === 'MANAGER' ? 'Manager Portal' : 'Gym Owner Portal';
+          showToast({
+            message: `Welcome back, ${displayName}! ${roleTitle} loaded.`,
+            isSuccess: true,
+          });
+          navigation.replace('Dashboard');
+        }
+      } else {
+        const errorMsg = result.message || 'Google Sign-In failed. Please try again.';
+        showToast({
+          message: errorMsg,
+          isError: true,
+        });
+      }
+    } catch (err) {
+      if (err.message && !err.message.includes('cancelled') && !err.message.includes('CANCELED')) {
+        showToast({
+          message: err.message || 'Google Sign-In failed.',
+          isError: true,
+        });
+      }
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -433,6 +496,42 @@ export const LoginScreen = ({ navigation }) => {
               )}
             </TouchableOpacity>
 
+            {/* Divider */}
+            <View style={styles.dividerRow}>
+              <View style={[styles.dividerLine, { backgroundColor: borderColor }]} />
+              <Text style={[styles.dividerText, { color: subtitleColor }]}>
+                OR CONTINUE WITH
+              </Text>
+              <View style={[styles.dividerLine, { backgroundColor: borderColor }]} />
+            </View>
+
+            {/* Google Sign-In Button */}
+            <TouchableOpacity
+              onPress={handleGoogleLogin}
+              disabled={isLoading || isGoogleLoading}
+              style={[
+                styles.googleBtn,
+                {
+                  backgroundColor: isDark ? AppColors.darkSurface : '#FFFFFF',
+                  borderColor: borderColor,
+                },
+              ]}
+              activeOpacity={0.85}
+            >
+              {isGoogleLoading ? (
+                <ActivityIndicator color={AppColors.primaryColor} size="small" />
+              ) : (
+                <View style={styles.googleBtnContent}>
+                  <View style={styles.googleIconBadge}>
+                    <FontAwesome name="google" size={17} color="#EA4335" />
+                  </View>
+                  <Text style={[styles.googleBtnText, { color: textColor }]}>
+                    Sign in with Google
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
             {/* Partner Onboarding Footer */}
             <View style={styles.footerRow}>
               <Text style={[styles.footerText, { color: subtitleColor }]}>
@@ -620,6 +719,51 @@ const styles = StyleSheet.create({
   },
   iconLeftMargin: {
     marginLeft: 8,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  googleBtn: {
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 1,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  googleBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  googleBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });
 

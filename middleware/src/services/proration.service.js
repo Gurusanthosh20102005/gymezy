@@ -224,18 +224,18 @@ export class ProrationEngine {
   }
 
   /**
-   * Execute atomic transaction on Super Admin Approval
+   * Execute switch transaction (uses MongoDB transaction on replica sets / mongos,
+   * and falls back cleanly to sequential execution on standalone MongoDB).
    */
   static async executeApprovedSwitchTransaction({ switchRequestId, superAdminUser, approvedByUser, remarks = '' }) {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-      const request = await MembershipSwitchRequest.findById(switchRequestId)
+    const runExecution = async (session) => {
+      const sessionOpt = session ? { session } : {};
+      const requestQuery = MembershipSwitchRequest.findById(switchRequestId)
         .populate('membershipId')
         .populate('gymId')
-        .populate('userId')
-        .session(session);
+        .populate('userId');
+      if (session) requestQuery.session(session);
+      const request = await requestQuery;
 
       if (!request) {
         throw ApiError.notFound('Switch request not found.');
@@ -253,7 +253,7 @@ export class ProrationEngine {
 
       // 1. Mark current membership as 'Switched'
       currentMembership.status = 'Switched';
-      await currentMembership.save({ session });
+      await currentMembership.save(sessionOpt);
 
       // 2. Calculate new start and end dates
       const newStartDate = new Date();
@@ -268,7 +268,9 @@ export class ProrationEngine {
       // Compute target trainer fee (if trainer is attached)
       let targetTrainerFee = 0;
       if (currentMembership.hasTrainer && currentMembership.trainerId) {
-        const trainerDoc = await Employee.findById(currentMembership.trainerId).session(session);
+        const trainerQuery = Employee.findById(currentMembership.trainerId);
+        if (session) trainerQuery.session(session);
+        const trainerDoc = await trainerQuery;
         if (trainerDoc) {
           const priceKey = TIER_PRICE_KEYS[targetTierNormalized];
           const directFee = trainerDoc.trainerPricing?.[priceKey];
@@ -341,7 +343,7 @@ export class ProrationEngine {
             },
           },
         ],
-        { session }
+        sessionOpt
       );
 
       // 4. Update old membership switchMetadata pointer
@@ -365,11 +367,13 @@ export class ProrationEngine {
             : 'NONE',
         extraDaysAwarded: quote.extraDaysAwarded,
       };
-      await currentMembership.save({ session });
+      await currentMembership.save(sessionOpt);
 
       // 5. Apply Wallet Credit if leftover credit > 0 and policy is WALLET
       if (quote.leftoverCreditPaise > 0 && quote.downgradePolicy === 'WALLET') {
-        let userWallet = await Wallet.findOne({ userId: user._id, gymId: gym._id }).session(session);
+        const walletQuery = Wallet.findOne({ userId: user._id, gymId: gym._id });
+        if (session) walletQuery.session(session);
+        let userWallet = await walletQuery;
         if (!userWallet) {
           userWallet = new Wallet({
             userId: user._id,
@@ -393,7 +397,7 @@ export class ProrationEngine {
           createdAt: new Date(),
         });
 
-        await userWallet.save({ session });
+        await userWallet.save(sessionOpt);
       }
 
       // 6. Mark Switch Request as APPROVED_AND_EXECUTED
@@ -416,10 +420,7 @@ export class ProrationEngine {
         reviewedAt: new Date(),
         remarks: remarks || 'Approved and executed',
       };
-      await request.save({ session });
-
-      await session.commitTransaction();
-      session.endSession();
+      await request.save(sessionOpt);
 
       return {
         success: true,
@@ -427,9 +428,28 @@ export class ProrationEngine {
         previousMembership: currentMembership,
         newMembership,
       };
-    } catch (error) {
-      await session.abortTransaction();
+    };
+
+    const topologyType = mongoose.connection?.client?.topology?.description?.type;
+    const supportsTransactions = ['ReplicaSetWithPrimary', 'ReplicaSetNoPrimary', 'Sharded'].includes(topologyType);
+
+    if (!supportsTransactions) {
+      return runExecution(null);
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const result = await runExecution(session);
+      await session.commitTransaction();
       session.endSession();
+      return result;
+    } catch (error) {
+      await session.abortTransaction().catch(() => {});
+      session.endSession();
+      if (error?.code === 20 || String(error?.message || '').includes('replica set member or mongos')) {
+        return runExecution(null);
+      }
       throw error;
     }
   }

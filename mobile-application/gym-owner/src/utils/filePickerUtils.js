@@ -1,6 +1,18 @@
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
 import { Alert } from 'react-native';
 
+const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+
+const isAssetOverLimit = (asset) => {
+  const byteSize =
+    typeof asset?.fileSize === 'number' && asset.fileSize > 0
+      ? asset.fileSize
+      : asset?.base64
+      ? Math.ceil((asset.base64.length * 3) / 4)
+      : 0;
+  return byteSize > MAX_IMAGE_SIZE_BYTES;
+};
+
 /**
  * Pick an image from gallery or camera and return base64 / uri
  */
@@ -28,6 +40,11 @@ export const pickImageFromDevice = async (options = {}) => {
 
     const asset = result.assets?.[0];
     if (!asset) return null;
+
+    if (isAssetOverLimit(asset)) {
+      Alert.alert('File Too Large', 'Please select an image that is 2 MB or smaller.');
+      return null;
+    }
 
     const base64Data = asset.base64
       ? `data:${asset.type || 'image/jpeg'};base64,${asset.base64}`
@@ -74,6 +91,11 @@ export const capturePhotoFromCamera = async (options = {}) => {
 
     const asset = result.assets?.[0];
     if (!asset) return null;
+
+    if (isAssetOverLimit(asset)) {
+      Alert.alert('File Too Large', 'Please select an image that is 2 MB or smaller.');
+      return null;
+    }
 
     const base64Data = asset.base64
       ? `data:${asset.type || 'image/jpeg'};base64,${asset.base64}`

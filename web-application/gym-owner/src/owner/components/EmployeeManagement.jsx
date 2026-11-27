@@ -500,18 +500,14 @@ export const EmployeeManagement = ({
       statusFilter === 'ALL' ||
       item.status === statusFilter ||
       item.approvalStatus === statusFilter;
-    const matchAttendance = attendanceFilter === 'ALL' || item.attendance === attendanceFilter;
-
-    return matchSearch && matchRole && matchType && matchStatus && matchAttendance;
+    return matchSearch && matchRole && matchType && matchStatus;
   });
 
   const clearFilters = () => {
     setNamePhoneSearch('');
     setRoleFilter('ALL');
     setStatusFilter('ALL');
-    setAttendanceFilter('ALL');
     setStaffTypeFilter('ALL');
-    setSelectedDateRange(`${todayFormatted} - ${oneYearLaterFormatted}`);
     message.info('Filters cleared');
   };
 
@@ -1812,7 +1808,7 @@ export const EmployeeManagement = ({
       >
         <Row gutter={[16, 16]} align="bottom">
           {/* Search by Name / Phone */}
-          <Col xs={24} sm={12} lg={6}>
+          <Col xs={24} sm={12} lg={10}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
               Search by Name / Phone
             </div>
@@ -1827,7 +1823,7 @@ export const EmployeeManagement = ({
           </Col>
 
           {/* Role */}
-          <Col xs={24} sm={12} lg={4}>
+          <Col xs={24} sm={12} lg={7}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
               Role
             </div>
@@ -1848,7 +1844,7 @@ export const EmployeeManagement = ({
           </Col>
 
           {/* Status */}
-          <Col xs={24} sm={12} lg={4}>
+          <Col xs={24} sm={12} lg={7}>
             <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
               Status
             </div>
@@ -1862,54 +1858,6 @@ export const EmployeeManagement = ({
               <Option value="On Leave">On Leave</Option>
               <Option value="Inactive">Inactive</Option>
             </Select>
-          </Col>
-
-          {/* Attendance */}
-          <Col xs={24} sm={12} lg={4}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
-              Attendance
-            </div>
-            <Select
-              value={attendanceFilter}
-              onChange={setAttendanceFilter}
-              style={{ width: '100%', height: 42 }}
-            >
-              <Option value="ALL">All</Option>
-              <Option value="Present">Present</Option>
-              <Option value="Absent">Absent</Option>
-              <Option value="On Leave">On Leave</Option>
-            </Select>
-          </Col>
-
-          {/* Date Range */}
-          <Col xs={24} sm={12} lg={6}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: isDarkMode ? '#cccccc' : '#475569', marginBottom: 6 }}>
-              Date Range
-            </div>
-            <Dropdown menu={dateRangeMenu} trigger={['click']}>
-              <div
-                style={{
-                  height: 42,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '0 14px',
-                  backgroundColor: isDarkMode ? '#141414' : '#ffffff',
-                  border: `1px solid ${isDarkMode ? '#262626' : '#d9d9d9'}`,
-                  borderRadius: 'var(--radius-base)',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: isDarkMode ? '#ffffff' : '#0f172a',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <CalendarOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', flexShrink: 0 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedDateRange}</span>
-                </div>
-                <DownOutlined style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', flexShrink: 0 }} />
-              </div>
-            </Dropdown>
           </Col>
         </Row>
 
@@ -2143,8 +2091,8 @@ export const EmployeeManagement = ({
                     input.onchange = (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 2 * 1024 * 1024) {
-                        message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
+                      if (file.size > 1024 * 1024) {
+                        message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -3256,8 +3204,8 @@ export const EmployeeManagement = ({
                     input.onchange = (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 2 * 1024 * 1024) {
-                        message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
+                      if (file.size > 1024 * 1024) {
+                        message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -3276,8 +3224,8 @@ export const EmployeeManagement = ({
                       message.error('Please drop an image file (JPG, PNG).');
                       return;
                     }
-                    if (file.size > 2 * 1024 * 1024) {
-                      message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
+                    if (file.size > 1024 * 1024) {
+                      message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
                       return;
                     }
                     const reader = new FileReader();
@@ -3305,7 +3253,7 @@ export const EmployeeManagement = ({
                     <>
                       <CameraOutlined style={{ fontSize: 28, color: '#722ed1', marginBottom: 6 }} />
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: '#722ed1' }}>Upload Photo</div>
-                      <div style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2 }}>JPG, PNG (Max 2MB)</div>
+                      <div style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2 }}>JPG, PNG (Max 1MB)</div>
                     </>
                   )}
                 </div>
@@ -4097,9 +4045,9 @@ export const EmployeeManagement = ({
                 input.onchange = (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  if (file.size > 10 * 1024 * 1024) {
-                    setDocFileError('File size exceeds 10MB limit. Please select a smaller document.');
-                    message.error('Document file size exceeds 10MB limit.');
+                  if (file.size > 1024 * 1024) {
+                    setDocFileError('File size exceeds 1MB limit. Please select a smaller document.');
+                    message.error('Document file size exceeds 1MB limit.');
                     return;
                   }
                   setDocFile(file);
@@ -4113,9 +4061,9 @@ export const EmployeeManagement = ({
                 e.preventDefault();
                 const file = e.dataTransfer.files?.[0];
                 if (!file) return;
-                if (file.size > 10 * 1024 * 1024) {
-                  setDocFileError('File size exceeds 10MB limit. Please select a smaller document.');
-                  message.error('Document file size exceeds 10MB limit.');
+                if (file.size > 1024 * 1024) {
+                  setDocFileError('File size exceeds 1MB limit. Please select a smaller document.');
+                  message.error('Document file size exceeds 1MB limit.');
                   return;
                 }
                 setDocFile(file);
@@ -4151,7 +4099,7 @@ export const EmployeeManagement = ({
                     Click to browse or drop file here
                   </div>
                   <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
-                    Supports PDF, PNG, JPG, DOCX (Max 10MB)
+                    Supports PDF, PNG, JPG, DOCX (Max 1MB)
                   </div>
                 </>
               )}
@@ -4301,8 +4249,8 @@ export const EmployeeManagement = ({
                       input.onchange = (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        if (file.size > 2 * 1024 * 1024) {
-                          message.error('Staff photo exceeds 2MB limit. Please select an image under 2MB.');
+                        if (file.size > 1024 * 1024) {
+                          message.error('Staff photo exceeds 1MB limit. Please select an image under 1MB.');
                           return;
                         }
                         const reader = new FileReader();
@@ -4321,8 +4269,8 @@ export const EmployeeManagement = ({
                         message.error('Please drop an image file (JPG, PNG).');
                         return;
                       }
-                      if (file.size > 2 * 1024 * 1024) {
-                        message.error('Staff photo exceeds 2MB limit. Please select an image under 2MB.');
+                      if (file.size > 1024 * 1024) {
+                        message.error('Staff photo exceeds 1MB limit. Please select an image under 1MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -4350,7 +4298,7 @@ export const EmployeeManagement = ({
                       <>
                         <CameraOutlined style={{ fontSize: 24, color: '#722ed1', marginBottom: 4 }} />
                         <div style={{ fontSize: 11.5, fontWeight: 700, color: '#722ed1' }}>Upload Photo</div>
-                        <div style={{ fontSize: 9.5, color: isDarkMode ? '#888888' : '#64748b' }}>JPG, PNG (Max 2MB)</div>
+                        <div style={{ fontSize: 9.5, color: isDarkMode ? '#888888' : '#64748b' }}>JPG, PNG (Max 1MB)</div>
                       </>
                     )}
                   </div>

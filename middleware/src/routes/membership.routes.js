@@ -18,6 +18,8 @@ import {
   gymAcceptCancellation,
   gymRejectCancellation,
   memberRespondCancellationOffer,
+  extendWalkInMembership,
+  sendAppRenewalOffer,
 } from '../controllers/membership.controller.js';
 import { optionalAuthenticate } from '../middlewares/auth.middleware.js';
 
@@ -64,5 +66,9 @@ router.get('/:id', optionalAuthenticate, getMembershipById);
 
 // Cancel Membership
 router.patch('/:id/cancel', optionalAuthenticate, cancelMembership);
+
+// Extend Walk-in Membership (Direct POS) & Send App Renewal Offer
+router.patch('/:id/extend', optionalAuthenticate, extendWalkInMembership);
+router.post('/:id/renewal-offer', optionalAuthenticate, sendAppRenewalOffer);
 
 export default router;

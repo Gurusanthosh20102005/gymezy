@@ -21,27 +21,7 @@ import { AddWalkInBookingModal } from '../../widgets/AddWalkInBookingModal';
 import { AddWalkInMemberModal } from '../../widgets/AddWalkInMemberModal';
 import { SkeletonMetricCard } from '../../widgets/Skeleton';
 
-export const WEEKLY_CHECKINS = [
-  { day: 'Mon', count: 74, heightPct: 74 },
-  { day: 'Tue', count: 88, heightPct: 88 },
-  { day: 'Wed', count: 68, heightPct: 68 },
-  { day: 'Thu', count: 82, heightPct: 82 },
-  { day: 'Fri', count: 95, heightPct: 95 },
-  { day: 'Sat', count: 100, heightPct: 100 },
-  { day: 'Sun', count: 54, heightPct: 54 },
-];
-
-export const PEAK_HOURS = [
-  { time: '06:00 AM - 09:00 AM', label: 'Morning Rush', occupancy: '88%', status: 'Peak' },
-  { time: '11:00 AM - 04:00 PM', label: 'Afternoon Hours', occupancy: '34%', status: 'Moderate' },
-  { time: '05:00 PM - 09:30 PM', label: 'Evening Prime', occupancy: '96%', status: 'Max Rush' },
-];
-
-export const PLAN_STATS = [
-  { name: 'Annual VIP Pass', count: 112, pct: '45%', color: AppColors.primaryColor },
-  { name: 'Quarterly Pro', count: 86, pct: '35%', color: AppColors.secondaryColor },
-  { name: 'Monthly Standard', count: 50, pct: '20%', color: AppColors.accentColor },
-];
+export const DAYS_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export const OverviewTab = ({
   topInset,
@@ -66,34 +46,53 @@ export const OverviewTab = ({
   const [isLoadingOverview, setIsLoadingOverview] = useState(!gym);
   const [employees, setEmployees] = useState([]);
   const [membershipSummary, setMembershipSummary] = useState(null);
+  const [membershipsList, setMembershipsList] = useState([]);
+  const [todayAttendance, setTodayAttendance] = useState([]);
+  const [bookingsList, setBookingsList] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState(null);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [showWalkInMemberModal, setShowWalkInMemberModal] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('This Month');
 
 
-  // Fetch live employees, memberships summary, and refresh gym profile
+  // Fetch live employees, dashboard stats, memberships, bookings, and attendance from DB
   const fetchOverviewData = useCallback(async () => {
     try {
       if (refreshGymProfile) {
         await refreshGymProfile();
       }
       const targetGymId = gym?.id || gym?._id || user?.gymId;
-      const [employeeData, memRes] = await Promise.all([
+      const [employeeData, memRes, attendanceData, bookingsRes, statsRes] = await Promise.all([
         apiService.getEmployees().catch(() => []),
-        targetGymId ? apiService.getMemberships(targetGymId, { limit: 10 }).catch(() => null) : null,
+        targetGymId ? apiService.getMemberships(targetGymId, { limit: 100 }).catch(() => null) : null,
+        targetGymId ? apiService.getTodayAttendance({ gymId: targetGymId }).catch(() => []) : [],
+        targetGymId ? apiService.getGymBookings(targetGymId, { limit: 100 }).catch(() => null) : null,
+        targetGymId ? apiService.getGymDashboardStats(targetGymId, selectedPeriod).catch(() => null) : null,
       ]);
       if (Array.isArray(employeeData)) {
         setEmployees(employeeData);
       }
-      if (memRes?.summary) {
-        setMembershipSummary(memRes.summary);
+      if (memRes) {
+        if (memRes.summary) setMembershipSummary(memRes.summary);
+        const list = Array.isArray(memRes.memberships) ? memRes.memberships : Array.isArray(memRes) ? memRes : [];
+        setMembershipsList(list);
+      }
+      if (Array.isArray(attendanceData)) {
+        setTodayAttendance(attendanceData);
+      }
+      if (bookingsRes) {
+        const bList = Array.isArray(bookingsRes.bookings) ? bookingsRes.bookings : Array.isArray(bookingsRes) ? bookingsRes : [];
+        setBookingsList(bList);
+      }
+      if (statsRes) {
+        setDashboardStats(statsRes);
       }
     } catch (err) {
       console.warn('Overview data fetch error:', err.message);
     } finally {
       setIsLoadingOverview(false);
     }
-  }, [gym?.id, gym?._id, user?.gymId, refreshGymProfile]);
+  }, [gym?.id, gym?._id, user?.gymId, refreshGymProfile, selectedPeriod]);
 
   useEffect(() => {
     fetchOverviewData();
@@ -130,58 +129,112 @@ export const OverviewTab = ({
       ? gym.members.length
       : 0
   );
-  const todayCheckinsCount = Number(gym?.todayCheckinsCount !== undefined ? gym.todayCheckinsCount : 0);
-  const monthlyRevenue = Number(gym?.monthlyRevenue !== undefined ? gym.monthlyRevenue : gym?.totalRevenue || 0);
+  const todayCheckinsCount = todayAttendance.length > 0
+    ? todayAttendance.length
+    : Number(gym?.todayCheckinsCount !== undefined ? gym.todayCheckinsCount : 0);
 
-  const periodRevenueFormatted = useMemo(() => {
-    if (selectedPeriod === 'This Week') {
-      const val = Math.round((monthlyRevenue || 185400) * 0.28);
-      return `₹${val.toLocaleString('en-IN')}`;
-    }
-    if (selectedPeriod === 'This Year') {
-      const val = Math.round((monthlyRevenue || 185400) * 8.5);
-      return `₹${val.toLocaleString('en-IN')}`;
-    }
-    return monthlyRevenue > 0 ? `₹${monthlyRevenue.toLocaleString('en-IN')}` : '₹1,85,400';
-  }, [selectedPeriod, monthlyRevenue]);
+  const statsMetrics = dashboardStats?.metrics || null;
 
   const memberRevenue = useMemo(() => {
-    if (gym?.memberRevenue !== undefined) return Number(gym.memberRevenue);
-    if (Array.isArray(gym?.members)) {
-      return gym.members.reduce(
-        (acc, m) => acc + (Number.parseInt(String(m.amount || '').replace(/[^\d]/g, ''), 10) || 0),
-        0
-      );
+    if (statsMetrics?.memberRevenue !== undefined) return Number(statsMetrics.memberRevenue) || 0;
+    if (gym?.memberRevenue !== undefined) return Number(gym.memberRevenue) || 0;
+    if (membershipsList.length > 0) {
+      return membershipsList.reduce((acc, m) => acc + (Number(m.amountPaid || m.price || m.amount) || 0), 0);
     }
     return 0;
-  }, [gym?.memberRevenue, gym?.members]);
+  }, [statsMetrics?.memberRevenue, gym?.memberRevenue, membershipsList]);
 
   const appBookingRevenue = useMemo(() => {
-    if (gym?.appBookingRevenue !== undefined) return Number(gym.appBookingRevenue);
-    if (gym?.bookingRevenue !== undefined) return Number(gym.bookingRevenue);
-    if (Array.isArray(gym?.recentCheckins)) {
-      return gym.recentCheckins.reduce((acc, b) => acc + (Number(b.price) || 0), 0);
+    if (statsMetrics?.appBookingRevenue !== undefined) return Number(statsMetrics.appBookingRevenue) || 0;
+    if (gym?.appBookingRevenue !== undefined) return Number(gym.appBookingRevenue) || 0;
+    if (gym?.bookingRevenue !== undefined) return Number(gym.bookingRevenue) || 0;
+    if (bookingsList.length > 0) {
+      return bookingsList.reduce((acc, b) => acc + (Number(b.totalAmount || b.amountPaid || b.price) || 0), 0);
     }
     return 0;
-  }, [gym?.appBookingRevenue, gym?.bookingRevenue, gym?.recentCheckins]);
+  }, [statsMetrics?.appBookingRevenue, gym?.appBookingRevenue, gym?.bookingRevenue, bookingsList]);
+
+  const monthlyRevenue = useMemo(() => {
+    if (statsMetrics?.totalRevenue !== undefined) return Number(statsMetrics.totalRevenue) || 0;
+    const raw = gym?.monthlyRevenue ?? gym?.totalRevenue;
+    const parsed = typeof raw === 'number' ? raw : Number.parseInt(String(raw || '').replace(/[^\d]/g, ''), 10) || 0;
+    return parsed > 0 ? parsed : memberRevenue + appBookingRevenue;
+  }, [statsMetrics?.totalRevenue, gym?.monthlyRevenue, gym?.totalRevenue, memberRevenue, appBookingRevenue]);
+
+  const periodRevenueValue = useMemo(() => {
+    if (statsMetrics?.totalRevenue !== undefined) return Number(statsMetrics.totalRevenue) || 0;
+    return monthlyRevenue;
+  }, [statsMetrics?.totalRevenue, monthlyRevenue]);
+
+  const periodRevenueFormatted = `₹${periodRevenueValue.toLocaleString('en-IN')}`;
+  const dailyAverageFormatted = useMemo(() => {
+    const days = selectedPeriod === 'This Week' ? 7 : selectedPeriod === 'This Year' ? 365 : 30;
+    return `₹${Math.round(periodRevenueValue / days).toLocaleString('en-IN')}`;
+  }, [periodRevenueValue, selectedPeriod]);
+
+  const activeRateFormatted = useMemo(() => {
+    const total = Number(membershipSummary?.total ?? membershipsList.length ?? 0);
+    const active = Number(membershipSummary?.active ?? membershipsList.filter((m) => m.status === 'Active').length ?? 0);
+    if (total <= 0) return '0%';
+    return `${((active / total) * 100).toFixed(1)}%`;
+  }, [membershipSummary, membershipsList]);
+
+  const newSignupsCount = useMemo(() => {
+    const days = selectedPeriod === 'This Week' ? 7 : selectedPeriod === 'This Year' ? 365 : 30;
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return membershipsList.filter((m) => m.createdAt && new Date(m.createdAt).getTime() >= cutoff).length;
+  }, [membershipsList, selectedPeriod]);
+
+  const weeklyCheckins = useMemo(() => {
+    const counts = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    todayAttendance.forEach((a) => {
+      const dt = new Date(a.checkInTime || a.createdAt || Date.now());
+      if (dt.getTime() >= weekAgo) {
+        const d = dayNames[dt.getDay()];
+        if (counts[d] !== undefined) counts[d] += 1;
+      }
+    });
+    const maxCount = Math.max(1, ...Object.values(counts));
+    return DAYS_ORDER.map((day) => ({
+      day,
+      count: counts[day],
+      heightPct: counts[day] > 0 ? Math.max(12, Math.round((counts[day] / maxCount) * 100)) : 4,
+    }));
+  }, [todayAttendance]);
+
+  const peakDayLabel = useMemo(() => {
+    const best = weeklyCheckins.reduce((top, cur) => (cur.count > top.count ? cur : top), { day: '—', count: 0 });
+    return best.count > 0 ? `${best.day} Peak` : 'No Peak Yet';
+  }, [weeklyCheckins]);
+
+  const avgDailyCheckins = useMemo(() => {
+    const total = weeklyCheckins.reduce((acc, cur) => acc + cur.count, 0);
+    return Math.round(total / 7);
+  }, [weeklyCheckins]);
 
   const totalActiveUsers = Number(
-    membershipSummary?.total !== undefined
+    statsMetrics?.totalActiveUsers !== undefined
+      ? statsMetrics.totalActiveUsers
+      : membershipSummary?.total !== undefined
       ? membershipSummary.total
       : gym?.membersCount || (gym?.members || []).length || activeMembersCount || 0
   );
 
-  const activePassesCount = useMemo(() => {
-    if (membershipSummary?.active !== undefined) {
-      return Number(membershipSummary.active);
-    }
-    if (Array.isArray(gym?.members)) {
-      return gym.members.filter((m) => m.status === 'Active' || !m.status).length;
-    }
-    return totalActiveUsers;
-  }, [membershipSummary?.active, gym?.members, totalActiveUsers]);
+  const walkInCount = Number(
+    statsMetrics?.walkInCount !== undefined
+      ? statsMetrics.walkInCount
+      : membershipSummary?.active !== undefined
+      ? membershipSummary.active
+      : totalActiveUsers
+  );
 
-  const appBookingsCount = Number(gym?.appBookingsCount || gym?.completedBookingsCount || todayCheckinsCount || 0);
+  const appCount = Number(
+    statsMetrics?.appCount !== undefined
+      ? statsMetrics.appCount
+      : gym?.appBookingsCount || gym?.completedBookingsCount || todayCheckinsCount || 0
+  );
 
   const metricCards = useMemo(() => {
     const allCards = [
@@ -197,7 +250,7 @@ export const OverviewTab = ({
       },
       {
         id: 'member-revenue',
-        title: 'Member Revenue',
+        title: 'Membership Plans',
         value: `₹${memberRevenue.toLocaleString('en-IN')}`,
         iconBg: 'transparent',
         iconColor: '#3B82F6',
@@ -206,13 +259,22 @@ export const OverviewTab = ({
       },
       {
         id: 'app-booking-revenue',
-        title: 'App Booking Revenue',
+        title: 'Session Bookings',
         value: `₹${appBookingRevenue.toLocaleString('en-IN')}`,
         iconBg: 'transparent',
         iconColor: '#8B5CF6',
         iconName: 'smartphone',
         onPress: onNavigateToBookings,
         isRevenue: true,
+      },
+      {
+        id: 'app-count',
+        title: 'App Count',
+        value: String(appCount),
+        iconBg: 'transparent',
+        iconColor: '#8B5CF6',
+        iconName: 'smartphone',
+        onPress: onNavigateToBookings,
       },
       {
         id: 'total-active-users',
@@ -224,22 +286,13 @@ export const OverviewTab = ({
         onPress: onNavigateToMembers,
       },
       {
-        id: 'members',
-        title: 'Members',
-        value: String(activePassesCount),
+        id: 'walk-in-count',
+        title: 'Walk-in Count',
+        value: String(walkInCount),
         iconBg: 'transparent',
         iconColor: '#059669',
         iconName: 'how-to-reg',
         onPress: onNavigateToMembers,
-      },
-      {
-        id: 'app-booking-number',
-        title: 'App Booking Number',
-        value: String(appBookingsCount),
-        iconBg: 'transparent',
-        iconColor: '#DC2626',
-        iconName: 'smartphone',
-        onPress: onNavigateToBookings,
       },
     ];
 
@@ -252,9 +305,9 @@ export const OverviewTab = ({
     monthlyRevenue,
     memberRevenue,
     appBookingRevenue,
+    appCount,
     totalActiveUsers,
-    activePassesCount,
-    appBookingsCount,
+    walkInCount,
     onNavigateToMembers,
     onNavigateToBookings,
     navigation,
@@ -531,7 +584,7 @@ export const OverviewTab = ({
             borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
           },
         ]}
-        onPress={() => (onNavigateToEmployees ? onNavigateToEmployees() : navigation?.navigate('Attendance'))}
+        onPress={() => onNavigateToEmployees && onNavigateToEmployees()}
         activeOpacity={0.85}
       >
         <View style={styles.staffQuickLeft}>
@@ -765,7 +818,7 @@ export const OverviewTab = ({
             </View>
             <View style={styles.growthBadge}>
               <MaterialIcons name="trending-up" size={16} color={AppColors.secondaryColor} />
-              <Text style={styles.growthText}>+14.2%</Text>
+              <Text style={styles.growthText}>Live DB</Text>
             </View>
           </View>
 
@@ -792,7 +845,7 @@ export const OverviewTab = ({
                   { color: isDark ? '#FFFFFF' : '#0F172A' },
                 ]}
               >
-                ₹6,180
+                {dailyAverageFormatted}
               </Text>
             </View>
 
@@ -803,7 +856,7 @@ export const OverviewTab = ({
                   { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' },
                 ]}
               >
-                Renewal Rate
+                Active Rate
               </Text>
               <Text
                 style={[
@@ -811,7 +864,7 @@ export const OverviewTab = ({
                   { color: isDark ? '#FFFFFF' : '#0F172A' },
                 ]}
               >
-                92.4%
+                {activeRateFormatted}
               </Text>
             </View>
 
@@ -830,7 +883,7 @@ export const OverviewTab = ({
                   { color: isDark ? '#FFFFFF' : '#0F172A' },
                 ]}
               >
-                +{activeMembersCount > 0 ? Math.round(activeMembersCount * 0.15) : 28}
+                +{newSignupsCount}
               </Text>
             </View>
           </View>
@@ -863,17 +916,17 @@ export const OverviewTab = ({
                 { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' },
               ]}
             >
-              Average {todayCheckinsCount > 0 ? todayCheckinsCount : 82} members / day
+              Average {avgDailyCheckins} members / day
             </Text>
           </View>
           <View style={styles.peakBadge}>
-            <Text style={styles.peakBadgeText}>Saturday Peak</Text>
+            <Text style={styles.peakBadgeText}>{peakDayLabel}</Text>
           </View>
         </View>
 
         {/* Bar Chart Container */}
         <View style={styles.barChartContainer}>
-          {WEEKLY_CHECKINS.map((item) => (
+          {weeklyCheckins.map((item) => (
             <View key={item.day} style={styles.barColumn}>
               <Text
                 style={[
@@ -917,178 +970,6 @@ export const OverviewTab = ({
               </Text>
             </View>
           ))}
-        </View>
-      </View>
-
-      {/* Peak Hours Breakdown */}
-      <View style={[styles.sectionHeaderRow, { marginTop: 4 }]}>
-        <Text
-          style={[
-            styles.sectionTitle,
-            { color: isDark ? '#FFFFFF' : '#0F172A' },
-          ]}
-        >
-          Occupancy by Time Slot
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.peakCard,
-          {
-            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-          },
-        ]}
-      >
-        {PEAK_HOURS.map((slot, index) => (
-          <View
-            key={slot.time}
-            style={[
-              styles.slotRow,
-              index < PEAK_HOURS.length - 1 && [
-                styles.slotBorder,
-                { borderColor: isDark ? AppColors.darkBorder : '#F1F5F9' },
-              ],
-            ]}
-          >
-            <View style={styles.slotInfo}>
-              <Text
-                style={[
-                  styles.slotLabel,
-                  { color: isDark ? '#FFFFFF' : '#0F172A' },
-                ]}
-              >
-                {slot.label}
-              </Text>
-              <Text
-                style={[
-                  styles.slotTime,
-                  { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' },
-                ]}
-              >
-                {slot.time}
-              </Text>
-            </View>
-
-            <View style={styles.slotBadgeBox}>
-              <Text
-                style={[
-                  styles.slotOccupancy,
-                  { color: isDark ? '#FFFFFF' : '#0F172A' },
-                ]}
-              >
-                {slot.occupancy}
-              </Text>
-              <Text
-                style={[
-                  styles.slotStatusTag,
-                  {
-                    color:
-                      slot.status === 'Max Rush'
-                        ? AppColors.dangerRed
-                        : slot.status === 'Peak'
-                        ? AppColors.warningAmber
-                        : AppColors.secondaryColor,
-                  },
-                ]}
-              >
-                {slot.status}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {/* Membership Plan Distribution */}
-      <View style={[styles.sectionHeaderRow, { marginTop: 4 }]}>
-        <Text
-          style={[
-            styles.sectionTitle,
-            { color: isDark ? '#FFFFFF' : '#0F172A' },
-          ]}
-        >
-          Plan Distribution
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.planDistCard,
-          {
-            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-          },
-        ]}
-      >
-        {PLAN_STATS.map((plan) => (
-          <View key={plan.name} style={styles.planStatRow}>
-            <View style={styles.planStatHeader}>
-              <View style={styles.planBulletRow}>
-                <View style={[styles.planDot, { backgroundColor: plan.color }]} />
-                <Text
-                  style={[
-                    styles.planStatName,
-                    { color: isDark ? '#FFFFFF' : '#0F172A' },
-                  ]}
-                >
-                  {plan.name}
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.planStatVal,
-                  { color: isDark ? '#FFFFFF' : '#0F172A' },
-                ]}
-              >
-                {plan.count} ({plan.pct})
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.planProgressBar,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9' },
-              ]}
-            >
-              <View
-                style={[
-                  styles.planProgressFill,
-                  { width: plan.pct, backgroundColor: plan.color },
-                ]}
-              />
-            </View>
-          </View>
-        ))}
-      </View>
-
-      {/* Settlement Alert Card */}
-      <View
-        style={[
-          styles.settlementCard,
-          {
-            backgroundColor: isDark ? 'rgba(0, 56, 130, 0.15)' : '#EFF6FF',
-            borderColor: isDark ? 'rgba(0, 56, 130, 0.4)' : '#BFDBFE',
-          },
-        ]}
-      >
-        <Ionicons name="card-outline" size={24} color={AppColors.primaryColor} />
-        <View style={styles.settlementContent}>
-          <Text
-            style={[
-              styles.settlementTitle,
-              { color: isDark ? '#93C5FD' : AppColors.primaryColor },
-            ]}
-          >
-            Next Settlement: 01 Nov 2026
-          </Text>
-          <Text
-            style={[
-              styles.settlementSub,
-              { color: isDark ? 'rgba(255,255,255,0.7)' : '#475569' },
-            ]}
-          >
-            Pending pass & membership payouts will be credited to registered gym bank account.
-          </Text>
         </View>
       </View>
 
@@ -1622,96 +1503,6 @@ const styles = StyleSheet.create({
   barDayText: {
     fontSize: 11,
     marginTop: 6,
-  },
-  peakCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  slotRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-  },
-  slotBorder: {
-    borderBottomWidth: 1,
-  },
-  slotInfo: {
-    gap: 2,
-  },
-  slotLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  slotTime: {
-    fontSize: 12,
-  },
-  slotBadgeBox: {
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  slotOccupancy: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  slotStatusTag: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  planDistCard: {
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 18,
-    gap: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  planStatRow: {
-    gap: 6,
-  },
-  planStatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  planBulletRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  planDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  planStatName: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  planStatVal: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  planProgressBar: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  planProgressFill: {
-    height: '100%',
-    borderRadius: 4,
   },
   settlementCard: {
     flexDirection: 'row',

@@ -123,6 +123,7 @@ export const ApplicationStatus = () => {
   const [editForm] = Form.useForm();
   const [savingEdit, setSavingEdit] = useState(false);
   const [editFacilities, setEditFacilities] = useState([]);
+  const [editAmenities, setEditAmenities] = useState([]);
   const [editWorkouts, setEditWorkouts] = useState([]);
   const [editLogo, setEditLogo] = useState('');
   const [editCoverPhoto, setEditCoverPhoto] = useState('');
@@ -210,6 +211,7 @@ export const ApplicationStatus = () => {
     setEditResubmitFlag(isOnHold || isRejected);
     setEditAdminNotes('');
     setEditFacilities(Array.isArray(gym.facilities) ? [...gym.facilities] : []);
+    setEditAmenities(Array.isArray(gym.amenities) ? [...gym.amenities] : []);
     setEditWorkouts(Array.isArray(gym.workouts) ? [...gym.workouts] : []);
 
     const existingLogo = typeof gym.logo === 'string' ? gym.logo : gym.logo?.fileData || '';
@@ -254,7 +256,6 @@ export const ApplicationStatus = () => {
       eveningClose: gym.openingHours?.eveningClose || '10:30 PM',
 
       singleSessionPrice: gym.singleSessionPrice || gym.pricingPlans?.singleSession || 199,
-      weeklyPassPrice: gym.pricingPlans?.weeklyPass || 799,
       monthlyPrice: gym.pricingPlans?.monthly || 1999,
       quarterlyPrice: gym.pricingPlans?.quarterly || 4999,
       annualPrice: gym.pricingPlans?.annual || 14999,
@@ -300,6 +301,7 @@ export const ApplicationStatus = () => {
           isOpenHolidays: values.isOpenHolidays !== false,
         },
         facilities: editFacilities,
+        amenities: editAmenities,
         workouts: editWorkouts,
         logo: editLogo,
         coverPhoto: editCoverPhoto || editLogo,
@@ -1119,13 +1121,6 @@ export const ApplicationStatus = () => {
               </div>
 
               <div>
-                <div style={{ color: textMuted, fontSize: 11, marginBottom: 2 }}>Weekly Pass</div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: textPrimary }}>
-                  ₹{gym.pricingPlans?.weeklyPass || 799}
-                </div>
-              </div>
-
-              <div>
                 <div style={{ color: textMuted, fontSize: 11, marginBottom: 2 }}>Monthly Pass</div>
                 <div style={{ fontWeight: 700, fontSize: 15, color: textPrimary }}>
                   ₹{gym.pricingPlans?.monthly || 1999}
@@ -1201,6 +1196,23 @@ export const ApplicationStatus = () => {
                       {f}
                     </Tag>
                   ))}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ color: textMuted, fontSize: 11, marginBottom: 8, textTransform: 'uppercase', fontWeight: 600 }}>
+                  Active Amenities ({gym.amenities?.length || 0})
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {Array.isArray(gym.amenities) && gym.amenities.length > 0 ? (
+                    gym.amenities.map((a) => (
+                      <Tag key={a} color="cyan" style={{ borderRadius: 4, fontWeight: 500, margin: 0 }}>
+                        {a}
+                      </Tag>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: 12, color: textMuted }}>None selected</span>
+                  )}
                 </div>
               </div>
 
@@ -1659,12 +1671,6 @@ export const ApplicationStatus = () => {
                       </Col>
 
                       <Col xs={24} sm={12}>
-                        <Form.Item label="Weekly Pass Price (₹)" name="weeklyPassPrice">
-                          <InputNumber prefix="₹" style={{ width: '100%' }} />
-                        </Form.Item>
-                      </Col>
-
-                      <Col xs={24} sm={12}>
                         <Form.Item label="Monthly Membership Price (₹)" name="monthlyPrice">
                           <InputNumber prefix="₹" style={{ width: '100%' }} />
                         </Form.Item>
@@ -1719,6 +1725,36 @@ export const ApplicationStatus = () => {
                           >
                             {isSelected ? '✓ ' : '+ '}
                             {f}
+                          </Tag>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                      Select Member Amenities:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                      {AMENITY_OPTIONS.map((a) => {
+                        const isSelected = editAmenities.includes(a);
+                        return (
+                          <Tag
+                            key={a}
+                            onClick={() => {
+                              setEditAmenities((prev) =>
+                                prev.includes(a) ? prev.filter((i) => i !== a) : [...prev, a]
+                              );
+                            }}
+                            color={isSelected ? 'cyan' : 'default'}
+                            style={{
+                              cursor: 'pointer',
+                              padding: '4px 10px',
+                              borderRadius: 6,
+                              fontSize: 12,
+                              fontWeight: isSelected ? 700 : 500,
+                            }}
+                          >
+                            {isSelected ? '✓ ' : '+ '}
+                            {a}
                           </Tag>
                         );
                       })}

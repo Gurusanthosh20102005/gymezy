@@ -54,6 +54,19 @@ export const AppBar = ({
 
   const currentUser = userProp || authUser || null;
   const [avatarLoadFailed, setAvatarLoadFailed] = React.useState(false);
+  const [subBreadcrumb, setSubBreadcrumb] = React.useState(null);
+
+  React.useEffect(() => {
+    const handleSubBreadcrumb = (e) => {
+      setSubBreadcrumb(e.detail || null);
+    };
+    window.addEventListener('gymezy-breadcrumb-sub', handleSubBreadcrumb);
+    return () => window.removeEventListener('gymezy-breadcrumb-sub', handleSubBreadcrumb);
+  }, []);
+
+  React.useEffect(() => {
+    setSubBreadcrumb(null);
+  }, [location.pathname]);
 
   const userAvatar = currentUser?.profilePicture || currentUser?.avatar;
   const hasPic = hasValidProfilePic(userAvatar);
@@ -180,15 +193,40 @@ export const AppBar = ({
               title: (
                 <span
                   style={{
-                    color: isDarkMode ? '#ffffff' : '#0f172a',
-                    fontWeight: 700,
-                    fontSize: 14,
+                    color: subBreadcrumb
+                      ? isDarkMode ? '#888888' : '#64748b'
+                      : isDarkMode ? '#ffffff' : '#0f172a',
+                    fontWeight: subBreadcrumb ? 500 : 700,
+                    fontSize: subBreadcrumb ? 13 : 14,
+                    cursor: subBreadcrumb ? 'pointer' : 'default',
+                  }}
+                  onClick={() => {
+                    if (subBreadcrumb?.onBack) {
+                      subBreadcrumb.onBack();
+                    }
                   }}
                 >
                   {currentTitle}
                 </span>
               ),
             },
+            ...(subBreadcrumb
+              ? [
+                  {
+                    title: (
+                      <span
+                        style={{
+                          color: isDarkMode ? '#ffffff' : '#0f172a',
+                          fontWeight: 700,
+                          fontSize: 14,
+                        }}
+                      >
+                        {subBreadcrumb.label}
+                      </span>
+                    ),
+                  },
+                ]
+              : []),
           ]}
         />
 

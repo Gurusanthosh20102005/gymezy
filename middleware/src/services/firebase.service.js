@@ -3,6 +3,22 @@ import path from 'node:path';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getMessaging } from 'firebase-admin/messaging';
+import { OAuth2Client } from 'google-auth-library';
+
+const DEFAULT_GOOGLE_WEB_CLIENT_ID =
+  '1090454074390-i0unlvauvvkntq6kt01vf5ljaaql35pj.apps.googleusercontent.com';
+
+const ALLOWED_GOOGLE_AUDIENCES = Array.from(
+  new Set(
+    [
+      ...(process.env.GOOGLE_CLIENT_ID ? process.env.GOOGLE_CLIENT_ID.split(',').map((s) => s.trim()) : []),
+      ...(process.env.GOOGLE_WEB_CLIENT_ID ? [process.env.GOOGLE_WEB_CLIENT_ID.trim()] : []),
+      DEFAULT_GOOGLE_WEB_CLIENT_ID,
+    ].filter(Boolean)
+  )
+);
+
+const googleOAuthClient = new OAuth2Client();
 
 let isFirebaseInitialized = false;
 let firebaseApp = null;
@@ -105,7 +121,21 @@ const initializeFirebaseAdmin = () => {
 initializeFirebaseAdmin();
 
 /**
- * Verify a Google/Firebase ID token sent from the client
+ * Peek at JWT payload without trusting signature (used only to distinguish issuer/mock tokens)
+ */
+const decodeJwtPayloadUnsafe = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const payloadBase64 = parts[1].replaceAll('-', '+').replaceAll('_', '/');
+    return JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Verify a Google OAuth2 ID token (mobile @react-native-google-signin) or Firebase Auth ID token (web)
  * @param {string} idToken
  * @returns {Promise<{ uid: string, email: string, name?: string, picture?: string, emailVerified: boolean }>}
  */
@@ -114,7 +144,40 @@ export const verifyGoogleIdToken = async (idToken) => {
     throw new Error('A valid Google ID token is required.');
   }
 
-  if (isFirebaseInitialized && firebaseApp) {
+  const unverifiedPayload = decodeJwtPayloadUnsafe(idToken);
+  const isMockDevToken =
+    process.env.NODE_ENV !== 'production' && idToken.endsWith('.mockSignature');
+
+  // 1. Google OAuth2 ID Token (issued by accounts.google.com, e.g. from React Native GoogleSignin)
+  if (
+    !isMockDevToken &&
+    unverifiedPayload &&
+    (unverifiedPayload.iss === 'https://accounts.google.com' ||
+      unverifiedPayload.iss === 'accounts.google.com')
+  ) {
+    try {
+      const ticket = await googleOAuthClient.verifyIdToken({
+        idToken,
+        audience: ALLOWED_GOOGLE_AUDIENCES,
+      });
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) {
+        throw new Error('Google ID token missing email claim.');
+      }
+      return {
+        uid: payload.sub,
+        email: payload.email.toLowerCase().trim(),
+        name: payload.name || '',
+        picture: payload.picture || '',
+        emailVerified: Boolean(payload.email_verified),
+      };
+    } catch (err) {
+      throw new Error(`Invalid Google OAuth ID token: ${err.message}`);
+    }
+  }
+
+  // 2. Firebase Auth ID Token (issued by securetoken.google.com/<projectId>, e.g. from Web Firebase SDK)
+  if (!isMockDevToken && isFirebaseInitialized && firebaseApp) {
     try {
       const decoded = await getAuth(firebaseApp).verifyIdToken(idToken);
       return {
@@ -129,25 +192,18 @@ export const verifyGoogleIdToken = async (idToken) => {
     }
   }
 
-  // Graceful fallback / simulation for local development when credentials are not yet configured
-  console.warn('⚠️ Firebase Admin not initialized. Decoding token payload for development mode.');
-  try {
-    const parts = idToken.split('.');
-    if (parts.length >= 2) {
-      const payloadBase64 = parts[1].replaceAll('-', '+').replaceAll('_', '/');
-      const decodedJson = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf8'));
-      if (decodedJson.email) {
-        return {
-          uid: decodedJson.uid || decodedJson.sub || `mock_google_${Date.now()}`,
-          email: decodedJson.email.toLowerCase().trim(),
-          name: decodedJson.name || decodedJson.displayName || 'Google User',
-          picture: decodedJson.picture || '',
-          emailVerified: true,
-        };
-      }
+  // 3. Graceful fallback / simulation for local development when credentials are not yet configured
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('⚠️ Decoding token payload in development fallback mode.');
+    if (unverifiedPayload?.email) {
+      return {
+        uid: unverifiedPayload.uid || unverifiedPayload.sub || `mock_google_${Date.now()}`,
+        email: unverifiedPayload.email.toLowerCase().trim(),
+        name: unverifiedPayload.name || unverifiedPayload.displayName || 'Google User',
+        picture: unverifiedPayload.picture || '',
+        emailVerified: true,
+      };
     }
-  } catch (parseError) {
-    // If not a standard JWT string in mock mode, check if JSON string was passed
     try {
       const json = JSON.parse(idToken);
       if (json.email) {

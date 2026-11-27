@@ -23,6 +23,7 @@ import {
   InputNumber,
   Avatar,
   Spin,
+  Image,
 } from 'antd';
 import {
   SearchOutlined,
@@ -405,6 +406,25 @@ export const GymsManagement = () => {
     setCurrentView('list');
     setCurrentPage(1);
   }, [currentTab]);
+
+  // Sync sub-breadcrumb in AppBar when reviewing a gym
+  useEffect(() => {
+    if ((currentView === 'review' || currentView === 'timing_diff') && selectedGym) {
+      window.dispatchEvent(
+        new CustomEvent('gymezy-breadcrumb-sub', {
+          detail: {
+            label: selectedGym.name || 'Gym Review',
+            onBack: () => setCurrentView('list'),
+          },
+        })
+      );
+    } else {
+      window.dispatchEvent(new CustomEvent('gymezy-breadcrumb-sub', { detail: null }));
+    }
+    return () => {
+      window.dispatchEvent(new CustomEvent('gymezy-breadcrumb-sub', { detail: null }));
+    };
+  }, [currentView, selectedGym]);
 
   const handleOpenReview = (gym) => {
     setSelectedGym(gym);
@@ -822,40 +842,6 @@ export const GymsManagement = () => {
 
     return (
       <div style={{ maxWidth: 1280, margin: '0 auto' }}>
-        {/* Top Back Link & Switcher */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-          <Button
-            type="link"
-            icon={<ArrowLeftOutlined />}
-            onClick={() => setCurrentView('list')}
-            style={{ padding: 0, fontWeight: 600, color: 'var(--color-primary)', fontSize: 14 }}
-          >
-            Back to Gyms Fleet
-          </Button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#cbd5e1' : '#475569' }}>
-              Switch Pending Gym:
-            </span>
-            <Select
-              value={selectedGym?.id || selectedGym?._id}
-              onChange={(gymId) => {
-                const target = reduxGyms.find((g) => (g.id || g._id) === gymId);
-                if (target) setSelectedGym(target);
-              }}
-              style={{ width: 220 }}
-            >
-              {reduxGyms
-                .filter((g) => g.approvalStatus === 'Pending Approval' || g.status === 'Pending')
-                .map((g) => (
-                  <Option key={g.id || g._id} value={g.id || g._id}>
-                    {g.name}
-                  </Option>
-                ))}
-            </Select>
-          </div>
-        </div>
-
         {/* Gym Header & Action Buttons */}
         <div
           style={{
@@ -1428,50 +1414,334 @@ export const GymsManagement = () => {
                   </div>
                 </div>
               ) : (
-                /* New Onboard or Full Verification Card View */
-                <Row gutter={[20, 20]}>
-                  <Col xs={24} md={12}>
-                    <Card
-                      title={<span style={{ fontWeight: 700 }}>Basic Information</span>}
-                      style={{ backgroundColor: 'var(--bg-surface-elevated)', borderColor: 'var(--border-color)', borderRadius: 'var(--radius-base)', height: '100%' }}
-                    >
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-                        <div><strong>Gym Name:</strong> {selectedGym?.name || '—'}</div>
-                        <div><strong>Owner Name:</strong> {selectedGym?.ownerName || '—'}</div>
-                        <div><strong>Phone:</strong> {selectedGym?.phone || '—'}</div>
-                        <div><strong>Email:</strong> {selectedGym?.email || '—'}</div>
-                        <div><strong>GST / PAN:</strong> {selectedGym?.gstNumber || '—'} / {selectedGym?.panNumber || '—'}</div>
-                        <div><strong>Address:</strong> {selectedGym?.address || selectedGym?.fullAddress || `${selectedGym?.area || ''} ${selectedGym?.city || ''}`}</div>
-                      </div>
-                    </Card>
-                  </Col>
+                /* New Onboard or Full Verification Card View (All DB Fields) */
+                (() => {
+                  const g = selectedGym || {};
+                  const op = g.openingHours || {};
+                  const timingMode = op.mode || (op.is24Hours ? '24_HOURS' : op.morningShift ? 'SPLIT_SHIFT' : 'REGULAR');
+                  const fullAddress = [g.address, g.area, g.city, g.state].filter(Boolean).join(', ') + (g.pincode ? ` - ${g.pincode}` : '');
+                  const coordsText =
+                    Array.isArray(g.location?.coordinates) &&
+                    g.location.coordinates.length >= 2 &&
+                    Number.isFinite(Number(g.location.coordinates[0])) &&
+                    Number.isFinite(Number(g.location.coordinates[1]))
+                      ? `${Number(g.location.coordinates[1]).toFixed(5)}, ${Number(g.location.coordinates[0]).toFixed(5)}`
+                      : null;
 
-                  <Col xs={24} md={12}>
-                    <Card
-                      title={<span style={{ fontWeight: 700 }}>Facilities & Operations</span>}
-                      style={{ backgroundColor: 'var(--bg-surface-elevated)', borderColor: 'var(--border-color)', borderRadius: 'var(--radius-base)', height: '100%' }}
-                    >
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-                        <div>
-                          <strong>Operating Hours:</strong>{' '}
-                          {selectedGym?.openingHours?.displayText ||
-                            `${selectedGym?.openingHours?.weekdayOpen || '05:30 AM'} - ${selectedGym?.openingHours?.weekdayClose || '10:30 PM'}`}
-                        </div>
-                        <div>
-                          <strong>Floor Space / Capacity:</strong> {selectedGym?.floorSpaceSqFt || 3500} sq.ft / {selectedGym?.maxFloorCapacity || 60} persons
-                        </div>
-                        <div>
-                          <strong>Facilities:</strong>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                            {(selectedGym?.facilities || []).map((f, i) => (
-                              <Tag key={i} color="blue">{typeof f === 'string' ? f : f.name}</Tag>
-                            ))}
+                  const logoSrc = typeof g.logo === 'string' ? g.logo : g.logo?.fileData || '';
+                  const coverSrc = typeof g.coverPhoto === 'string' ? g.coverPhoto : g.coverPhoto?.fileData || '';
+                  const galleryList = Array.isArray(g.galleryPhotos)
+                    ? g.galleryPhotos
+                        .map((p) => (typeof p === 'string' ? p : p?.fileData || ''))
+                        .filter(Boolean)
+                    : [];
+
+                  const cardStyle = {
+                    backgroundColor: 'var(--bg-surface-elevated)',
+                    borderColor: 'var(--border-color)',
+                    borderRadius: 'var(--radius-base)',
+                    height: '100%',
+                  };
+                  const labelStyle = {
+                    fontSize: 11,
+                    color: isDarkMode ? '#94a3b8' : '#64748b',
+                    marginBottom: 2,
+                    fontWeight: 600,
+                  };
+                  const valStyle = {
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: isDarkMode ? '#f1f5f9' : '#0f172a',
+                    wordBreak: 'break-word',
+                  };
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                      {/* 1. Gym Details & Business Profile */}
+                      <Card title={<span style={{ fontWeight: 700 }}>Gym & Business Details</span>} style={cardStyle}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+                          <div>
+                            <div style={labelStyle}>Gym Name</div>
+                            <div style={valStyle}>{g.name || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Tagline</div>
+                            <div style={valStyle}>{g.tagline || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Owner / Partner Name</div>
+                            <div style={valStyle}>{g.ownerName || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Email</div>
+                            <div style={valStyle}>{g.email || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Phone</div>
+                            <div style={valStyle}>{g.phone || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Business Type</div>
+                            <div style={valStyle}>{g.businessType || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Year Established</div>
+                            <div style={valStyle}>{g.yearEstablished || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Plan Model</div>
+                            <div style={valStyle}>{g.subscriptionType || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>GST Number</div>
+                            <div style={{ ...valStyle, fontFamily: 'monospace' }}>{g.gstNumber || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>PAN Number</div>
+                            <div style={{ ...valStyle, fontFamily: 'monospace' }}>{g.panNumber || '—'}</div>
                           </div>
                         </div>
-                      </div>
-                    </Card>
-                  </Col>
-                </Row>
+                        {Boolean(g.aboutText) && (
+                          <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${isDarkMode ? '#1e293b' : '#f1f5f9'}` }}>
+                            <div style={labelStyle}>About Facility</div>
+                            <div style={{ ...valStyle, fontWeight: 400, lineHeight: 1.5 }}>{g.aboutText}</div>
+                          </div>
+                        )}
+                      </Card>
+
+                      {/* 2. Location, Geolocation & Operating Schedule */}
+                      <Card title={<span style={{ fontWeight: 700 }}>Location & Operating Schedule</span>} style={cardStyle}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <div style={labelStyle}>Address</div>
+                            <div style={valStyle}>
+                              <EnvironmentOutlined style={{ marginRight: 6, color: '#2563eb' }} />
+                              {fullAddress || g.fullAddress || '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Landmark</div>
+                            <div style={valStyle}>{g.landmark || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>GPS Coordinates</div>
+                            <div style={{ ...valStyle, fontFamily: 'monospace', fontSize: 12 }}>
+                              {coordsText || '—'}
+                              {Boolean(g.googleMapsUrl) && (
+                                <a
+                                  href={g.googleMapsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ marginLeft: 8, fontFamily: 'sans-serif', fontSize: 12, color: '#2563eb' }}
+                                >
+                                  View Map
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Floor Space & Max Capacity</div>
+                            <div style={valStyle}>
+                              {g.floorSpaceSqFt || g.maxFloorCapacity
+                                ? `${g.floorSpaceSqFt ?? '—'} sq.ft / ${g.maxFloorCapacity ?? '—'} persons`
+                                : '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Open on Public Holidays</div>
+                            <div style={valStyle}>{op.isOpenHolidays === false ? 'No' : 'Yes'}</div>
+                          </div>
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <div style={labelStyle}>Operating Hours & Timing Model</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+                              <Tag color={timingMode === '24_HOURS' ? 'green' : timingMode === 'SPLIT_SHIFT' ? 'purple' : 'blue'}>
+                                {timingMode === '24_HOURS' ? '24/7 Access' : timingMode === 'SPLIT_SHIFT' ? 'Split Shift' : 'Single Shift'}
+                              </Tag>
+                              {timingMode === '24_HOURS' ? (
+                                <span style={valStyle}>Open 24 Hours Round-the-Clock</span>
+                              ) : timingMode === 'SPLIT_SHIFT' ? (
+                                <span style={valStyle}>
+                                  Morning: {op.morningShift?.open || op.morningOpen || '—'} – {op.morningShift?.close || op.morningClose || '—'} | Evening: {op.eveningShift?.open || op.eveningOpen || '—'} – {op.eveningShift?.close || op.eveningClose || '—'}
+                                </span>
+                              ) : (
+                                <span style={valStyle}>
+                                  Weekdays: {op.weekdayOpen || '—'} – {op.weekdayClose || '—'} | Weekends: {op.weekendOpen || '—'} – {op.weekendClose || '—'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* 3. Pricing & Passes */}
+                      <Card title={<span style={{ fontWeight: 700 }}>Pricing & Passes</span>} style={cardStyle}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
+                          <div>
+                            <div style={labelStyle}>Single Session</div>
+                            <div style={{ ...valStyle, fontSize: 16, fontWeight: 800, color: '#16a34a' }}>
+                              {(g.singleSessionPrice ?? g.pricingPlans?.singleSession) != null
+                                ? `₹${g.singleSessionPrice ?? g.pricingPlans?.singleSession}`
+                                : '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Monthly Pass</div>
+                            <div style={{ ...valStyle, fontSize: 16, fontWeight: 700 }}>
+                              {g.pricingPlans?.monthly != null ? `₹${g.pricingPlans.monthly}` : '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Quarterly (3M)</div>
+                            <div style={{ ...valStyle, fontSize: 16, fontWeight: 700 }}>
+                              {g.pricingPlans?.quarterly != null ? `₹${g.pricingPlans.quarterly}` : '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Annual Pass</div>
+                            <div style={{ ...valStyle, fontSize: 16, fontWeight: 700 }}>
+                              {g.pricingPlans?.annual != null ? `₹${g.pricingPlans.annual}` : '—'}
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* 4. Facilities, Amenities & Workout Disciplines */}
+                      <Card title={<span style={{ fontWeight: 700 }}>Facilities, Amenities & Workout Disciplines</span>} style={cardStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          <div>
+                            <div style={{ ...labelStyle, textTransform: 'uppercase', marginBottom: 6 }}>
+                              Active Facilities ({Array.isArray(g.facilities) ? g.facilities.length : 0})
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {Array.isArray(g.facilities) && g.facilities.length > 0 ? (
+                                g.facilities.map((f, i) => (
+                                  <Tag key={i} color="blue" style={{ margin: 0 }}>
+                                    {typeof f === 'string' ? f : f?.name}
+                                  </Tag>
+                                ))
+                              ) : (
+                                <span style={{ fontSize: 12, color: '#94a3b8' }}>None listed</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ ...labelStyle, textTransform: 'uppercase', marginBottom: 6 }}>
+                              Workout Disciplines ({Array.isArray(g.workouts) ? g.workouts.length : 0})
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {Array.isArray(g.workouts) && g.workouts.length > 0 ? (
+                                g.workouts.map((w, i) => (
+                                  <Tag key={i} color="purple" style={{ margin: 0 }}>
+                                    {typeof w === 'string' ? w : w?.name}
+                                  </Tag>
+                                ))
+                              ) : (
+                                <span style={{ fontSize: 12, color: '#94a3b8' }}>None listed</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {Array.isArray(g.amenities) && g.amenities.length > 0 && (
+                            <div>
+                              <div style={{ ...labelStyle, textTransform: 'uppercase', marginBottom: 6 }}>
+                                Amenities ({g.amenities.length})
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {g.amenities.map((a, i) => (
+                                  <Tag key={i} color="cyan" style={{ margin: 0 }}>
+                                    {typeof a === 'string' ? a : a?.name}
+                                  </Tag>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+
+                      {/* 5. Settlement Bank Account */}
+                      <Card title={<span style={{ fontWeight: 700 }}>Settlement Bank Account</span>} style={cardStyle}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+                          <div>
+                            <div style={labelStyle}>Account Holder</div>
+                            <div style={valStyle}>{g.bankDetails?.accountHolder || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Bank Name</div>
+                            <div style={valStyle}>{g.bankDetails?.bankName || '—'}</div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>Account Number</div>
+                            <div style={{ ...valStyle, fontFamily: 'monospace' }}>
+                              {g.bankDetails?.accountNumber || '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>IFSC Code</div>
+                            <div style={{ ...valStyle, fontFamily: 'monospace' }}>
+                              {g.bankDetails?.ifscCode || '—'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={labelStyle}>UPI ID</div>
+                            <div style={valStyle}>{g.bankDetails?.upiId || '—'}</div>
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* 6. Brand Media & Facility Photos */}
+                      {(logoSrc || coverSrc || galleryList.length > 0) && (
+                        <Card title={<span style={{ fontWeight: 700 }}>Brand Media & Facility Photos</span>} style={cardStyle}>
+                          <Image.PreviewGroup>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+                              {logoSrc && (
+                                <div>
+                                  <div style={labelStyle}>Brand Logo</div>
+                                  <Image
+                                    src={logoSrc}
+                                    alt="Logo"
+                                    width={90}
+                                    height={90}
+                                    style={{ objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border-color)' }}
+                                  />
+                                </div>
+                              )}
+                              {coverSrc && (
+                                <div>
+                                  <div style={labelStyle}>Cover Banner</div>
+                                  <Image
+                                    src={coverSrc}
+                                    alt="Cover"
+                                    width={160}
+                                    height={90}
+                                    style={{ objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border-color)' }}
+                                  />
+                                </div>
+                              )}
+                              {galleryList.length > 0 && (
+                                <div style={{ flex: 1, minWidth: 220 }}>
+                                  <div style={labelStyle}>Facility Gallery ({galleryList.length})</div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                    {galleryList.map((src, i) => (
+                                      <Image
+                                        key={i}
+                                        src={src}
+                                        alt={`Facility ${i + 1}`}
+                                        width={110}
+                                        height={80}
+                                        style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border-color)' }}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </Image.PreviewGroup>
+                        </Card>
+                      )}
+                    </div>
+                  );
+                })()
               )}
             </div>
           );

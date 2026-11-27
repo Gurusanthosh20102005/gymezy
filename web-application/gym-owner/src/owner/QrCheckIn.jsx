@@ -155,9 +155,6 @@ export const QrCheckIn = () => {
       } catch {}
     }
 
-    const displayName = parsed?.customerId || parsed?.name || parsed?.id || parsed?.entryOtp || cleanCode;
-    message.success(`QR Detected: ${displayName}`);
-
     handleVerify({
       code: cleanCode,
       raw: cleanCode,
@@ -505,17 +502,24 @@ export const QrCheckIn = () => {
       }
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || 'Access Denied: Verification failed.';
+      const deniedMember = err.response?.data?.data?.member || null;
       message.error(errMsg);
       setLastVerified({
         status: 'DENIED',
-        memberName: customData?.name || 'Visitor / Member',
-        membershipId: lookupCode,
-        passId: lookupCode,
-        plan: customData?.plan || 'Unknown Pass',
+        memberName: deniedMember?.name || customData?.name || parsedJson?.name || 'Visitor / Member',
+        userId: deniedMember?.customerId || deniedMember?.id || parsedJson?.customerId || customData?.userId || 'N/A',
+        customerId: deniedMember?.customerId || deniedMember?.id || parsedJson?.customerId || customData?.customerId || 'N/A',
+        membershipId: deniedMember?.membershipId || parsedJson?.membershipId || lookupCode,
+        bookingId: deniedMember?.bookingId || parsedJson?.bookingId || null,
+        passId: deniedMember?.membershipId || deniedMember?.bookingId || lookupCode,
+        plan: deniedMember?.tier
+          ? `${deniedMember.tier} Pass`
+          : deniedMember?.title || customData?.plan || 'Unknown Pass',
+        phone: deniedMember?.phone || customData?.phone || null,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         method: activeOption === 'otp' ? 'OTP Passcode' : 'QR Code',
         denialReason: errMsg,
-        avatar: customData?.avatar || null,
+        avatar: deniedMember?.avatar || customData?.avatar || null,
       });
     } finally {
       setIsVerifying(false);
@@ -602,39 +606,6 @@ export const QrCheckIn = () => {
           <Text style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 13.5 }}>
             Verify member access through optical QR Scanner, OTP passcode, or direct ID / Phone lookup.
           </Text>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
-              border: `1px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
-              borderRadius: 'var(--radius-base)',
-              fontSize: 12.5,
-              fontWeight: 600,
-            }}
-          >
-            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#52c41a' }} />
-            <span style={{ color: isDarkMode ? '#ffffff' : '#0f172a' }}>Gate 01 Online</span>
-          </div>
-
-          <div
-            style={{
-              padding: '6px 14px',
-              backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
-              border: `1px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
-              borderRadius: 'var(--radius-base)',
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: isDarkMode ? '#cccccc' : '#475569',
-            }}
-          >
-            Floor Occupancy: <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{occupancy}</span> / {totalCapacity}
-          </div>
         </div>
       </div>
 
