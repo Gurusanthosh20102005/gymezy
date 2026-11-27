@@ -35,6 +35,7 @@ const SEARCH_FILTER_CHIPS = [
   'Customer ID',
   'Member ID',
   'Booking ID',
+  'Entry OTP',
 ];
 
 const SESSION_AREAS = [
@@ -56,10 +57,11 @@ export const CheckInScreen = ({ navigation, route }) => {
   const initialMode = route?.params?.initialMode || 'HUB';
   const [currentStep, setCurrentStep] = useState(initialMode);
 
-  // Search state
-  const [searchCategoryTab, setSearchCategoryTab] = useState('Customer Check-in'); // 'Customer Check-in' | 'Member Check-in'
+  // Search & OTP state
   const [activeChip, setActiveChip] = useState('Customer Name');
   const [searchQuery, setSearchQuery] = useState('');
+  const [otpInput, setOtpInput] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [liveMembers, setLiveMembers] = useState([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -191,6 +193,7 @@ export const CheckInScreen = ({ navigation, route }) => {
     if (activeChip === 'Customer ID') return m.customerId?.toLowerCase().includes(q) || m.userId?.toLowerCase().includes(q);
     if (activeChip === 'Member ID') return m.membershipId?.toLowerCase().includes(q) || m.id?.toLowerCase().includes(q);
     if (activeChip === 'Booking ID') return m.bookingId?.toLowerCase().includes(q);
+    if (activeChip === 'Entry OTP') return m.entryOtp?.toLowerCase().includes(q);
 
     return (
       m.name?.toLowerCase().includes(q) ||
@@ -198,9 +201,78 @@ export const CheckInScreen = ({ navigation, route }) => {
       m.customerId?.toLowerCase().includes(q) ||
       m.userId?.toLowerCase().includes(q) ||
       m.membershipId?.toLowerCase().includes(q) ||
-      m.bookingId?.toLowerCase().includes(q)
+      m.bookingId?.toLowerCase().includes(q) ||
+      m.entryOtp?.toLowerCase().includes(q)
     );
   });
+
+  const handleOtpVerify = async () => {
+    const cleanOtp = otpInput.trim();
+    if (!cleanOtp || cleanOtp.length < 4) {
+      showToast({ message: 'Please enter a valid 6-digit Entry OTP.', isError: true });
+      return;
+    }
+    setIsVerifyingOtp(true);
+    try {
+      const gymId = gym?.id || gym?._id || gym?.partnerId;
+      const res = await apiService.checkInMember({
+        gymId,
+        code: cleanOtp,
+        otp: cleanOtp,
+        area: selectedArea,
+        method: 'OTP',
+        verifiedBy: 'Mobile OTP Entry',
+      });
+
+      const memberData = res?.member || {};
+      const isCheckout = res?.action === 'CHECK_OUT';
+
+      setSelectedMember({
+        id: memberData.membershipId || memberData.id || cleanOtp,
+        customerId: memberData.id || cleanOtp,
+        membershipId: memberData.membershipId || null,
+        bookingId: memberData.bookingId || null,
+        bookingType: memberData.bookingType || (memberData.bookingId ? 'Section Batch' : 'Membership Pass'),
+        name: memberData.name || 'Gym Member',
+        plan: memberData.tier
+          ? `${memberData.tier} Pass`
+          : (memberData.title || (memberData.bookingType === 'SECTION' ? 'Section Batch' : 'Gym Access Pass')),
+        avatar: (memberData.name || 'M').charAt(0).toUpperCase(),
+        phone: memberData.phone || '',
+        status: isCheckout ? 'Checked-Out' : 'Active',
+        entryOtp: memberData.entryOtp || cleanOtp,
+        action: res?.action || 'CHECK_IN',
+        durationStr: res?.durationStr || '',
+        checkInTime: res?.checkInTime,
+        checkOutTime: res?.checkOutTime,
+        area: res?.area || selectedArea,
+        attendedSessionsCount: memberData.attendedSessionsCount,
+        durationDays: memberData.durationDays,
+      });
+
+      setOtpInput('');
+      showToast({
+        message: isCheckout
+          ? `Check-out recorded for ${memberData.name || 'Member'}! Duration: ${res?.durationStr}`
+          : `${memberData.name || 'Member'} verified via OTP!`,
+        isSuccess: true,
+      });
+      setCurrentStep('SUCCESS');
+    } catch (err) {
+      const deniedMember = err?.data?.member || null;
+      const alertTitle = deniedMember ? `Access Denied — ${deniedMember.name}` : 'OTP Verification Failed';
+      const detailLines = deniedMember
+        ? `\n\nMember: ${deniedMember.name}${deniedMember.membershipId || deniedMember.bookingId ? ` (${deniedMember.membershipId || deniedMember.bookingId})` : ''}${deniedMember.title ? `\nPass: ${deniedMember.title}` : ''}`
+        : '';
+      Alert.alert(
+        alertTitle,
+        `${err.message || 'Invalid or expired Entry OTP.'}${detailLines}`,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
 
   const handleSelectMember = (member) => {
     setSelectedMember(member);
@@ -343,9 +415,14 @@ export const CheckInScreen = ({ navigation, route }) => {
       });
       setCurrentStep('SUCCESS');
     } catch (err) {
+      const deniedMember = err?.data?.member || null;
+      const alertTitle = deniedMember ? `Access Denied — ${deniedMember.name}` : 'Verification Failed';
+      const detailLines = deniedMember
+        ? `\n\nMember: ${deniedMember.name}${deniedMember.membershipId || deniedMember.bookingId ? ` (${deniedMember.membershipId || deniedMember.bookingId})` : ''}${deniedMember.title ? `\nPass: ${deniedMember.title}` : ''}`
+        : '';
       Alert.alert(
-        'QR Code Not Recognized',
-        err.message || 'Could not find an active membership pass for this QR code.',
+        alertTitle,
+        `${err.message || 'Could not find an active membership pass for this QR code.'}${detailLines}`,
         [
           {
             text: 'Try Again',
@@ -633,52 +710,73 @@ export const CheckInScreen = ({ navigation, route }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Top Category Segment Tabs: Customer Check-in vs Member Check-in */}
-      <View style={[styles.segmentContainer, { borderBottomColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-        {['Customer Check-in', 'Member Check-in'].map((tab) => {
-          const isSelected = searchCategoryTab === tab;
-          return (
-            <TouchableOpacity
-              key={tab}
-              style={[
-                styles.segmentTab,
-                isSelected && {
-                  borderBottomColor: isDark ? AppColors.darkAccentColor : AppColors.primaryColor,
-                  borderBottomWidth: 2.5,
-                },
-              ]}
-              onPress={() => setSearchCategoryTab(tab)}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  styles.segmentTabText,
-                  {
-                    color: isSelected
-                      ? isDark
-                        ? '#93C5FD'
-                        : AppColors.primaryColor
-                      : isDark
-                      ? 'rgba(255,255,255,0.5)'
-                      : '#64748B',
-                    fontWeight: isSelected ? '800' : '600',
-                  },
-                ]}
-              >
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
       <ScrollView
         contentContainerStyle={[styles.searchScrollContent, { paddingBottom: 40 + Math.max(insets.bottom, 20) }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Fast 6-Digit Entry OTP Verification Card */}
+        <View
+          style={{
+            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+            borderWidth: 1,
+            borderRadius: 14,
+            padding: 14,
+            marginBottom: 18,
+          }}
+        >
+          <Text style={{ fontSize: 14, fontWeight: '800', color: isDark ? '#FFFFFF' : '#0F172A', marginBottom: 4 }}>
+            Fast OTP Check-in
+          </Text>
+          <Text style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B', marginBottom: 10 }}>
+            Enter the member&apos;s 6-digit Entry OTP from their pass or booking.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TextInput
+              placeholder="Enter 6-digit OTP"
+              placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'}
+              value={otpInput}
+              onChangeText={(val) => setOtpInput(val.replace(/\D/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              maxLength={6}
+              style={{
+                flex: 1,
+                height: 44,
+                borderWidth: 1,
+                borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
+                borderRadius: 10,
+                paddingHorizontal: 14,
+                fontSize: 16,
+                fontWeight: '700',
+                letterSpacing: 3,
+                color: isDark ? '#FFFFFF' : '#0F172A',
+              }}
+            />
+            <TouchableOpacity
+              onPress={handleOtpVerify}
+              disabled={isVerifyingOtp}
+              activeOpacity={0.85}
+              style={{
+                height: 44,
+                paddingHorizontal: 18,
+                borderRadius: 10,
+                backgroundColor: AppColors.primaryColor,
+                justifyContent: 'center',
+                alignItems: 'center',
+                opacity: isVerifyingOtp ? 0.7 : 1,
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>
+                {isVerifyingOtp ? 'Checking...' : 'Verify'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <Text style={[styles.searchSectionHeading, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-          Search {searchCategoryTab === 'Member Check-in' ? 'Member' : 'Customer'}
+          Search Member / Customer
         </Text>
 
         {/* Search Bar Input */}

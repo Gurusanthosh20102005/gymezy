@@ -140,9 +140,17 @@ export const MembersManagement = ({
   const { user } = useSelector((state) => state.auth || {});
   const gym = user?.gym || {};
   const gymId = gym._id || gym.id || user?.gymId || user?.partnerId;
+  const isManagerUser =
+    String(user?.role || '').toLowerCase() === 'manager' ||
+    user?.role === 'EMPLOYEE' ||
+    (user?.accessType && user.accessType !== 'Admin');
+  const canActOnSwitchStatus = (status) =>
+    status === 'PENDING_GYM_APPROVAL' || (!isManagerUser && status === 'PENDING_GYM_ADMIN_APPROVAL');
 
   const [form] = Form.useForm();
   const [extendForm] = Form.useForm();
+  const watchedExtendPlanKey = Form.useWatch('planKey', extendForm);
+  const watchedExtendTrainerId = Form.useWatch('trainerId', extendForm);
 
   const [membersList, setMembersList] = useState(initialData);
   const [membershipSummary, setMembershipSummary] = useState(null);
@@ -179,6 +187,7 @@ export const MembersManagement = ({
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sourceFilter, setSourceFilter] = useState('ALL');
   const [selectedDateRange, setSelectedDateRange] = useState('All Dates');
+  const [dateBounds, setDateBounds] = useState({ startDate: null, endDate: null });
 
   const didYouMean = useMemo(() => {
     return getDidYouMeanSuggestion(debouncedSearchQuery);
@@ -440,7 +449,8 @@ export const MembersManagement = ({
     search = debouncedSearchQuery,
     status = statusFilter,
     tier = planFilter,
-    source = sourceFilter
+    source = sourceFilter,
+    dates = dateBounds
   ) => {
     if (!gymId) return;
     setIsMembersLoading(true);
@@ -453,6 +463,8 @@ export const MembersManagement = ({
       if (status && status !== 'ALL' && status !== 'All') params.status = status;
       if (tier && tier !== 'ALL' && tier !== 'All') params.tier = tier;
       if (source && source !== 'ALL') params.source = source;
+      if (dates?.startDate) params.startDate = dates.startDate;
+      if (dates?.endDate) params.endDate = dates.endDate;
 
       const res = await apiClient.get(`/memberships/gym/${gymId}`, { params });
       const data = res.data?.data?.memberships;
@@ -488,6 +500,7 @@ export const MembersManagement = ({
             plan: m.membershipTier || 'Standard',
             startDate: startStr,
             expiryDate: endStr,
+            rawEndDate: m.endDate || null,
             daysLeft: `${daysRemaining} days left`,
             status: m.status,
             source: m.source || (m.walkInDetails?.bookedBy || m.walkInDetails?.bookedByName ? 'WALK_IN' : 'APP'),
@@ -495,7 +508,18 @@ export const MembersManagement = ({
             paymentType: m.payment?.method || 'Online',
             amount: `₹${m.pricing?.totalAmount || 0}`,
             rawAmount: Number(m.pricing?.totalAmount || 0),
-            trainerName: m.trainerId?.name || (m.hasTrainer ? 'Assigned' : 'None'),
+            trainerName: m.trainerId?.name || (m.hasTrainer ? 'Assigned Trainer' : 'None'),
+            trainerId: m.trainerId?._id || m.trainerId?.id || null,
+            hasTrainer: Boolean(m.hasTrainer || m.trainerId),
+            trainerAvatar: m.trainerId?.profilePicture || m.trainerId?.avatar || '',
+            trainerSpecialty: m.trainerId?.specialty || '',
+            trainerEmployeeId: m.trainerId?.employeeId || '',
+            trainerSlot: m.trainerSlot || '',
+            trainerFee: Number(m.pricing?.trainerFee || 0),
+            checkins: Number(m.attendedSessionsCount || m.attendanceCount || (Array.isArray(m.attendanceHistory) ? m.attendanceHistory.length : 0)),
+            attendanceHistory: Array.isArray(m.attendanceHistory) ? m.attendanceHistory : [],
+            streak: m.streak || '',
+            emergencyContact: m.userId?.emergencyContact || m.emergencyContact || null,
           };
         });
         setMembersList(mapped);
@@ -508,8 +532,8 @@ export const MembersManagement = ({
   };
 
   useEffect(() => {
-    void fetchGymMemberships(currentPage, pageSize, debouncedSearchQuery, statusFilter, planFilter, sourceFilter);
-  }, [gymId, currentPage, pageSize, debouncedSearchQuery, statusFilter, planFilter, sourceFilter]);
+    void fetchGymMemberships(currentPage, pageSize, debouncedSearchQuery, statusFilter, planFilter, sourceFilter, dateBounds);
+  }, [gymId, currentPage, pageSize, debouncedSearchQuery, statusFilter, planFilter, sourceFilter, dateBounds]);
 
   const fetchGymSwitchRequests = async () => {
     if (!gymId) return;
@@ -604,6 +628,7 @@ export const MembersManagement = ({
     setStatusFilter('ALL');
     setSourceFilter('ALL');
     setSelectedDateRange('All Dates');
+    setDateBounds({ startDate: null, endDate: null });
     setCurrentPage(1);
     void fetchGymMemberships(1, pageSize, '', 'ALL', 'ALL', 'ALL');
     message.info('Filters cleared');
@@ -615,12 +640,28 @@ export const MembersManagement = ({
   };
 
   const handleOpenExtend = (record) => {
+    if (!record) return;
+    if (record.status === 'Cancelled') {
+      message.warning('Cancelled memberships cannot be extended. Please enroll as a new membership.');
+      return;
+    }
     setSelectedMember(record);
+    const matchedPlan =
+      activePlans.find((p) => p.tier === record.plan || p.name === record.plan) || activePlans[0];
+    const initialTrainerId = record.trainerId || 'none';
+    const trainerObj =
+      initialTrainerId !== 'none'
+        ? gymTrainers.find((t) => String(t._id || t.id) === String(initialTrainerId))
+        : null;
+    const tFee = trainerObj ? getTrainerFeeForTier(trainerObj, matchedPlan?.tier || 'Monthly') : 0;
+    const initialAmount = (Number(matchedPlan?.price || 0) || 0) + tFee;
+
     extendForm.setFieldsValue({
-      plan: record.plan,
-      duration: '3 Months',
-      amount: record.amount.replace('₹', ''),
-      paymentType: 'Online',
+      planKey: matchedPlan?.key || activePlans[0]?.key,
+      trainerId: initialTrainerId,
+      amount: String(initialAmount || record.rawAmount || 0),
+      paymentType: 'Cash',
+      notes: '',
     });
     setIsExtendModalOpen(true);
   };
@@ -706,33 +747,123 @@ export const MembersManagement = ({
     }
   };
 
-  const handleExtendSubmit = (values) => {
+  const handleExtendSubmit = async (values) => {
     if (!selectedMember) return;
-    const updated = membersList.map((m) => {
-      if (m.key === selectedMember.key) {
-        return {
-          ...m,
-          expiryDate: '20 Oct 2025',
-          daysLeft: '90 days left',
-          status: 'Active',
-        };
+    if (selectedMember.status === 'Cancelled') {
+      message.error('Cancelled memberships cannot be extended.');
+      return;
+    }
+
+    const chosenPlan =
+      activePlans.find((p) => p.key === values.planKey) || activePlans[0];
+    const chosenTrainer =
+      values.trainerId && values.trainerId !== 'none'
+        ? gymTrainers.find((t) => String(t._id || t.id) === String(values.trainerId))
+        : null;
+    const tFee = chosenTrainer
+      ? getTrainerFeeForTier(chosenTrainer, chosenPlan?.tier || 'Monthly')
+      : 0;
+    const isWalkIn = selectedMember.source === 'WALK_IN' || selectedMember.isWalkIn;
+
+    try {
+      setIsMembersLoading(true);
+      if (isWalkIn) {
+        await apiClient.patch(`/memberships/${selectedMember.key}/extend`, {
+          planTier: chosenPlan?.tier || 'Monthly',
+          durationDays: chosenPlan?.durationDays || 30,
+          amountPaid: Number(values.amount || 0),
+          paymentMethod: values.paymentType || 'Cash',
+          trainerId: chosenTrainer ? (chosenTrainer._id || chosenTrainer.id) : 'none',
+          trainerFee: tFee,
+        });
+        message.success(`Walk-in membership for ${selectedMember.name} extended in database!`);
+      } else {
+        await apiClient.post(`/memberships/${selectedMember.key}/renewal-offer`, {
+          planTier: chosenPlan?.tier || 'Monthly',
+          durationDays: chosenPlan?.durationDays || 30,
+          amount: Number(values.amount || 0),
+          trainerId: chosenTrainer ? (chosenTrainer._id || chosenTrainer.id) : 'none',
+          trainerFee: tFee,
+          notes: values.notes || '',
+        });
+        message.success(`Renewal offer sent to ${selectedMember.name} via GYMEZY App.`);
       }
-      return m;
-    });
-    setMembersList(updated);
-    setIsExtendModalOpen(false);
-    setIsViewModalOpen(false);
-    message.success(`Membership for ${selectedMember.name} extended successfully!`);
-    if (onExtendMembership) onExtendMembership(selectedMember.key, values);
+
+      setIsExtendModalOpen(false);
+      setIsViewModalOpen(false);
+      await fetchGymMemberships(currentPage, pageSize, debouncedSearchQuery, statusFilter, planFilter, sourceFilter);
+      if (onExtendMembership) onExtendMembership(selectedMember.key, values);
+    } catch (err) {
+      message.error(err?.response?.data?.message || err?.message || 'Failed to extend membership.');
+    } finally {
+      setIsMembersLoading(false);
+    }
   };
 
   // Date Range Dropdown Menu
+  const formatIsoDay = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const dateRangeMenu = {
     items: [
-      { key: 'today', label: 'Today (21 Jul 2025)', onClick: () => setSelectedDateRange('21 Jul 2025 - 21 Jul 2025') },
-      { key: 'yesterday', label: 'Yesterday (20 Jul 2025)', onClick: () => setSelectedDateRange('20 Jul 2025 - 20 Jul 2025') },
-      { key: 'this_week', label: 'This Week (15 Jul 2025 - 21 Jul 2025)', onClick: () => setSelectedDateRange('15 Jul 2025 - 21 Jul 2025') },
-      { key: 'this_month', label: 'This Month (01 Jul 2025 - 31 Jul 2025)', onClick: () => setSelectedDateRange('01 Jul 2025 - 31 Jul 2025') },
+      {
+        key: 'all',
+        label: 'All Dates',
+        onClick: () => {
+          setSelectedDateRange('All Dates');
+          setDateBounds({ startDate: null, endDate: null });
+          setCurrentPage(1);
+        },
+      },
+      {
+        key: 'today',
+        label: 'Today',
+        onClick: () => {
+          const today = formatIsoDay(new Date());
+          setSelectedDateRange('Today');
+          setDateBounds({ startDate: today, endDate: today });
+          setCurrentPage(1);
+        },
+      },
+      {
+        key: 'yesterday',
+        label: 'Yesterday',
+        onClick: () => {
+          const d = new Date();
+          d.setDate(d.getDate() - 1);
+          const yest = formatIsoDay(d);
+          setSelectedDateRange('Yesterday');
+          setDateBounds({ startDate: yest, endDate: yest });
+          setCurrentPage(1);
+        },
+      },
+      {
+        key: 'this_week',
+        label: 'Last 7 Days',
+        onClick: () => {
+          const end = new Date();
+          const start = new Date();
+          start.setDate(end.getDate() - 6);
+          setSelectedDateRange('Last 7 Days');
+          setDateBounds({ startDate: formatIsoDay(start), endDate: formatIsoDay(end) });
+          setCurrentPage(1);
+        },
+      },
+      {
+        key: 'this_month',
+        label: 'This Month',
+        onClick: () => {
+          const now = new Date();
+          const start = new Date(now.getFullYear(), now.getMonth(), 1);
+          setSelectedDateRange('This Month');
+          setDateBounds({ startDate: formatIsoDay(start), endDate: formatIsoDay(now) });
+          setCurrentPage(1);
+        },
+      },
       { type: 'divider' },
       {
         key: 'custom',
@@ -928,8 +1059,9 @@ export const MembersManagement = ({
     },
     {
       key: 'extend',
-      label: 'Extend Membership',
-      icon: <CalendarOutlined style={{ color: 'var(--color-primary)' }} />,
+      label: (record.source === 'WALK_IN' || record.isWalkIn) ? 'Extend Membership' : 'Send Renewal Offer',
+      icon: <CalendarOutlined style={{ color: record.status === 'Cancelled' ? '#94a3b8' : 'var(--color-primary)' }} />,
+      disabled: record.status === 'Cancelled',
       onClick: () => handleOpenExtend(record),
     },
     {
@@ -1277,34 +1409,18 @@ export const MembersManagement = ({
     {
       title: 'Action',
       key: 'action',
-      width: 120,
+      width: 72,
+      align: 'center',
       fixed: 'right',
       render: (_, record) => (
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <Dropdown menu={{ items: getActionMenuItems(record) }} trigger={['click']}>
           <Button
+            type="text"
             size="small"
-            onClick={() => handleView(record)}
-            style={{
-              borderRadius: 'var(--radius-base)',
-              fontSize: 12,
-              fontWeight: 650,
-              borderColor: isDarkMode ? '#333333' : '#d0d7de',
-              color: isDarkMode ? '#ffffff' : '#0f172a',
-              height: 28,
-              padding: '0 10px',
-            }}
-          >
-            View
-          </Button>
-          <Dropdown menu={{ items: getActionMenuItems(record) }} trigger={['click']}>
-            <Button
-              type="text"
-              size="small"
-              style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
-              icon={<MoreOutlined style={{ fontSize: 16, color: isDarkMode ? '#888888' : '#64748b' }} />}
-            />
-          </Dropdown>
-        </div>
+            style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+            icon={<MoreOutlined style={{ fontSize: 16, color: isDarkMode ? '#888888' : '#64748b' }} />}
+          />
+        </Dropdown>
       ),
     },
   ];
@@ -1322,7 +1438,12 @@ export const MembersManagement = ({
         (item.reason && item.reason.toLowerCase().includes(q));
 
       const matchStatus =
-        cancelStatusFilter === 'ALL' || item.status === cancelStatusFilter || item.adminStatus === cancelStatusFilter;
+        cancelStatusFilter === 'ALL' ||
+        item.status === cancelStatusFilter ||
+        item.adminStatus === cancelStatusFilter ||
+        (cancelStatusFilter === 'REJECTED' &&
+          (String(item.adminStatus || '').includes('REJECTED') ||
+            String(item.status || '').toLowerCase().includes('rejected')));
 
       return matchQuery && matchStatus;
     });
@@ -1343,7 +1464,10 @@ export const MembersManagement = ({
         (userObj.phone || '').includes(debouncedSwitchSearch) ||
         (item.requestId || '').toLowerCase().includes(debouncedSwitchSearch.toLowerCase());
       const matchStatus =
-        switchStatusFilter === 'ALL' || item.status === switchStatusFilter;
+        switchStatusFilter === 'ALL' ||
+        item.status === switchStatusFilter ||
+        (switchStatusFilter === 'PENDING_GYM_ADMIN_APPROVAL' && item.status === 'PENDING_SUPER_ADMIN_APPROVAL') ||
+        (switchStatusFilter === 'REJECTED_BY_GYM' && item.status === 'REJECTED_BY_SUPER_ADMIN');
       return matchSearch && matchStatus;
     });
   }, [switchRequests, debouncedSwitchSearch, switchStatusFilter]);
@@ -1691,45 +1815,67 @@ export const MembersManagement = ({
   // Plan Switch Handlers & Columns
   const handleGymAcceptSwitch = (req) => {
     if (!req) return;
+    const modalTitle = isManagerUser
+      ? 'Submit Plan Switch for Admin Approval'
+      : 'Approve & Execute Plan Switch';
+    const modalNote = isManagerUser
+      ? 'Once submitted, Gym Admin will review and execute the membership transition (unless you have direct approval permission).'
+      : 'Approving will immediately execute the membership plan switch and update the member’s pass.';
+    const confirmLabel = isManagerUser ? 'Accept & Send to Admin' : 'Approve & Execute';
+
     Modal.confirm({
-      title: 'Accept & Forward Plan Switch Request',
-      icon: <SendOutlined style={{ color: 'var(--color-primary)' }} />,
+      title: modalTitle,
+      icon: isManagerUser
+        ? <SendOutlined style={{ color: 'var(--color-primary)' }} />
+        : <CheckCircleOutlined style={{ color: '#00bf62' }} />,
       content: (
         <div>
           <p style={{ margin: '8px 0 6px 0', fontSize: 13.5 }}>
-            Accept switch request for <strong>{req.userId?.fullName || req.memberName || 'Member'}</strong> to <strong>{req.targetTier} Plan</strong>?
+            {isManagerUser ? 'Submit' : 'Approve'} switch request for <strong>{req.userId?.fullName || req.memberName || 'Member'}</strong> to <strong>{req.targetTier} Plan</strong>?
           </p>
           <div style={{ padding: '10px 12px', background: isDarkMode ? '#141414' : '#f8fafc', borderRadius: 8, fontSize: 12, marginBottom: 8 }}>
             <div>Prorated Credit Applied: <strong style={{ color: '#52c41a' }}>₹{((req.quoteSnapshot?.proRatedCreditPaise || 0) / 100).toFixed(2)}</strong></div>
             <div>Net Payable / Settlement: <strong>₹{((req.quoteSnapshot?.netAmountToPayPaise || 0) / 100).toFixed(2)}</strong></div>
           </div>
           <p style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', margin: 0 }}>
-            Once forwarded, Super Admin will perform final verification and execute the membership transition atomically.
+            {modalNote}
           </p>
         </div>
       ),
-      okText: 'Accept & Send to Admin',
+      okText: confirmLabel,
       cancelText: 'Cancel',
       centered: true,
       onOk: async () => {
         try {
           const reqId = req._id || req.requestId;
-          await apiClient.patch(`/memberships/switch-requests/${reqId}/gym-action`, {
+          const res = await apiClient.patch(`/memberships/switch-requests/${reqId}/gym-action`, {
             action: 'ACCEPT',
           });
+          const resData = res?.data?.data || res?.data || {};
+          const updatedReq = resData.switchRequest || resData;
+          const nextStatus = updatedReq?.status || (!isManagerUser ? 'APPROVED_AND_EXECUTED' : 'PENDING_GYM_ADMIN_APPROVAL');
+          const successMsg = res?.data?.message || (
+            nextStatus === 'APPROVED_AND_EXECUTED'
+              ? 'Switch request approved and executed successfully.'
+              : 'Switch request forwarded to Gym Admin for final approval.'
+          );
+
           setSwitchRequests((prev) =>
             prev.map((r) =>
               (r._id === reqId || r.requestId === req.requestId)
-                ? { ...r, status: 'PENDING_SUPER_ADMIN_APPROVAL' }
+                ? { ...r, status: nextStatus }
                 : r
             )
           );
           if (selectedSwitchReq && (selectedSwitchReq._id === reqId || selectedSwitchReq.requestId === req.requestId)) {
-            setSelectedSwitchReq((prev) => ({ ...prev, status: 'PENDING_SUPER_ADMIN_APPROVAL' }));
+            setSelectedSwitchReq((prev) => ({ ...prev, status: nextStatus }));
           }
           setIsSwitchModalOpen(false);
           triggerConfettiPopper();
-          message.success('Plan switch request accepted & sent to Super Admin for execution');
+          message.success(successMsg);
+          if (nextStatus === 'APPROVED_AND_EXECUTED') {
+            void fetchGymMemberships();
+          }
         } catch (err) {
           message.error(err.response?.data?.message || err.message || 'Failed to accept switch request');
         }
@@ -1961,10 +2107,10 @@ export const MembersManagement = ({
           color = '#fa8c16';
           icon = <ClockCircleOutlined />;
           label = 'Pending Gym Review';
-        } else if (status === 'PENDING_SUPER_ADMIN_APPROVAL') {
+        } else if (status === 'PENDING_GYM_ADMIN_APPROVAL' || status === 'PENDING_SUPER_ADMIN_APPROVAL') {
           color = '#1677ff';
           icon = <SyncOutlined spin />;
-          label = 'Sent to Super Admin';
+          label = status === 'PENDING_GYM_ADMIN_APPROVAL' ? 'Pending Gym Admin' : 'In Admin Review';
         } else if (status === 'APPROVED_AND_EXECUTED') {
           color = '#10b981';
           icon = <CheckCircleFilled />;
@@ -2013,13 +2159,13 @@ export const MembersManagement = ({
       width: 180,
       fixed: 'right',
       render: (_, record) => {
-        if (record.status === 'PENDING_GYM_APPROVAL') {
+        if (canActOnSwitchStatus(record.status)) {
           return (
             <Space size={6}>
               <Button
                 type="primary"
                 size="small"
-                icon={<SendOutlined />}
+                icon={isManagerUser ? <SendOutlined /> : <CheckOutlined />}
                 onClick={() => handleGymAcceptSwitch(record)}
                 style={{
                   backgroundColor: 'var(--color-primary)',
@@ -2031,7 +2177,7 @@ export const MembersManagement = ({
                   padding: '0 10px',
                 }}
               >
-                Accept
+                {isManagerUser ? 'Send to Admin' : 'Approve'}
               </Button>
               <Button
                 danger
@@ -2106,7 +2252,8 @@ export const MembersManagement = ({
           </Text>
         </div>
 
-        {/* Universal Search & Filters Aligned to Right */}
+        {/* Universal Search & Filters Aligned to Right (All Members Tab Only) */}
+        {activeTab === 'members' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <Input
             prefix={<SearchOutlined style={{ color: isDarkMode ? '#888888' : '#94a3b8' }} />}
@@ -2115,7 +2262,7 @@ export const MembersManagement = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             onPressEnter={() => {
               setCurrentPage(1);
-              void fetchGymMemberships(1, pageSize, searchQuery, statusFilter, planFilter);
+              void fetchGymMemberships(1, pageSize, searchQuery, statusFilter, planFilter, sourceFilter, dateBounds);
             }}
             allowClear
             style={{ width: 250, height: 40, borderRadius: 'var(--radius-base)' }}
@@ -2126,14 +2273,14 @@ export const MembersManagement = ({
             onChange={(val) => {
               setPlanFilter(val);
               setCurrentPage(1);
-              void fetchGymMemberships(1, pageSize, searchQuery, statusFilter, val);
+              void fetchGymMemberships(1, pageSize, searchQuery, statusFilter, val, sourceFilter, dateBounds);
             }}
             style={{ width: 140, height: 40 }}
           >
             <Option value="ALL">All Plans</Option>
             <Option value="Monthly">Monthly</Option>
             <Option value="Quarterly">Quarterly</Option>
-            <Option value="Half-Yearly">Half-Yearly</Option>
+            <Option value="Half Yearly">Half Yearly</Option>
             <Option value="Annual">Annual</Option>
           </Select>
 
@@ -2225,6 +2372,7 @@ export const MembersManagement = ({
             Clear
           </Button>
         </div>
+        )}
       </div>
 
       {/* VIEW 1: ALL MEMBERS TAB */}
@@ -2514,7 +2662,7 @@ export const MembersManagement = ({
               </Card>
             </Col>
 
-            {/* Sent to Super Admin */}
+            {/* Pending Gym Admin Approval */}
             <Col xs={24} sm={12} lg={6}>
               <Card
                 style={{
@@ -2529,13 +2677,13 @@ export const MembersManagement = ({
                   <SendOutlined style={{ fontSize: 22, color: '#1677ff', opacity: 0.75, flexShrink: 0 }} />
                   <div>
                     <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 500 }}>
-                      Forwarded to Admin
+                      Pending Gym Admin
                     </div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: '#1677ff', lineHeight: 1.2, marginTop: 2 }}>
-                      {switchRequests.filter((r) => r.status === 'PENDING_SUPER_ADMIN_APPROVAL').length}
+                      {switchRequests.filter((r) => ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL'].includes(r.status)).length}
                     </div>
                     <div style={{ fontSize: 12, color: '#1677ff', fontWeight: 600, marginTop: 4 }}>
-                      In Admin Review
+                      Awaiting Admin review
                     </div>
                   </div>
                 </div>
@@ -2601,10 +2749,9 @@ export const MembersManagement = ({
                 >
                   <Option value="ALL">All Switch Statuses</Option>
                   <Option value="PENDING_GYM_APPROVAL">Pending Gym Review</Option>
-                  <Option value="PENDING_SUPER_ADMIN_APPROVAL">Forwarded to Super Admin</Option>
+                  <Option value="PENDING_GYM_ADMIN_APPROVAL">Pending Gym Admin</Option>
                   <Option value="APPROVED_AND_EXECUTED">Approved & Executed</Option>
                   <Option value="REJECTED_BY_GYM">Rejected by Gym</Option>
-                  <Option value="REJECTED_BY_SUPER_ADMIN">Rejected by Super Admin</Option>
                 </Select>
               </Col>
               <Col xs={24} sm={12} md={6} style={{ textAlign: 'right' }}>
@@ -2947,10 +3094,10 @@ export const MembersManagement = ({
                   style={{ width: '100%', height: 42 }}
                 >
                   <Option value="ALL">All Statuses</Option>
-                  <Option value="Pending Gym Approval">Pending Gym Approval</Option>
-                  <Option value="Pending Gym Approval">Pending Gym Approval</Option>
-                  <Option value="Approved by Admin">Approved by Admin</Option>
-                  <Option value="Rejected">Rejected</Option>
+                  <Option value="PENDING_GYM_APPROVAL">Pending Gym Approval</Option>
+                  <Option value="PENDING_MEMBER_APPROVAL">Quoted Refund</Option>
+                  <Option value="COMPLETED">Approved & Completed</Option>
+                  <Option value="REJECTED">Rejected</Option>
                 </Select>
               </Col>
 
@@ -3390,7 +3537,7 @@ export const MembersManagement = ({
                 backgroundColor:
                   selectedSwitchReq.status === 'PENDING_GYM_APPROVAL'
                     ? isDarkMode ? 'rgba(250, 140, 22, 0.15)' : '#fff7e6'
-                    : selectedSwitchReq.status === 'PENDING_SUPER_ADMIN_APPROVAL'
+                    : ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL'].includes(selectedSwitchReq.status)
                     ? isDarkMode ? 'rgba(22, 119, 255, 0.15)' : '#e6f4ff'
                     : isDarkMode ? 'rgba(0, 191, 98, 0.15)' : '#eaf8ef',
                 marginBottom: 20,
@@ -3401,7 +3548,7 @@ export const MembersManagement = ({
                   color:
                     selectedSwitchReq.status === 'PENDING_GYM_APPROVAL'
                       ? '#fa8c16'
-                      : selectedSwitchReq.status === 'PENDING_SUPER_ADMIN_APPROVAL'
+                      : ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL'].includes(selectedSwitchReq.status)
                       ? '#1677ff'
                       : '#00bf62',
                   fontSize: 16,
@@ -3410,10 +3557,10 @@ export const MembersManagement = ({
               />
               <div style={{ fontSize: 12.5, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.4 }}>
                 {selectedSwitchReq.status === 'PENDING_GYM_APPROVAL' && (
-                  <span><strong>Stage 1 of 2:</strong> Awaiting Gym Owner review before dispatching to Super Admin.</span>
+                  <span><strong>Pending Review:</strong> Owner approval executes immediately; Manager approval routes to Gym Admin.</span>
                 )}
-                {selectedSwitchReq.status === 'PENDING_SUPER_ADMIN_APPROVAL' && (
-                  <span><strong>Stage 2 of 2:</strong> Forwarded to Super Admin for final verification and atomic execution.</span>
+                {['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL'].includes(selectedSwitchReq.status) && (
+                  <span><strong>Pending Gym Admin:</strong> Submitted by Manager. Awaiting Gym Admin final approval and execution.</span>
                 )}
                 {selectedSwitchReq.status === 'APPROVED_AND_EXECUTED' && (
                   <span><strong>Completed:</strong> Plan switch verified and executed. Member pass is updated.</span>
@@ -3498,7 +3645,7 @@ export const MembersManagement = ({
               >
                 Close
               </Button>
-              {selectedSwitchReq.status === 'PENDING_GYM_APPROVAL' && (
+              {canActOnSwitchStatus(selectedSwitchReq.status) && (
                 <>
                   <Button
                     danger
@@ -3516,7 +3663,7 @@ export const MembersManagement = ({
                   </Button>
                   <Button
                     type="primary"
-                    icon={<SendOutlined />}
+                    icon={isManagerUser ? <SendOutlined /> : <CheckOutlined />}
                     onClick={() => handleGymAcceptSwitch(selectedSwitchReq)}
                     style={{
                       flex: 1.4,
@@ -3533,7 +3680,7 @@ export const MembersManagement = ({
                       gap: 6,
                     }}
                   >
-                    Accept & Send to Admin
+                    {isManagerUser ? 'Accept & Send to Admin' : 'Approve & Execute'}
                   </Button>
                 </>
               )}
@@ -3576,7 +3723,7 @@ export const MembersManagement = ({
         open={isViewModalOpen}
         onCancel={() => setIsViewModalOpen(false)}
         footer={null}
-        width={480}
+        width={860}
         centered
         destroyOnClose
         styles={{ body: { padding: '8px 4px 12px 4px' } }}
@@ -3584,186 +3731,362 @@ export const MembersManagement = ({
         {selectedMember && (
           <div>
             {/* Customer Profile Header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, marginTop: 6 }}>
-              <Avatar
-                src={hasValidProfilePic(selectedMember.avatar) ? selectedMember.avatar : undefined}
-                icon={!hasValidProfilePic(selectedMember.avatar) ? <UserOutlined style={{ fontSize: 32 }} /> : undefined}
-                size={68}
-                style={{
-                  backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
-                  color: '#6366f1',
-                  border: `2px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
-                  flexShrink: 0,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              />
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedMember.name}
-                </div>
-                <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <PhoneOutlined /> {selectedMember.phone}
-                </div>
-                <div style={{ marginTop: 6 }}>
-                  <Tag
-                    style={{
-                      backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.2)' : '#f3effe',
-                      color: isDarkMode ? '#b37feb' : '#722ed1',
-                      border: 'none',
-                      borderRadius: 'var(--radius-base)',
-                      fontWeight: 650,
-                      fontSize: 12,
-                      padding: '2px 10px',
-                    }}
-                  >
-                    Member ID: {selectedMember.memberId}
-                  </Tag>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 18, marginTop: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <Avatar
+                  src={hasValidProfilePic(selectedMember.avatar) ? selectedMember.avatar : undefined}
+                  icon={!hasValidProfilePic(selectedMember.avatar) ? <UserOutlined style={{ fontSize: 30 }} /> : undefined}
+                  size={64}
+                  style={{
+                    backgroundColor: isDarkMode ? '#1e1b4b' : '#ede9fe',
+                    color: '#6366f1',
+                    border: `2px solid ${isDarkMode ? '#222222' : '#e2e8f0'}`,
+                    flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                />
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                    {selectedMember.name}
+                  </div>
+                  <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <PhoneOutlined /> {selectedMember.phone}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <Tag
+                      style={{
+                        backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.2)' : '#f3effe',
+                        color: isDarkMode ? '#b37feb' : '#722ed1',
+                        border: 'none',
+                        borderRadius: 'var(--radius-base)',
+                        fontWeight: 650,
+                        fontSize: 12,
+                        padding: '2px 10px',
+                      }}
+                    >
+                      Member ID: {selectedMember.memberId}
+                    </Tag>
+                  </div>
                 </div>
               </div>
+
+              <Tag
+                style={{
+                  backgroundColor:
+                    selectedMember.status === 'Active'
+                      ? isDarkMode
+                        ? 'rgba(0, 191, 98, 0.15)'
+                        : '#eaf8ef'
+                      : selectedMember.status === 'Cancellation Requested'
+                      ? isDarkMode
+                        ? 'rgba(250, 140, 22, 0.15)'
+                        : '#fff7e6'
+                      : isDarkMode
+                      ? 'rgba(225, 29, 72, 0.15)'
+                      : '#fdeeed',
+                  color:
+                    selectedMember.status === 'Active'
+                      ? '#00bf62'
+                      : selectedMember.status === 'Cancellation Requested'
+                      ? '#fa8c16'
+                      : '#e11d48',
+                  border: 'none',
+                  borderRadius: 'var(--radius-base)',
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  padding: '4px 12px',
+                  margin: 0,
+                }}
+              >
+                {selectedMember.status}
+              </Tag>
             </div>
 
-            {/* Key-Value Details */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
-              {/* Row 1: Start Date */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 14, fontWeight: 500 }}>
-                  <CalendarOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 16 }} />
-                  <span>Start Date</span>
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedMember.startDate}
-                </div>
-              </div>
-
-              {/* Row 2: End Date */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 14, fontWeight: 500 }}>
-                  <CalendarOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 16 }} />
-                  <span>End Date</span>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                    {selectedMember.expiryDate}
+            {/* Landscape 2-Column Details */}
+            <Row gutter={[20, 16]} style={{ marginBottom: 18 }}>
+              <Col xs={24} md={12}>
+                <div
+                  style={{
+                    padding: '14px 16px',
+                    borderRadius: 'var(--radius-base)',
+                    backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
+                    border: `1px solid ${isDarkMode ? '#27272a' : '#e2e8f0'}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                    height: '100%',
+                  }}
+                >
+                  {/* Row 1: Start Date */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 13.5, fontWeight: 500 }}>
+                      <CalendarOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 15 }} />
+                      <span>Start Date</span>
+                    </div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                      {selectedMember.startDate}
+                    </div>
                   </div>
+
+                  {/* Row 2: End Date */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 13.5, fontWeight: 500 }}>
+                      <CalendarOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 15 }} />
+                      <span>End Date</span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                        {selectedMember.expiryDate}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: selectedMember.status === 'Expired' || selectedMember.daysLeft === 'Expired' ? '#e11d48' : '#fa8c16',
+                          fontWeight: 600,
+                          marginTop: 2,
+                        }}
+                      >
+                        ({selectedMember.daysLeft})
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 3: Payment Made */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 13.5, fontWeight: 500 }}>
+                      <DollarCircleOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 15 }} />
+                      <span>Payment Made</span>
+                    </div>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                      {selectedMember.amount}
+                    </div>
+                  </div>
+
+                  {/* Row 4: Payment Type */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 13.5, fontWeight: 500 }}>
+                      <CreditCardOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 15 }} />
+                      <span>Payment Type</span>
+                    </div>
+                    <div style={{ fontSize: 13.5, fontWeight: 500, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                      {selectedMember.paymentType}
+                    </div>
+                  </div>
+
+                  {/* Row 5: Membership Plan */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 13.5, fontWeight: 500 }}>
+                      <SafetyCertificateOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 15 }} />
+                      <span>Membership Plan</span>
+                    </div>
+                    <Tag
+                      style={{
+                        backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.2)' : '#f3effe',
+                        color: isDarkMode ? '#b37feb' : '#722ed1',
+                        border: 'none',
+                        borderRadius: 'var(--radius-base)',
+                        fontWeight: 600,
+                        fontSize: 12,
+                        padding: '2px 10px',
+                        margin: 0,
+                      }}
+                    >
+                      {selectedMember.plan}
+                    </Tag>
+                  </div>
+
+                  {/* Booked Personal Trainer Details (if booked) */}
+                  {Boolean(selectedMember.hasTrainer || (selectedMember.trainerName && selectedMember.trainerName !== 'None')) && (
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 'var(--radius-base)',
+                        backgroundColor: isDarkMode ? 'rgba(37, 99, 235, 0.1)' : '#eff6ff',
+                        border: `1px solid ${isDarkMode ? 'rgba(59, 130, 246, 0.3)' : '#bfdbfe'}`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                        marginTop: 'auto',
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#2563eb' }}>
+                        Booked Personal Trainer
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <Avatar
+                            size={36}
+                            src={hasValidProfilePic(selectedMember.trainerAvatar) ? selectedMember.trainerAvatar : undefined}
+                            icon={<UserOutlined />}
+                            style={{
+                              backgroundColor: isDarkMode ? '#1e3a8a' : '#dbeafe',
+                              color: '#2563eb',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <div>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                              {selectedMember.trainerName}
+                              {selectedMember.trainerEmployeeId ? ` (${selectedMember.trainerEmployeeId})` : ''}
+                            </div>
+                            {(selectedMember.trainerSpecialty || selectedMember.trainerSlot) && (
+                              <div style={{ fontSize: 11.5, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                                {[selectedMember.trainerSpecialty, selectedMember.trainerSlot].filter(Boolean).join(' • ')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {selectedMember.trainerFee > 0 && (
+                          <Tag color="green" style={{ margin: 0, fontWeight: 700 }}>
+                            +₹{Number(selectedMember.trainerFee).toLocaleString('en-IN')}
+                          </Tag>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Col>
+
+              <Col xs={24} md={12}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
+                  {/* Contact Details Section */}
                   <div
                     style={{
-                      fontSize: 11,
-                      color: selectedMember.status === 'Expired' || selectedMember.daysLeft === 'Expired' ? '#e11d48' : '#fa8c16',
-                      fontWeight: 600,
-                      marginTop: 2,
+                      padding: '12px 14px',
+                      borderRadius: 'var(--radius-base)',
+                      backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
+                      border: `1px solid ${isDarkMode ? '#27272a' : '#e2e8f0'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
                     }}
                   >
-                    ({selectedMember.daysLeft})
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                      Contact Details
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b' }}>Member Phone</span>
+                      <span style={{ fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                        {selectedMember.phone || '—'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b' }}>Member Email</span>
+                      <span style={{ fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                        {selectedMember.email || '—'}
+                      </span>
+                    </div>
+                    {Boolean(selectedMember.emergencyContact?.name) && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                        <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b' }}>Emergency Contact</span>
+                        <span style={{ fontWeight: 600, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                          {selectedMember.emergencyContact.name}
+                          {selectedMember.emergencyContact.relation ? ` (${selectedMember.emergencyContact.relation})` : ''}
+                        </span>
+                      </div>
+                    )}
+                    {Boolean(selectedMember.emergencyContact?.phone) && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                        <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b' }}>Emergency Phone</span>
+                        <span style={{ fontWeight: 600, color: '#ef4444' }}>
+                          {selectedMember.emergencyContact.phone}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Attendance & Check-ins Section */}
+                  <div
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 'var(--radius-base)',
+                      backgroundColor: isDarkMode ? '#141414' : '#f8fafc',
+                      border: `1px solid ${isDarkMode ? '#27272a' : '#e2e8f0'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 10,
+                      flex: 1,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                      Attendance &amp; Check-ins
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div
+                        style={{
+                          padding: '10px',
+                          borderRadius: 8,
+                          textAlign: 'center',
+                          backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
+                          border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
+                        }}
+                      >
+                        <div style={{ fontSize: 18, fontWeight: 800, color: '#2563eb' }}>
+                          {selectedMember.checkins || 0}
+                        </div>
+                        <div style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                          Total Check-ins
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          padding: '10px',
+                          borderRadius: 8,
+                          textAlign: 'center',
+                          backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
+                          border: `1px solid ${isDarkMode ? '#334155' : '#e2e8f0'}`,
+                        }}
+                      >
+                        <div style={{ fontSize: 18, fontWeight: 800, color: '#10b981' }}>
+                          {selectedMember.streak || (selectedMember.checkins > 0 ? `${selectedMember.checkins} Day${selectedMember.checkins > 1 ? 's' : ''}` : '0 Days')}
+                        </div>
+                        <div style={{ fontSize: 11, color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                          Active Streak
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+                      Recent Attendance Activity
+                    </div>
+                    {Array.isArray(selectedMember.attendanceHistory) && selectedMember.attendanceHistory.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {selectedMember.attendanceHistory.slice(0, 5).map((item, idx) => (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: isDarkMode ? '#cbd5e1' : '#334155' }}>
+                            <span>{item.area || item.method || 'Gym Check-in'}</span>
+                            <span style={{ color: isDarkMode ? '#94a3b8' : '#64748b' }}>
+                              {item.attendedAt ? new Date(item.attendedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: isDarkMode ? '#94a3b8' : '#64748b', textAlign: 'center', padding: '4px 0' }}>
+                        No past check-in sessions recorded yet.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expiry Notice Banner */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '10px 14px',
+                      borderRadius: 'var(--radius-base)',
+                      backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
+                    }}
+                  >
+                    <InfoCircleOutlined style={{ color: '#722ed1', fontSize: 16, flexShrink: 0 }} />
+                    <div style={{ fontSize: 12.5, color: isDarkMode ? '#d3adf7' : '#531dab', lineHeight: 1.4 }}>
+                      This membership will expire on {selectedMember.expiryDate}.
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Row 3: Payment Made */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 14, fontWeight: 500 }}>
-                  <DollarCircleOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 16 }} />
-                  <span>Payment Made</span>
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedMember.amount}
-                </div>
-              </div>
-
-              {/* Row 4: Payment Type */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 14, fontWeight: 500 }}>
-                  <CreditCardOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 16 }} />
-                  <span>Payment Type</span>
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-                  {selectedMember.paymentType}
-                </div>
-              </div>
-
-              {/* Row 5: Membership Plan */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 14, fontWeight: 500 }}>
-                  <SafetyCertificateOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 16 }} />
-                  <span>Membership Plan</span>
-                </div>
-                <div>
-                  <Tag
-                    style={{
-                      backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.2)' : '#f3effe',
-                      color: isDarkMode ? '#b37feb' : '#722ed1',
-                      border: 'none',
-                      borderRadius: 'var(--radius-base)',
-                      fontWeight: 600,
-                      fontSize: 12,
-                      padding: '2px 10px',
-                      margin: 0,
-                    }}
-                  >
-                    {selectedMember.plan}
-                  </Tag>
-                </div>
-              </div>
-
-              {/* Row 6: Status */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: isDarkMode ? '#cccccc' : '#334155', fontSize: 14, fontWeight: 500 }}>
-                  <CheckCircleOutlined style={{ color: isDarkMode ? '#888888' : '#64748b', fontSize: 16 }} />
-                  <span>Status</span>
-                </div>
-                <div>
-                  <Tag
-                    style={{
-                      backgroundColor:
-                        selectedMember.status === 'Active'
-                          ? isDarkMode
-                            ? 'rgba(0, 191, 98, 0.15)'
-                            : '#eaf8ef'
-                          : selectedMember.status === 'Cancellation Requested'
-                          ? isDarkMode
-                            ? 'rgba(250, 140, 22, 0.15)'
-                            : '#fff7e6'
-                          : isDarkMode
-                          ? 'rgba(225, 29, 72, 0.15)'
-                          : '#fdeeed',
-                      color:
-                        selectedMember.status === 'Active'
-                          ? '#00bf62'
-                          : selectedMember.status === 'Cancellation Requested'
-                          ? '#fa8c16'
-                          : '#e11d48',
-                      border: 'none',
-                      borderRadius: 'var(--radius-base)',
-                      fontWeight: 600,
-                      fontSize: 12,
-                      padding: '2px 10px',
-                      margin: 0,
-                    }}
-                  >
-                    {selectedMember.status}
-                  </Tag>
-                </div>
-              </div>
-            </div>
-
-            {/* Expiry Notice Banner */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '12px 16px',
-                borderRadius: 'var(--radius-base)',
-                backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.15)' : '#f3effe',
-                marginBottom: 24,
-              }}
-            >
-              <InfoCircleOutlined style={{ color: '#722ed1', fontSize: 18, flexShrink: 0 }} />
-              <div style={{ fontSize: 12.5, color: isDarkMode ? '#d3adf7' : '#531dab', lineHeight: 1.4 }}>
-                This membership will expire on {selectedMember.expiryDate}.
-              </div>
-            </div>
+              </Col>
+            </Row>
 
             {/* Modal Actions */}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -3802,31 +4125,35 @@ export const MembersManagement = ({
               >
                 Cancel Membership
               </Button>
-              <Button
-                type="primary"
-                icon={<CalendarOutlined style={{ color: '#ffffff' }} />}
-                onClick={() => {
-                  setIsViewModalOpen(false);
-                  handleOpenExtend(selectedMember);
-                }}
-                style={{
-                  flex: 1.25,
-                  minWidth: 160,
-                  height: 44,
-                  borderRadius: 'var(--radius-base)',
-                  fontWeight: 600,
-                  fontSize: 13.5,
-                  backgroundColor: 'var(--color-primary)',
-                  borderColor: 'var(--color-primary)',
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                }}
-              >
-                Extend Membership
-              </Button>
+              {selectedMember.status !== 'Cancelled' && (
+                <Button
+                  type="primary"
+                  icon={<CalendarOutlined style={{ color: '#ffffff' }} />}
+                  onClick={() => {
+                    setIsViewModalOpen(false);
+                    handleOpenExtend(selectedMember);
+                  }}
+                  style={{
+                    flex: 1.25,
+                    minWidth: 160,
+                    height: 44,
+                    borderRadius: 'var(--radius-base)',
+                    fontWeight: 600,
+                    fontSize: 13.5,
+                    backgroundColor: 'var(--color-primary)',
+                    borderColor: 'var(--color-primary)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                  }}
+                >
+                  {(selectedMember.source === 'WALK_IN' || selectedMember.isWalkIn)
+                    ? 'Extend Membership'
+                    : 'Send Renewal Offer'}
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -3862,61 +4189,126 @@ export const MembersManagement = ({
         footer={null}
         destroyOnClose
       >
-        {selectedMember && (
-          <Form form={extendForm} layout="vertical" onFinish={handleExtendSubmit} style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 16, padding: '12px 16px', backgroundColor: isDarkMode ? '#141414' : '#f8fafc', borderRadius: 'var(--radius-base)' }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: isDarkMode ? '#ffffff' : '#0f172a' }}>{selectedMember.name}</div>
-              <div style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2 }}>{selectedMember.memberId} • Current Plan: {selectedMember.plan}</div>
-            </div>
+        {selectedMember && (() => {
+          const isWalkIn = selectedMember.source === 'WALK_IN' || selectedMember.isWalkIn;
+          const watchedPlanKey = watchedExtendPlanKey || activePlans[0]?.key;
+          const watchedTrainerId = watchedExtendTrainerId || 'none';
+          const previewPlan = activePlans.find((p) => p.key === watchedPlanKey) || activePlans[0];
+          const now = new Date();
+          const curEnd = selectedMember.rawEndDate ? new Date(selectedMember.rawEndDate) : now;
+          const baseDate = curEnd > now ? curEnd : now;
+          const previewNewEnd = new Date(baseDate.getTime() + (previewPlan?.durationDays || 30) * 24 * 60 * 60 * 1000);
 
-            <Form.Item label="Select Extension Plan" name="plan" rules={[{ required: true }]}>
-              <Select style={{ height: 42 }}>
-                <Option value="Silver (1 Month)">Silver (1 Month) - ₹1,599</Option>
-                <Option value="Gold (3 Months)">Gold (3 Months) - ₹4,499</Option>
-                <Option value="Platinum (6 Months)">Platinum (6 Months) - ₹7,999</Option>
-                <Option value="Annual (12 Months)">Annual (12 Months) - ₹14,999</Option>
-              </Select>
-            </Form.Item>
+          const syncAmount = (nextPlanKey, nextTrainerId) => {
+            const pObj = activePlans.find((p) => p.key === nextPlanKey) || activePlans[0];
+            const tObj = nextTrainerId && nextTrainerId !== 'none'
+              ? gymTrainers.find((t) => String(t._id || t.id) === String(nextTrainerId))
+              : null;
+            const fee = tObj ? getTrainerFeeForTier(tObj, pObj?.tier || 'Monthly') : 0;
+            extendForm.setFieldValue('amount', String((Number(pObj?.price || 0) || 0) + fee));
+          };
 
-            <Row gutter={16}>
-              <Col xs={24} sm={12}>
-                <Form.Item label="Payment Method" name="paymentType" rules={[{ required: true }]}>
-                  <Select style={{ height: 42 }}>
-                    <Option value="Online">Online Payment</Option>
-                    <Option value="GPay">GPay / UPI</Option>
-                    <Option value="Cash">Cash at Frontdesk</Option>
-                    <Option value="COD">Card on Delivery</Option>
-                  </Select>
+          return (
+            <Form form={extendForm} layout="vertical" onFinish={handleExtendSubmit} style={{ marginTop: 16 }}>
+              <div style={{ marginBottom: 14, padding: '12px 16px', backgroundColor: isDarkMode ? '#141414' : '#f8fafc', borderRadius: 'var(--radius-base)', border: `1px solid ${isDarkMode ? '#27272a' : '#e2e8f0'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: isDarkMode ? '#ffffff' : '#0f172a' }}>{selectedMember.name}</div>
+                  <Tag color={isWalkIn ? 'cyan' : 'blue'} style={{ margin: 0, fontWeight: 600 }}>
+                    {isWalkIn ? 'Walk-in POS' : 'Online App'}
+                  </Tag>
+                </div>
+                <div style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', marginTop: 3 }}>
+                  {selectedMember.memberId} • Current Plan: {selectedMember.plan} • Current Expiry: {selectedMember.expiryDate || '—'}
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#16a34a', marginTop: 6 }}>
+                  New Stacked Expiry: {previewNewEnd.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} (+{previewPlan?.durationDays || 30} days)
+                </div>
+              </div>
+
+              {!isWalkIn && (
+                <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? 'rgba(37, 99, 235, 0.12)' : '#eff6ff', border: `1px solid ${isDarkMode ? 'rgba(59, 130, 246, 0.35)' : '#bfdbfe'}`, fontSize: 12.5, color: isDarkMode ? '#93c5fd' : '#1e40af' }}>
+                  Online App Member: This will send a Renewal Offer &amp; Payment Request to their GYMEZY App instead of charging directly at the desk.
+                </div>
+              )}
+
+              <Form.Item label="Select Extension Plan" name="planKey" rules={[{ required: true }]}>
+                <Select
+                  style={{ height: 42 }}
+                  onChange={(val) => syncAmount(val, watchedTrainerId)}
+                >
+                  {activePlans.map((p) => (
+                    <Option key={p.key} value={p.key}>
+                      {p.name} ({p.durationDays} Days) - ₹{Number(p.price || 0).toLocaleString('en-IN')}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+
+              <Form.Item label="Personal Trainer (Optional Add-on)" name="trainerId">
+                <Select
+                  style={{ height: 42 }}
+                  onChange={(val) => syncAmount(watchedPlanKey, val)}
+                >
+                  <Option value="none">No Personal Trainer (General Gym Access)</Option>
+                  {gymTrainers.map((tr) => {
+                    const fee = getTrainerFeeForTier(tr, previewPlan?.tier || 'Monthly');
+                    return (
+                      <Option key={tr._id || tr.id} value={tr._id || tr.id}>
+                        {tr.name} {tr.specialty ? `(${tr.specialty})` : ''} {fee > 0 ? `+₹${fee.toLocaleString('en-IN')}` : ''}
+                      </Option>
+                    );
+                  })}
+                </Select>
+              </Form.Item>
+
+              <Row gutter={16}>
+                {isWalkIn && (
+                  <Col xs={24} sm={12}>
+                    <Form.Item label="Payment Method" name="paymentType" rules={[{ required: true }]}>
+                      <Select style={{ height: 42 }}>
+                        <Option value="Cash">Cash at Frontdesk</Option>
+                        <Option value="UPI">UPI / QR</Option>
+                        <Option value="Card">Card / POS</Option>
+                        <Option value="Online">Online Payment</Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                )}
+                <Col xs={24} sm={isWalkIn ? 12 : 24}>
+                  <Form.Item label={isWalkIn ? 'Renewal Amount (₹)' : 'Offered Renewal Amount (₹)'} name="amount" rules={[{ required: true }]}>
+                    <Input prefix="₹" type="number" style={{ height: 42, borderRadius: 'var(--radius-base)' }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              {!isWalkIn && (
+                <Form.Item label="Offer Note (Optional)" name="notes">
+                  <Input placeholder="e.g. Loyalty renewal discount included" style={{ height: 40, borderRadius: 'var(--radius-base)' }} />
                 </Form.Item>
-              </Col>
-              <Col xs={24} sm={12}>
-                <Form.Item label="Renewal Amount (₹)" name="amount" rules={[{ required: true }]}>
-                  <Input prefix="₹" style={{ height: 42, borderRadius: 'var(--radius-base)' }} />
-                </Form.Item>
-              </Col>
-            </Row>
+              )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
-              <Button onClick={() => setIsExtendModalOpen(false)} style={{ borderRadius: 'var(--radius-base)', height: 40 }}>
-                Cancel
-              </Button>
-              <Button
-                type="primary"
-                htmlType="submit"
-                icon={<CalendarOutlined />}
-                style={{
-                  backgroundColor: 'var(--color-primary)',
-                  borderColor: 'var(--color-primary)',
-                  borderRadius: 'var(--radius-base)',
-                  fontWeight: 600,
-                  height: 40,
-                }}
-              >
-                Confirm Extension
-              </Button>
-            </div>
-          </Form>
-        )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+                <Button onClick={() => setIsExtendModalOpen(false)} style={{ borderRadius: 'var(--radius-base)', height: 40 }}>
+                  Cancel
+                </Button>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  icon={<CalendarOutlined />}
+                  style={{
+                    backgroundColor: 'var(--color-primary)',
+                    borderColor: 'var(--color-primary)',
+                    borderRadius: 'var(--radius-base)',
+                    fontWeight: 600,
+                    height: 40,
+                  }}
+                >
+                  {isWalkIn ? 'Confirm Extension' : 'Send Renewal Offer'}
+                </Button>
+              </div>
+            </Form>
+          );
+        })()}
       </Modal>
 
       {/* ADD NEW MEMBER MODAL (PIXEL-PERFECT FROM USER REFERENCE) */}
@@ -4006,7 +4398,7 @@ export const MembersManagement = ({
                       Upload Photo
                     </div>
                     <div style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2 }}>
-                      JPG, PNG (Max 2MB)
+                      JPG, PNG (Max 1MB)
                     </div>
                   </>
                 )}
@@ -4380,6 +4772,11 @@ export const MembersManagement = ({
             const start = tempDateRange[0].format('DD MMM YYYY');
             const end = tempDateRange[1].format('DD MMM YYYY');
             setSelectedDateRange(`${start} - ${end}`);
+            setDateBounds({
+              startDate: tempDateRange[0].format('YYYY-MM-DD'),
+              endDate: tempDateRange[1].format('YYYY-MM-DD'),
+            });
+            setCurrentPage(1);
             setIsDateRangeModalOpen(false);
             message.success(`Date filter set: ${start} - ${end}`);
           } else {

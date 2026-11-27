@@ -2794,11 +2794,6 @@ export const GymDetailsView = ({
                           <InputNumber min={0} style={{ width: '100%' }} />
                         </Form.Item>
                       </Col>
-                      <Col xs={24} sm={12}>
-                        <Form.Item name="weeklyPassPrice" label="Weekly Pass (₹)">
-                          <InputNumber min={0} style={{ width: '100%' }} />
-                        </Form.Item>
-                      </Col>
                     </Row>
                     <Row gutter={16}>
                       <Col xs={24}>

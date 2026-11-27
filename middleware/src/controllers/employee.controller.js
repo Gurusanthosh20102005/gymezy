@@ -558,7 +558,9 @@ export const getEmployees = asyncHandler(async (req, res) => {
   const skip = parsedLimit > 0 ? (parsedPage - 1) * parsedLimit : 0;
   const totalPages = parsedLimit > 0 ? Math.ceil(totalEmployees / parsedLimit) : 1;
 
-  let query = Employee.find(finalFilter).sort({ createdAt: -1 });
+  let query = Employee.find(finalFilter)
+    .select('-documents.fileData -trainerCerts.fileData')
+    .sort({ createdAt: -1 });
   if (parsedLimit > 0) {
     query = query.skip(skip).limit(parsedLimit);
   }

@@ -44,6 +44,19 @@ const ALL_FACILITIES = [
   'Olympic Barbells Area',
 ];
 
+const AMENITY_OPTIONS = [
+  'RO Drinking Water',
+  'Towel Service',
+  'Protein Shake Bar',
+  'Juice & Smoothie Bar',
+  'Personal Locker Rental',
+  'InBody BMI Scanner',
+  'Nutritionist Desk',
+  'Lounge / Rest Area',
+  'Free Sanitizer Stations',
+  'Locker Key Padlocks',
+];
+
 const ALL_WORKOUTS = [
   'Strength & Weights',
   'Cardio & Endurance',
@@ -108,12 +121,12 @@ export const ApplicationStatusScreen = ({ navigation }) => {
   const [formEveningClose, setFormEveningClose] = useState('10:30 PM');
 
   const [formSinglePrice, setFormSinglePrice] = useState('199');
-  const [formWeeklyPrice, setFormWeeklyPrice] = useState('799');
   const [formMonthlyPrice, setFormMonthlyPrice] = useState('1999');
   const [formQuarterlyPrice, setFormQuarterlyPrice] = useState('4999');
   const [formAnnualPrice, setFormAnnualPrice] = useState('14999');
 
   const [formFacilities, setFormFacilities] = useState([]);
+  const [formAmenities, setFormAmenities] = useState([]);
   const [formWorkouts, setFormWorkouts] = useState([]);
 
   const [formAccountHolder, setFormAccountHolder] = useState('');
@@ -123,12 +136,42 @@ export const ApplicationStatusScreen = ({ navigation }) => {
   const [formUpiId, setFormUpiId] = useState('');
 
   const currentGym = gym || {};
+  const galleryPhotos = Array.isArray(currentGym.galleryPhotos)
+    ? currentGym.galleryPhotos
+        .filter(Boolean)
+        .map((photo) => (typeof photo === 'string' ? { fileName: '', fileData: photo } : photo))
+    : [];
+  const partnerIdDisplay =
+    currentGym.partnerId && !/^[0-9a-fA-F]{24}$/.test(currentGym.partnerId) && currentGym.partnerId !== '-'
+      ? currentGym.partnerId
+      : '-';
   const approvalStatus = currentGym.approvalStatus || 'Pending Approval';
   const isApproved = approvalStatus === 'Approved';
   const isOnHold = approvalStatus === 'On Hold';
   const isRejected = approvalStatus === 'Rejected';
   const isPending = approvalStatus === 'Pending Approval' || (!isApproved && !isOnHold && !isRejected);
   const adminRemark = currentGym.remark || currentGym.rejectionReason || '';
+
+  useEffect(() => {
+    let isMounted = true;
+    const syncFromDb = async () => {
+      try {
+        const sessionData = await apiService.getCurrentUser();
+        if (isMounted && sessionData?.gym) {
+          updateGym(sessionData.gym);
+          if (sessionData.gym.approvalStatus === 'Approved') {
+            navigation.replace('Dashboard');
+          }
+        }
+      } catch {
+        // Silent background sync; user can also tap Refresh
+      }
+    };
+    syncFromDb();
+    return () => {
+      isMounted = false;
+    };
+  }, [navigation, updateGym]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -187,12 +230,12 @@ export const ApplicationStatusScreen = ({ navigation }) => {
     setFormEveningClose(opHours.eveningShift?.close || '10:30 PM');
 
     setFormSinglePrice(String(currentGym.singleSessionPrice || currentGym.pricingPlans?.singleSession || 199));
-    setFormWeeklyPrice(String(currentGym.pricingPlans?.weeklyPass || 799));
     setFormMonthlyPrice(String(currentGym.pricingPlans?.monthly || 1999));
     setFormQuarterlyPrice(String(currentGym.pricingPlans?.quarterly || 4999));
     setFormAnnualPrice(String(currentGym.pricingPlans?.annual || 14999));
 
     setFormFacilities(Array.isArray(currentGym.facilities) ? [...currentGym.facilities] : []);
+    setFormAmenities(Array.isArray(currentGym.amenities) ? [...currentGym.amenities] : []);
     setFormWorkouts(Array.isArray(currentGym.workouts) ? [...currentGym.workouts] : []);
 
     setFormAccountHolder(currentGym.bankDetails?.accountHolder || '');
@@ -252,13 +295,13 @@ export const ApplicationStatusScreen = ({ navigation }) => {
         singleSessionPrice: Number(formSinglePrice) || 199,
         pricingPlans: {
           singleSession: Number(formSinglePrice) || 199,
-          weeklyPass: Number(formWeeklyPrice) || 799,
           monthly: Number(formMonthlyPrice) || 1999,
           quarterly: Number(formQuarterlyPrice) || 4999,
           annual: Number(formAnnualPrice) || 14999,
         },
 
         facilities: formFacilities,
+        amenities: formAmenities,
         workouts: formWorkouts,
 
         bankDetails: {
@@ -323,6 +366,12 @@ export const ApplicationStatusScreen = ({ navigation }) => {
     );
   };
 
+  const toggleAmenity = (item) => {
+    setFormAmenities((prev) =>
+      prev.includes(item) ? prev.filter((a) => a !== item) : [...prev, item]
+    );
+  };
+
   const toggleWorkout = (item) => {
     setFormWorkouts((prev) =>
       prev.includes(item) ? prev.filter((w) => w !== item) : [...prev, item]
@@ -357,7 +406,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
         day: 'numeric',
         year: 'numeric',
       })
-    : 'Oct 5, 2026';
+    : '—';
 
   return (
     <View style={[styles.container, { backgroundColor: pageBg }]}>
@@ -378,9 +427,15 @@ export const ApplicationStatusScreen = ({ navigation }) => {
         ]}
       >
         <View style={styles.headerLeft}>
-          <View style={[styles.logoIconCircle, { backgroundColor: '#2563EB' }]}>
-            <Text style={styles.logoIconText}>G</Text>
-          </View>
+          <Image
+            source={require('../../assets/logo/gymezy.png')}
+            style={{
+              width: 28,
+              height: 28,
+              tintColor: isDark ? '#FFFFFF' : undefined,
+            }}
+            resizeMode="contain"
+          />
           <Text style={[styles.headerTitle, { color: textPrimary }]}>GYMEZY</Text>
         </View>
 
@@ -421,32 +476,50 @@ export const ApplicationStatusScreen = ({ navigation }) => {
         {/* GYM TITLE & STATUS */}
         <View style={styles.titleRow}>
           <Text style={[styles.gymNameTitle, { color: textPrimary }]}>
-            {currentGym.name || 'Your Gym Facility'}
+            {currentGym.name || 'Your Gym'}
           </Text>
 
-          <View style={[styles.statusPill, { borderColor: borderCol, backgroundColor: cardBg }]}>
-            <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
-            <Text style={[styles.statusPillText, { color: textPrimary }]}>{getStatusLabel()}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <View style={[styles.statusPill, { borderColor: borderCol, backgroundColor: cardBg }]}>
+              <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
+              <Text style={[styles.statusPillText, { color: textPrimary }]}>{getStatusLabel()}</Text>
+            </View>
+
+            <View style={[styles.statusPill, { borderColor: borderCol, backgroundColor: cardBg }]}>
+              <Text style={[styles.statusPillText, { color: textSecondary }]}>
+                ID: {partnerIdDisplay}
+              </Text>
+            </View>
           </View>
         </View>
 
         <Text style={[styles.statusSubtext, { color: textSecondary }]}>
-          {isRejected
-            ? 'Review is complete and changes are required before activation. Please check the administrator note below and resubmit.'
+          {isApproved
+            ? 'Your gym partner account is approved and active. You can manage your gym in the Owner Console.'
+            : isRejected
+            ? 'Review is complete and changes are required before activation. Please check the administrator note below, make the necessary updates, and resubmit.'
             : isOnHold
-            ? 'Your application is currently on hold. Please update required information.'
-            : 'Your registration application is submitted and under super administrator review.'}
+            ? 'Your application is currently on hold. Please review the administrator notes below, edit any required information, and resubmit when ready.'
+            : `Submitted on ${submissionDateStr} by ${user?.fullName || currentGym.ownerName || 'Partner'}. The GYMEZY operations team is currently reviewing your registration.`}
         </Text>
 
         {/* TOP ACTIONS ROW */}
         <View style={styles.topActionsRow}>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.editAppBtn]}
+            style={[
+              styles.actionBtn,
+              {
+                borderColor: '#2563EB',
+                backgroundColor: isDark ? 'rgba(37,99,235,0.12)' : '#EFF6FF',
+              },
+            ]}
             onPress={() => handleOpenEdit('business')}
             activeOpacity={0.8}
           >
-            <Icon name="edit" size={16} color="#FFFFFF" />
-            <Text style={styles.editAppBtnText}>Edit Application</Text>
+            <Icon name="edit" size={15} color="#2563EB" />
+            <Text style={[styles.actionBtnText, { color: '#2563EB', fontWeight: '700' }]}>
+              Edit Application
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -458,7 +531,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
               <ActivityIndicator size="small" color="#2563EB" />
             ) : (
               <>
-                <Icon name="refresh" size={16} color={textPrimary} />
+                <Icon name="refresh" size={15} color={textPrimary} />
                 <Text style={[styles.actionBtnText, { color: textPrimary }]}>Refresh</Text>
               </>
             )}
@@ -469,21 +542,48 @@ export const ApplicationStatusScreen = ({ navigation }) => {
             onPress={() => setSupportModalOpen(true)}
             activeOpacity={0.8}
           >
-            <Icon name="help-outline" size={16} color={textPrimary} />
+            <Icon name="help-outline" size={15} color={textPrimary} />
             <Text style={[styles.actionBtnText, { color: textPrimary }]}>Support</Text>
           </TouchableOpacity>
-        </View>
 
-        {(isOnHold || isRejected) && (
-          <TouchableOpacity
-            style={[styles.fullResubmitBtn, { backgroundColor: isOnHold ? '#F59E0B' : '#2563EB' }]}
-            onPress={() => setResubmitModalOpen(true)}
-            activeOpacity={0.85}
-          >
-            <Icon name="send" size={16} color="#FFFFFF" />
-            <Text style={styles.fullResubmitBtnText}>Resubmit Application</Text>
-          </TouchableOpacity>
-        )}
+          {(isOnHold || isRejected) && (
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                {
+                  backgroundColor: isOnHold ? '#FA8C16' : '#2563EB',
+                  borderColor: isOnHold ? '#FA8C16' : '#2563EB',
+                },
+              ]}
+              onPress={() => setResubmitModalOpen(true)}
+              activeOpacity={0.85}
+            >
+              <Icon name="send" size={14} color="#FFFFFF" />
+              <Text style={[styles.actionBtnText, { color: '#FFFFFF', fontWeight: '700' }]}>
+                Resubmit Application
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {isApproved && (
+            <TouchableOpacity
+              style={[
+                styles.actionBtn,
+                {
+                  backgroundColor: '#003882',
+                  borderColor: '#003882',
+                },
+              ]}
+              onPress={() => navigation.replace('Dashboard')}
+              activeOpacity={0.85}
+            >
+              <Icon name="arrow-forward" size={15} color="#FFFFFF" />
+              <Text style={[styles.actionBtnText, { color: '#FFFFFF', fontWeight: '700' }]}>
+                Dashboard
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* PROGRESS TIMELINE */}
         <View style={[styles.timelineCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
@@ -715,7 +815,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
               <View style={styles.infoCol}>
                 <Text style={[styles.fieldLabel, { color: textMuted }]}>Established</Text>
                 <Text style={[styles.fieldValue, { color: textPrimary }]}>
-                  {currentGym.yearEstablished || '2024'}
+                  {currentGym.yearEstablished || '—'}
                 </Text>
               </View>
             </View>
@@ -724,7 +824,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
               <View style={styles.infoCol}>
                 <Text style={[styles.fieldLabel, { color: textMuted }]}>Plan Model</Text>
                 <Text style={[styles.fieldValue, { color: textPrimary }]}>
-                  {currentGym.subscriptionType || 'Hybrid'}
+                  {currentGym.subscriptionType || '—'}
                 </Text>
               </View>
             </View>
@@ -761,50 +861,103 @@ export const ApplicationStatusScreen = ({ navigation }) => {
           </View>
 
           <View style={[styles.infoCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
-            <View style={{ marginBottom: 12 }}>
+            <View style={{ marginBottom: 14 }}>
               <Text style={[styles.fieldLabel, { color: textMuted }]}>Address</Text>
-              <Text style={[styles.fieldValue, { color: textPrimary, marginTop: 2 }]}>
-                {currentGym.address || `${currentGym.area || ''}, ${currentGym.city || ''}, ${currentGym.state || ''} - ${currentGym.pincode || ''}`.trim() || '—'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 2 }}>
+                <Icon name="place" size={16} color={textSecondary} style={{ marginTop: 2 }} />
+                <Text style={[styles.fieldValue, { color: textPrimary, flex: 1, lineHeight: 19 }]}>
+                  {[
+                    currentGym.address,
+                    currentGym.area,
+                    currentGym.city,
+                    currentGym.state,
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                  {currentGym.pincode ? ` - ${currentGym.pincode}` : ''}
+                </Text>
+              </View>
             </View>
 
-            {currentGym.openingHours?.mode === '24_HOURS' || currentGym.openingHours?.is24Hours ? (
-              <View style={[styles.infoRow, { alignItems: 'center' }]}>
-                <View style={[styles.badge, { backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }]}>
-                  <Text style={{ color: '#10B981', fontWeight: '700', fontSize: 13 }}>Open 24 Hours Round-the-Clock</Text>
-                </View>
+            <View style={styles.infoRow}>
+              <View style={styles.infoCol}>
+                <Text style={[styles.fieldLabel, { color: textMuted }]}>Coordinates</Text>
+                <Text style={[styles.fieldValue, { color: textPrimary, fontSize: 12 }]}>
+                  {Array.isArray(currentGym.location?.coordinates) &&
+                  currentGym.location.coordinates.length >= 2 &&
+                  Number.isFinite(Number(currentGym.location.coordinates[0])) &&
+                  Number.isFinite(Number(currentGym.location.coordinates[1]))
+                    ? `${Number(currentGym.location.coordinates[1]).toFixed(4)}, ${Number(currentGym.location.coordinates[0]).toFixed(4)}`
+                    : '—'}
+                </Text>
               </View>
-            ) : currentGym.openingHours?.mode === 'SPLIT_SHIFT' || currentGym.openingHours?.morningShift ? (
-              <View style={styles.infoRow}>
-                <View style={styles.infoCol}>
-                  <Text style={[styles.fieldLabel, { color: textMuted }]}>Morning Shift</Text>
-                  <Text style={[styles.fieldValue, { color: textPrimary }]}>
-                    {currentGym.openingHours?.morningShift?.open || '05:30 AM'} - {currentGym.openingHours?.morningShift?.close || '11:30 AM'}
-                  </Text>
-                </View>
-                <View style={styles.infoCol}>
-                  <Text style={[styles.fieldLabel, { color: textMuted }]}>Evening Shift</Text>
-                  <Text style={[styles.fieldValue, { color: textPrimary }]}>
-                    {currentGym.openingHours?.eveningShift?.open || '04:30 PM'} - {currentGym.openingHours?.eveningShift?.close || '10:30 PM'}
-                  </Text>
-                </View>
+
+              <View style={styles.infoCol}>
+                <Text style={[styles.fieldLabel, { color: textMuted }]}>Floor Space & Capacity</Text>
+                <Text style={[styles.fieldValue, { color: textPrimary }]}>
+                  {currentGym.floorSpaceSqFt || currentGym.maxFloorCapacity
+                    ? `${currentGym.floorSpaceSqFt ?? '—'} sq.ft / ${currentGym.maxFloorCapacity ?? '—'} people`
+                    : '—'}
+                </Text>
               </View>
-            ) : (
-              <View style={styles.infoRow}>
-                <View style={styles.infoCol}>
-                  <Text style={[styles.fieldLabel, { color: textMuted }]}>Weekday Timings</Text>
-                  <Text style={[styles.fieldValue, { color: textPrimary }]}>
-                    {currentGym.openingHours?.weekdayOpen || '05:30 AM'} - {currentGym.openingHours?.weekdayClose || '10:30 PM'}
+            </View>
+
+            <View style={{ marginTop: 4 }}>
+              <Text style={[styles.fieldLabel, { color: textMuted }]}>Opening Hours & Timing Model</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 4,
+                    backgroundColor:
+                      currentGym.openingHours?.mode === '24_HOURS' || currentGym.openingHours?.is24Hours
+                        ? 'rgba(16, 185, 129, 0.14)'
+                        : currentGym.openingHours?.mode === 'SPLIT_SHIFT' || currentGym.openingHours?.morningShift
+                        ? 'rgba(147, 51, 234, 0.14)'
+                        : 'rgba(37, 99, 235, 0.14)',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color:
+                        currentGym.openingHours?.mode === '24_HOURS' || currentGym.openingHours?.is24Hours
+                          ? '#10B981'
+                          : currentGym.openingHours?.mode === 'SPLIT_SHIFT' || currentGym.openingHours?.morningShift
+                          ? '#9333EA'
+                          : '#2563EB',
+                    }}
+                  >
+                    {currentGym.openingHours?.mode === '24_HOURS' || currentGym.openingHours?.is24Hours
+                      ? '24/7 Access'
+                      : currentGym.openingHours?.mode === 'SPLIT_SHIFT' || currentGym.openingHours?.morningShift
+                      ? 'Split Shift'
+                      : 'Single Shift'}
                   </Text>
                 </View>
-                <View style={styles.infoCol}>
-                  <Text style={[styles.fieldLabel, { color: textMuted }]}>Weekend Timings</Text>
-                  <Text style={[styles.fieldValue, { color: textPrimary }]}>
-                    {currentGym.openingHours?.weekendOpen || '06:00 AM'} - {currentGym.openingHours?.weekendClose || '09:00 PM'}
-                  </Text>
-                </View>
+                <Text style={[styles.fieldValue, { color: textPrimary }]}>
+                  {currentGym.openingHours?.displayText ||
+                    (currentGym.openingHours?.mode === '24_HOURS' || currentGym.openingHours?.is24Hours
+                      ? 'Open 24 Hours'
+                      : currentGym.openingHours?.mode === 'SPLIT_SHIFT' || currentGym.openingHours?.morningShift
+                      ? [
+                          currentGym.openingHours?.morningShift?.open && currentGym.openingHours?.morningShift?.close
+                            ? `${currentGym.openingHours.morningShift.open} - ${currentGym.openingHours.morningShift.close}`
+                            : null,
+                          currentGym.openingHours?.eveningShift?.open && currentGym.openingHours?.eveningShift?.close
+                            ? `${currentGym.openingHours.eveningShift.open} - ${currentGym.openingHours.eveningShift.close}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' & ') || '—'
+                      : currentGym.openingHours?.weekdayOpen && currentGym.openingHours?.weekdayClose
+                      ? `${currentGym.openingHours.weekdayOpen} - ${currentGym.openingHours.weekdayClose}`
+                      : '—')}
+                </Text>
               </View>
-            )}
+            </View>
           </View>
         </View>
 
@@ -826,29 +979,137 @@ export const ApplicationStatusScreen = ({ navigation }) => {
             <View style={styles.pricingGrid}>
               <View style={[styles.priceBox, { borderColor: borderCol }]}>
                 <Text style={[styles.priceTierName, { color: textMuted }]}>Single Session</Text>
-                <Text style={[styles.priceAmount, { color: '#2563EB' }]}>
-                  ₹{currentGym.singleSessionPrice || currentGym.pricingPlans?.singleSession || 199}
-                </Text>
-              </View>
-              <View style={[styles.priceBox, { borderColor: borderCol }]}>
-                <Text style={[styles.priceTierName, { color: textMuted }]}>Monthly</Text>
                 <Text style={[styles.priceAmount, { color: '#16A34A' }]}>
-                  ₹{currentGym.pricingPlans?.monthly || 1999}
+                  {(currentGym.singleSessionPrice ?? currentGym.pricingPlans?.singleSession) != null
+                    ? `₹${currentGym.singleSessionPrice ?? currentGym.pricingPlans?.singleSession}`
+                    : '—'}
                 </Text>
               </View>
               <View style={[styles.priceBox, { borderColor: borderCol }]}>
-                <Text style={[styles.priceTierName, { color: textMuted }]}>Quarterly</Text>
-                <Text style={[styles.priceAmount, { color: '#9333EA' }]}>
-                  ₹{currentGym.pricingPlans?.quarterly || 4999}
+                <Text style={[styles.priceTierName, { color: textMuted }]}>Monthly Pass</Text>
+                <Text style={[styles.priceAmount, { color: textPrimary }]}>
+                  {currentGym.pricingPlans?.monthly != null
+                    ? `₹${currentGym.pricingPlans.monthly}`
+                    : '—'}
                 </Text>
               </View>
               <View style={[styles.priceBox, { borderColor: borderCol }]}>
-                <Text style={[styles.priceTierName, { color: textMuted }]}>Annual</Text>
-                <Text style={[styles.priceAmount, { color: '#EA580C' }]}>
-                  ₹{currentGym.pricingPlans?.annual || 14999}
+                <Text style={[styles.priceTierName, { color: textMuted }]}>Quarterly (3M)</Text>
+                <Text style={[styles.priceAmount, { color: textPrimary }]}>
+                  {currentGym.pricingPlans?.quarterly != null
+                    ? `₹${currentGym.pricingPlans.quarterly}`
+                    : '—'}
+                </Text>
+              </View>
+              <View style={[styles.priceBox, { borderColor: borderCol }]}>
+                <Text style={[styles.priceTierName, { color: textMuted }]}>Annual Pass</Text>
+                <Text style={[styles.priceAmount, { color: textPrimary }]}>
+                  {currentGym.pricingPlans?.annual != null
+                    ? `₹${currentGym.pricingPlans.annual}`
+                    : '—'}
                 </Text>
               </View>
             </View>
+          </View>
+        </View>
+
+        {/* SECTION 4: FACILITIES & WORKOUT DISCIPLINES */}
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: textPrimary }]}>
+              FACILITIES & WORKOUT DISCIPLINES
+            </Text>
+            <TouchableOpacity
+              style={styles.editSectionBtn}
+              onPress={() => handleOpenEdit('facilities')}
+              activeOpacity={0.7}
+            >
+              <Icon name="edit" size={14} color="#2563EB" />
+              <Text style={styles.editSectionText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.infoCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
+            <Text style={[styles.fieldLabel, { color: textMuted, textTransform: 'uppercase', marginBottom: 8 }]}>
+              Active Facilities ({currentGym.facilities?.length || 0})
+            </Text>
+            {Array.isArray(currentGym.facilities) && currentGym.facilities.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                {currentGym.facilities.map((f) => (
+                  <View
+                    key={f}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 4,
+                      backgroundColor: isDark ? 'rgba(37,99,235,0.16)' : '#EFF6FF',
+                      borderWidth: 1,
+                      borderColor: isDark ? '#1D4ED8' : '#BFDBFE',
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? '#93C5FD' : '#1D4ED8' }}>
+                      {f}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={{ fontSize: 12, color: textMuted, marginBottom: 14 }}>None selected</Text>
+            )}
+
+            <Text style={[styles.fieldLabel, { color: textMuted, textTransform: 'uppercase', marginBottom: 8 }]}>
+              Active Amenities ({currentGym.amenities?.length || 0})
+            </Text>
+            {Array.isArray(currentGym.amenities) && currentGym.amenities.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                {currentGym.amenities.map((a) => (
+                  <View
+                    key={a}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 4,
+                      backgroundColor: isDark ? 'rgba(6,182,212,0.16)' : '#ECFEFF',
+                      borderWidth: 1,
+                      borderColor: isDark ? '#0891B2' : '#A5F3FC',
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? '#67E8F9' : '#0E7490' }}>
+                      {a}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={{ fontSize: 12, color: textMuted, marginBottom: 14 }}>None selected</Text>
+            )}
+
+            <Text style={[styles.fieldLabel, { color: textMuted, textTransform: 'uppercase', marginBottom: 8 }]}>
+              Workout Disciplines ({currentGym.workouts?.length || 0})
+            </Text>
+            {Array.isArray(currentGym.workouts) && currentGym.workouts.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {currentGym.workouts.map((w) => (
+                  <View
+                    key={w}
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 4,
+                      backgroundColor: isDark ? 'rgba(147,51,234,0.16)' : '#FAF5FF',
+                      borderWidth: 1,
+                      borderColor: isDark ? '#7E22CE' : '#E9D5FF',
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: isDark ? '#D8B4FE' : '#7E22CE' }}>
+                      {w}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={{ fontSize: 12, color: textMuted }}>None selected</Text>
+            )}
           </View>
         </View>
 
@@ -888,7 +1149,7 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                 <Text style={[styles.fieldValue, { color: textPrimary }]}>
                   {currentGym.bankDetails?.accountNumber
                     ? `•••• •••• ${currentGym.bankDetails.accountNumber.slice(-4)}`
-                    : '—'}
+                    : 'Not configured'}
                 </Text>
               </View>
               <View style={styles.infoCol}>
@@ -898,7 +1159,84 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                 </Text>
               </View>
             </View>
+
+            <View style={styles.infoRow}>
+              <View style={styles.infoCol}>
+                <Text style={[styles.fieldLabel, { color: textMuted }]}>UPI ID</Text>
+                <Text style={[styles.fieldValue, { color: textPrimary }]}>
+                  {currentGym.bankDetails?.upiId || '—'}
+                </Text>
+              </View>
+            </View>
           </View>
+        </View>
+
+        {/* SECTION 6: FACILITY PHOTOS */}
+        {galleryPhotos.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: textPrimary }]}>
+                FACILITY PHOTOS ({galleryPhotos.length})
+              </Text>
+              <TouchableOpacity
+                style={styles.editSectionBtn}
+                onPress={() => handleOpenEdit('facilities')}
+                activeOpacity={0.7}
+              >
+                <Icon name="edit" size={14} color="#2563EB" />
+                <Text style={styles.editSectionText}>Manage Photos</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {galleryPhotos.map((photo, index) => {
+                const src = typeof photo === 'string' ? photo : photo.fileData;
+                if (!src) return null;
+                return (
+                  <View
+                    key={photo.fileName || index}
+                    style={{
+                      width: 104,
+                      height: 76,
+                      borderRadius: 6,
+                      overflow: 'hidden',
+                      borderWidth: 1,
+                      borderColor: borderCol,
+                      backgroundColor: cardBg,
+                    }}
+                  >
+                    <Image
+                      source={{ uri: src }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="cover"
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* FOOTER */}
+        <View
+          style={{
+            marginTop: 12,
+            paddingTop: 16,
+            borderTopWidth: 1,
+            borderTopColor: borderCol,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 8,
+          }}
+        >
+          <Text style={{ fontSize: 11, color: textMuted }}>
+            Need help? partners@gymezy.com · +91 98765 43210
+          </Text>
+          <Text style={{ fontSize: 11, fontWeight: '600', color: textMuted }}>
+            GYMEZY Partner Portal
+          </Text>
         </View>
       </ScrollView>
 
@@ -1304,16 +1642,6 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                   placeholderTextColor={textMuted}
                 />
 
-                <Text style={[styles.inputLabel, { color: textSecondary }]}>Weekly Pass (₹)</Text>
-                <TextInput
-                  style={[styles.formInput, { backgroundColor: cardBg, borderColor: borderCol, color: textPrimary }]}
-                  value={formWeeklyPrice}
-                  onChangeText={setFormWeeklyPrice}
-                  keyboardType="numeric"
-                  placeholder="799"
-                  placeholderTextColor={textMuted}
-                />
-
                 <Text style={[styles.inputLabel, { color: textSecondary }]}>Monthly Membership (₹)</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: cardBg, borderColor: borderCol, color: textPrimary }]}
@@ -1375,6 +1703,40 @@ export const ApplicationStatusScreen = ({ navigation }) => {
                           ]}
                         >
                           {fac}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={[styles.sectionDividerText, { color: textPrimary, marginTop: 24 }]}>
+                  Member Amenities & Perks
+                </Text>
+                <View style={styles.chipsContainer}>
+                  {AMENITY_OPTIONS.map((am) => {
+                    const selected = formAmenities.includes(am);
+                    return (
+                      <TouchableOpacity
+                        key={am}
+                        style={[
+                          styles.chipItem,
+                          { borderColor: selected ? '#0891B2' : borderCol },
+                          selected && { backgroundColor: isDark ? 'rgba(6,182,212,0.2)' : '#ECFEFF' },
+                        ]}
+                        onPress={() => toggleAmenity(am)}
+                      >
+                        <Icon
+                          name={selected ? 'check' : 'add'}
+                          size={14}
+                          color={selected ? '#0891B2' : textSecondary}
+                        />
+                        <Text
+                          style={[
+                            styles.chipText,
+                            { color: selected ? '#0891B2' : textSecondary, fontWeight: selected ? '700' : '500' },
+                          ]}
+                        >
+                          {am}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1736,17 +2098,18 @@ const styles = StyleSheet.create({
   },
   topActionsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
   },
   actionBtn: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 6,
     borderWidth: 1,
   },
   editAppBtn: {
