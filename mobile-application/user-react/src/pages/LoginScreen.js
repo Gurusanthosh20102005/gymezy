@@ -15,12 +15,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { AppColors } from '../theme/appTheme';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
-import { biometricService } from '../services/biometricService';
+import { signInWithGoogle } from '../services/googleAuthService';
 import {
   EMOJI_REGEX,
   normalizePhone,
@@ -47,16 +47,15 @@ export const LoginScreen = ({ navigation }) => {
   const { showToast } = useToast();
   const {
     login,
+    loginWithGoogle,
     register,
-    loginWithBiometrics,
     savedIdentifier,
     isLoading,
     sessionExpiredMessage,
     clearSessionExpiredMessage,
   } = useAuth();
 
-  const [isBiometricReady, setIsBiometricReady] = useState(false);
-  const [biometricType, setBiometricType] = useState('FINGERPRINT');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const scrollViewRef = useRef(null);
   const formTopYRef = useRef(0);
@@ -138,57 +137,46 @@ export const LoginScreen = ({ navigation }) => {
     }
   }, [savedIdentifier]);
 
-  // Check biometric capability and saved session on mount
-  useEffect(() => {
-    let isMounted = true;
-    const checkBiometricAvailability = async () => {
-      try {
-        const isEnabled = await biometricService.isBiometricEnabled();
-        if (!isEnabled) {
-          if (isMounted) setIsBiometricReady(false);
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    try {
+      const { idToken } = await signInWithGoogle();
+      const result = await loginWithGoogle({ idToken });
+
+      if (result.success) {
+        if (result.exists === false) {
+          setAuthMode('SIGN_UP');
+          setSignupName(result.profile?.fullName || '');
+          setSignupEmail(result.profile?.email || '');
+          setErrors({});
+          showToast({
+            message: `Welcome, ${result.profile?.fullName || 'Member'}! Add your phone number and password to finish creating your account.`,
+            isSuccess: true,
+          });
           return;
         }
-        const session = await biometricService.getAuthSession();
-        if (!session?.token) {
-          if (isMounted) setIsBiometricReady(false);
-          return;
-        }
-        const support = await biometricService.checkHardwareSupport();
-        if (support.available) {
-          const type = await biometricService.getBiometricType();
-          if (isMounted) {
-            setBiometricType(type);
-            setIsBiometricReady(true);
-          }
-        } else {
-          if (isMounted) setIsBiometricReady(false);
-        }
-      } catch {
-        if (isMounted) setIsBiometricReady(false);
-      }
-    };
 
-    checkBiometricAvailability();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const handleBiometricSignIn = async () => {
-    const result = await loginWithBiometrics();
-    if (result.success) {
-      showToast({
-        message: `Welcome back, ${result.user?.fullName || result.user?.name || 'Member'}!`,
-        isSuccess: true,
-      });
-      navigation.replace('HomeTabs');
-    } else {
-      if (result.message && !result.message.toLowerCase().includes('cancel')) {
+        const displayName = result.data?.user?.fullName || result.data?.user?.name || 'Member';
         showToast({
-          message: result.message,
+          message: `Welcome back, ${displayName}!`,
+          isSuccess: true,
+        });
+        navigation.replace('HomeTabs');
+      } else {
+        showToast({
+          message: result.message || 'Google Sign-In failed. Please try again.',
           isError: true,
         });
       }
+    } catch (err) {
+      if (err?.message && !err.message.toLowerCase().includes('cancel')) {
+        showToast({
+          message: err.message || 'Google Sign-In failed.',
+          isError: true,
+        });
+      }
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -573,34 +561,6 @@ export const LoginScreen = ({ navigation }) => {
                   </View>
                 )}
               </TouchableOpacity>
-
-              {/* Biometric / Face ID Quick Login Button */}
-              {isBiometricReady && (
-                <TouchableOpacity
-                  onPress={handleBiometricSignIn}
-                  disabled={isLoading}
-                  style={[
-                    styles.biometricBtn,
-                    {
-                      borderColor: isDark ? AppColors.darkBorder : '#BFDBFE',
-                      backgroundColor: isDark ? 'rgba(0, 56, 130, 0.15)' : '#EFF6FF',
-                    },
-                  ]}
-                  activeOpacity={0.8}
-                >
-                  <MaterialIcons
-                    name={biometricType === 'FACIAL_RECOGNITION' ? 'face' : 'fingerprint'}
-                    size={22}
-                    color={AppColors.primaryColor}
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={[styles.biometricBtnText, { color: isDark ? '#93C5FD' : AppColors.primaryColor }]}>
-                    {biometricType === 'FACIAL_RECOGNITION'
-                      ? 'Log In with Face ID'
-                      : 'Log In with Fingerprint'}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
           )}
 
@@ -848,6 +808,41 @@ export const LoginScreen = ({ navigation }) => {
             </View>
           )}
 
+          {/* Social Sign-In Divider & Google Button */}
+          <View style={styles.dividerRow}>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            <Text style={[styles.dividerText, { color: colors.subtitle }]}>or</Text>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+          </View>
+
+          <TouchableOpacity
+            onPress={handleGoogleSignIn}
+            disabled={isLoading || isGoogleLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Google"
+            style={[
+              styles.googleBtn,
+              {
+                backgroundColor: isDark ? AppColors.darkSurface : '#FFFFFF',
+                borderColor: colors.border,
+              },
+            ]}
+            activeOpacity={0.85}
+          >
+            {isGoogleLoading ? (
+              <ActivityIndicator color={AppColors.primaryColor} size="small" />
+            ) : (
+              <View style={styles.googleBtnContent}>
+                <View style={styles.googleIconBadge}>
+                  <FontAwesome name="google" size={17} color="#EA4335" />
+                </View>
+                <Text style={[styles.googleBtnText, { color: colors.text }]}>
+                  Continue with Google
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
           {/* Footer Toggle */}
           <View style={styles.footerRow}>
             <Text style={[styles.footerText, { color: colors.subtitle }]}>
@@ -1051,20 +1046,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.3,
   },
-  biometricBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 50,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    marginTop: 14,
-  },
-  biometricBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
   goalChipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1093,6 +1074,44 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: AppColors.secondaryColor,
     fontWeight: '700',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 18,
+    marginBottom: 14,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginHorizontal: 12,
+  },
+  googleBtn: {
+    height: 50,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  googleIconBadge: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  googleBtnText: {
+    fontSize: 14.5,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });
 

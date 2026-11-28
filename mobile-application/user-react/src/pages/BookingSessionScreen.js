@@ -811,15 +811,17 @@ export const BookingSessionScreen = ({ route, navigation }) => {
     return true;
   };
 
+  const openSections = useMemo(
+    () => sections.filter(isSectionOpenForBooking),
+    [sections, bookings]
+  );
+
   const filteredSections = useMemo(() => {
-    const list =
-      selectedGroupCategory === 'all'
-        ? sections
-        : sections.filter(
-            (s) => (s.category || '').toLowerCase() === selectedGroupCategory.toLowerCase()
-          );
-    return list.filter(isSectionOpenForBooking);
-  }, [sections, selectedGroupCategory, bookings]);
+    if (selectedGroupCategory === 'all') return openSections;
+    return openSections.filter(
+      (s) => (s.category || '').toLowerCase() === selectedGroupCategory.toLowerCase()
+    );
+  }, [openSections, selectedGroupCategory]);
 
   const renderTrainerSelector = (bookingMode = 'session') => {
     const isWeekly = bookingMode === 'weekly';
@@ -1062,10 +1064,10 @@ export const BookingSessionScreen = ({ route, navigation }) => {
               <View style={styles.categoryContent}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text style={[styles.categoryTitle, { color: textColor }]}>Group Classes</Text>
-                  {sections.length > 0 && (
+                  {openSections.length > 0 && (
                     <View style={[styles.batchCountBadge, { backgroundColor: isDark ? 'rgba(99,102,241,0.25)' : 'rgba(79,70,229,0.12)' }]}>
                       <Text style={[styles.batchCountBadgeText, { color: isDark ? '#A5B4FC' : '#4F46E5' }]}>
-                        {sections.length} {sections.length === 1 ? 'Batch' : 'Batches'}
+                        {openSections.length} {openSections.length === 1 ? 'Batch' : 'Batches'}
                       </Text>
                     </View>
                   )}
@@ -1159,7 +1161,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
           onSubViewChange={setSessionSubView}
           onContinueToCheckout={handleUnifiedSessionCheckout}
           extraTopBanner={
-            activeSessionKey === 'Group Classes' && sections.length > 0 ? (
+            activeSessionKey === 'Group Classes' && openSections.length > 0 ? (
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => setCurrentView('group_classes')}
@@ -1176,7 +1178,7 @@ export const BookingSessionScreen = ({ route, navigation }) => {
                 </View>
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={[styles.batchesBannerTitle, { color: isDark ? '#C7D2FE' : '#312E81' }]}>
-                    {sections.length} Scheduled Batches Available
+                    {openSections.length} Scheduled {openSections.length === 1 ? 'Batch' : 'Batches'} Available
                   </Text>
                   <Text style={[styles.batchesBannerSub, { color: isDark ? '#A5B4FC' : '#4338CA' }]}>
                     Prefer scheduled trainer-led batches? Tap to view

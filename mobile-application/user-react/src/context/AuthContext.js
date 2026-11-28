@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../services/apiService';
 import { biometricService } from '../services/biometricService';
 import { bookmarkService } from '../services/bookmarkService';
+import { signOutGoogle } from '../services/googleAuthService';
 import { isJwtExpired, getJwtRemainingMs } from '../utils/jwtUtils';
 
 const TOKEN_KEY = '@gymezy_user_jwt_token';
@@ -41,6 +42,7 @@ export const AuthProvider = ({ children }) => {
 
     try {
       await apiService.logout();
+      await signOutGoogle();
     } catch {
       // Ignore network errors on logout
     } finally {
@@ -205,6 +207,51 @@ export const AuthProvider = ({ children }) => {
       return { success: true, data: result };
     } catch (error) {
       return { success: false, message: error.message || 'Login failed.' };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [scheduleAutoLogout]);
+
+  /**
+   * Google Sign-In Authentication
+   */
+  const loginWithGoogle = useCallback(async ({ idToken }) => {
+    setIsLoading(true);
+    setSessionExpiredMessage(null);
+
+    try {
+      const result = await apiService.googleLogin({
+        idToken,
+        portal: 'user-app',
+        expectedRole: 'CUSTOMER',
+      });
+
+      if (result.exists === false) {
+        return { success: true, exists: false, profile: result.profile };
+      }
+
+      const authUser = result.user;
+      const authToken = result.token;
+
+      setUser(authUser);
+      setToken(authToken);
+      setIsGuest(false);
+
+      if (authToken) {
+        apiService.setAuthToken(authToken);
+        await AsyncStorage.setItem(TOKEN_KEY, authToken);
+        scheduleAutoLogout(authToken);
+      }
+
+      if (authUser) {
+        await AsyncStorage.setItem(USER_KEY, JSON.stringify(authUser));
+      }
+
+      bookmarkService.syncGuestBookmarks().catch(() => {});
+
+      return { success: true, exists: true, data: result };
+    } catch (error) {
+      return { success: false, message: error.message || 'Google login failed.' };
     } finally {
       setIsLoading(false);
     }
@@ -382,6 +429,7 @@ export const AuthProvider = ({ children }) => {
     sessionExpiredMessage,
     clearSessionExpiredMessage,
     login,
+    loginWithGoogle,
     register,
     continueAsGuest,
     logout,

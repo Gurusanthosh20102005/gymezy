@@ -110,14 +110,19 @@ export const BookingProvider = ({ children }) => {
     refreshBookings();
   }, [refreshBookings]);
 
+  const isSameBooking = (a, b) => {
+    if (a?._id && b?._id) return String(a._id) === String(b._id);
+    return a?.id === b?.id;
+  };
+
   const addBooking = useCallback((item) => {
     const normalized = mapBackendBookingToClient(item);
-    setBookings((prev) => [normalized, ...prev.filter((b) => b.id !== normalized.id)]);
+    setBookings((prev) => [normalized, ...prev.filter((b) => !isSameBooking(b, normalized))]);
   }, []);
 
   const updateBooking = useCallback((updated) => {
     const normalized = mapBackendBookingToClient(updated);
-    setBookings((prev) => prev.map((b) => (b.id === normalized.id ? normalized : b)));
+    setBookings((prev) => prev.map((b) => (isSameBooking(b, normalized) ? normalized : b)));
   }, []);
 
   const cancelBooking = useCallback(async (bookingId, reason = 'Cancelled by member') => {
@@ -153,9 +158,8 @@ export const BookingProvider = ({ children }) => {
     const negotiation = await membershipService.requestCancellationNegotiation(membershipId, reason);
     setMemberships((prev) =>
       prev.map((m) =>
-        m.id === membershipId ||
         (m._id && String(m._id) === String(membershipId)) ||
-        m.membershipId === membershipId
+        (!m._id && m.id === membershipId)
           ? {
               ...m,
               status: negotiation?.status === 'COMPLETED' ? 'Cancelled' : m.status,
