@@ -21,6 +21,17 @@ import { AppColors } from '../theme/appTheme';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { biometricService } from '../services/biometricService';
+import {
+  EMOJI_REGEX,
+  normalizePhone,
+  validateEmail,
+  validateFullName,
+  validateIdentifier,
+  validatePassword,
+  validatePhone,
+  validateSignInForm,
+  validateSignUpForm,
+} from '../utils/authValidation';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -48,7 +59,26 @@ export const LoginScreen = ({ navigation }) => {
   const [biometricType, setBiometricType] = useState('FINGERPRINT');
 
   const scrollViewRef = useRef(null);
+  const formTopYRef = useRef(0);
+  const fieldPositionsRef = useRef({});
+  const focusedFieldRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  const scrollToField = (fieldKey) => {
+    const fieldY = fieldPositionsRef.current[fieldKey];
+    if (fieldY === undefined || !scrollViewRef.current) return;
+    const targetY = Math.max(0, formTopYRef.current + fieldY - 120);
+    scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+  };
+
+  const handleFieldFocus = (fieldKey) => {
+    focusedFieldRef.current = fieldKey;
+    setTimeout(() => scrollToField(fieldKey), 120);
+  };
+
+  const recordFieldPosition = (fieldKey) => (e) => {
+    fieldPositionsRef.current[fieldKey] = e.nativeEvent.layout.y;
+  };
 
   // Track keyboard height to dynamically expand ScrollView bottom padding
   useEffect(() => {
@@ -57,9 +87,13 @@ export const LoginScreen = ({ navigation }) => {
 
     const showSub = Keyboard.addListener(showEvent, (e) => {
       setKeyboardHeight(e.endCoordinates.height);
+      if (focusedFieldRef.current) {
+        setTimeout(() => scrollToField(focusedFieldRef.current), 60);
+      }
     });
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardHeight(0);
+      focusedFieldRef.current = null;
     });
 
     return () => {
@@ -169,54 +203,23 @@ export const LoginScreen = ({ navigation }) => {
     });
   };
 
+  const setFieldError = (field, errorMessage) => {
+    setErrors((prev) => ({ ...prev, [field]: errorMessage || null }));
+  };
+
   const validateSignIn = () => {
-    const newErrors = {};
-    const cleanId = identifier.trim();
-
-    if (!cleanId) {
-      newErrors.identifier = 'Please enter your email or phone number';
-    } else if (cleanId.includes('@') && !/\S+@\S+\.\S+/.test(cleanId)) {
-      newErrors.identifier = 'Please enter a valid email address';
-    }
-
-    if (!password) {
-      newErrors.password = 'Please enter your password';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
-    }
-
+    const newErrors = validateSignInForm({ identifier, password });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const validateSignUp = () => {
-    const newErrors = {};
-    const cleanName = signupName.trim();
-    const cleanEmail = signupEmail.trim();
-    const cleanPhone = signupPhone.trim();
-
-    if (!cleanName || cleanName.length < 2) {
-      newErrors.signupName = 'Please enter your full name (at least 2 characters)';
-    }
-
-    if (!cleanEmail) {
-      newErrors.signupEmail = 'Please enter your email address';
-    } else if (!/\S+@\S+\.\S+/.test(cleanEmail)) {
-      newErrors.signupEmail = 'Please enter a valid email address';
-    }
-
-    if (!cleanPhone) {
-      newErrors.signupPhone = 'Please enter your phone number';
-    } else if (cleanPhone.length < 10) {
-      newErrors.signupPhone = 'Please enter a valid 10-digit phone number';
-    }
-
-    if (!signupPassword) {
-      newErrors.signupPassword = 'Please choose a password';
-    } else if (signupPassword.length < 6) {
-      newErrors.signupPassword = 'Password must be at least 6 characters';
-    }
-
+    const newErrors = validateSignUpForm({
+      fullName: signupName,
+      email: signupEmail,
+      phone: signupPhone,
+      password: signupPassword,
+    });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -224,8 +227,13 @@ export const LoginScreen = ({ navigation }) => {
   const handleSignIn = async () => {
     if (!validateSignIn()) return;
 
+    const trimmedIdentifier = identifier.trim();
+    const normalizedIdentifier = trimmedIdentifier.includes('@')
+      ? trimmedIdentifier
+      : normalizePhone(trimmedIdentifier);
+
     const result = await login({
-      identifier: identifier.trim(),
+      identifier: normalizedIdentifier,
       password,
       rememberMe,
     });
@@ -249,8 +257,8 @@ export const LoginScreen = ({ navigation }) => {
 
     const result = await register({
       fullName: signupName.trim(),
-      email: signupEmail.trim(),
-      phone: signupPhone.trim(),
+      email: signupEmail.trim().toLowerCase(),
+      phone: normalizePhone(signupPhone),
       password: signupPassword,
       fitnessGoal: selectedGoal,
     });
@@ -274,15 +282,15 @@ export const LoginScreen = ({ navigation }) => {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      enabled={Platform.OS === 'ios'}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         ref={scrollViewRef}
         showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={true}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: Math.max(keyboardHeight + 60, 160) },
+          { paddingBottom: Math.max(keyboardHeight + 80, 160) },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -332,7 +340,12 @@ export const LoginScreen = ({ navigation }) => {
         </View>
 
         {/* ==================== 2. SEGMENTED TAB SWITCHER ==================== */}
-        <View style={styles.formContainer}>
+        <View
+          style={styles.formContainer}
+          onLayout={(e) => {
+            formTopYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
           <View
             style={[
               styles.tabSwitcherCard,
@@ -418,6 +431,7 @@ export const LoginScreen = ({ navigation }) => {
               {/* Email / Phone Field */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Email or Phone Number</Text>
               <View
+                onLayout={recordFieldPosition('identifier')}
                 style={[
                   styles.inputWrapper,
                   {
@@ -439,8 +453,12 @@ export const LoginScreen = ({ navigation }) => {
                   value={identifier}
                   onChangeText={(text) => {
                     setIdentifier(text);
-                    if (errors.identifier) setErrors((prev) => ({ ...prev, identifier: null }));
+                    if (errors.identifier) {
+                      setFieldError('identifier', validateIdentifier(text));
+                    }
                   }}
+                  onFocus={() => handleFieldFocus('identifier')}
+                  onBlur={() => setFieldError('identifier', validateIdentifier(identifier))}
                   autoCapitalize="none"
                   keyboardType="email-address"
                 />
@@ -450,6 +468,7 @@ export const LoginScreen = ({ navigation }) => {
               {/* Password Field */}
               <Text style={[styles.fieldLabel, { color: colors.text, marginTop: 16 }]}>Password</Text>
               <View
+                onLayout={recordFieldPosition('password')}
                 style={[
                   styles.inputWrapper,
                   {
@@ -471,8 +490,14 @@ export const LoginScreen = ({ navigation }) => {
                   value={password}
                   onChangeText={(text) => {
                     setPassword(text);
-                    if (errors.password) setErrors((prev) => ({ ...prev, password: null }));
+                    if (errors.password) {
+                      setFieldError('password', validatePassword(text, { isSignUp: false }));
+                    }
                   }}
+                  onFocus={() => handleFieldFocus('password')}
+                  onBlur={() =>
+                    setFieldError('password', validatePassword(password, { isSignUp: false }))
+                  }
                   secureTextEntry={obscurePassword}
                 />
                 <TouchableOpacity
@@ -590,6 +615,7 @@ export const LoginScreen = ({ navigation }) => {
               {/* Full Name */}
               <Text style={[styles.fieldLabel, { color: colors.text }]}>Full Name *</Text>
               <View
+                onLayout={recordFieldPosition('signupName')}
                 style={[
                   styles.inputWrapper,
                   {
@@ -611,8 +637,12 @@ export const LoginScreen = ({ navigation }) => {
                   value={signupName}
                   onChangeText={(text) => {
                     setSignupName(text);
-                    if (errors.signupName) setErrors((prev) => ({ ...prev, signupName: null }));
+                    if (EMOJI_REGEX.test(text) || errors.signupName) {
+                      setFieldError('signupName', validateFullName(text));
+                    }
                   }}
+                  onFocus={() => handleFieldFocus('signupName')}
+                  onBlur={() => setFieldError('signupName', validateFullName(signupName))}
                 />
               </View>
               {errors.signupName && <Text style={styles.errorText}>{errors.signupName}</Text>}
@@ -622,6 +652,7 @@ export const LoginScreen = ({ navigation }) => {
                 Email Address *
               </Text>
               <View
+                onLayout={recordFieldPosition('signupEmail')}
                 style={[
                   styles.inputWrapper,
                   {
@@ -643,8 +674,12 @@ export const LoginScreen = ({ navigation }) => {
                   value={signupEmail}
                   onChangeText={(text) => {
                     setSignupEmail(text);
-                    if (errors.signupEmail) setErrors((prev) => ({ ...prev, signupEmail: null }));
+                    if (errors.signupEmail) {
+                      setFieldError('signupEmail', validateEmail(text));
+                    }
                   }}
+                  onFocus={() => handleFieldFocus('signupEmail')}
+                  onBlur={() => setFieldError('signupEmail', validateEmail(signupEmail))}
                   autoCapitalize="none"
                   keyboardType="email-address"
                 />
@@ -656,6 +691,7 @@ export const LoginScreen = ({ navigation }) => {
                 Phone Number *
               </Text>
               <View
+                onLayout={recordFieldPosition('signupPhone')}
                 style={[
                   styles.inputWrapper,
                   {
@@ -677,9 +713,14 @@ export const LoginScreen = ({ navigation }) => {
                   value={signupPhone}
                   onChangeText={(text) => {
                     setSignupPhone(text);
-                    if (errors.signupPhone) setErrors((prev) => ({ ...prev, signupPhone: null }));
+                    if (errors.signupPhone) {
+                      setFieldError('signupPhone', validatePhone(text));
+                    }
                   }}
+                  onFocus={() => handleFieldFocus('signupPhone')}
+                  onBlur={() => setFieldError('signupPhone', validatePhone(signupPhone))}
                   keyboardType="phone-pad"
+                  maxLength={15}
                 />
               </View>
               {errors.signupPhone && <Text style={styles.errorText}>{errors.signupPhone}</Text>}
@@ -689,6 +730,7 @@ export const LoginScreen = ({ navigation }) => {
                 Password *
               </Text>
               <View
+                onLayout={recordFieldPosition('signupPassword')}
                 style={[
                   styles.inputWrapper,
                   {
@@ -705,14 +747,19 @@ export const LoginScreen = ({ navigation }) => {
                 />
                 <TextInput
                   style={[styles.inputField, { color: colors.text }]}
-                  placeholder="At least 6 characters"
+                  placeholder="Min 8 chars (A-Z, a-z, 0-9)"
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'}
                   value={signupPassword}
                   onChangeText={(text) => {
                     setSignupPassword(text);
-                    if (errors.signupPassword)
-                      setErrors((prev) => ({ ...prev, signupPassword: null }));
+                    if (errors.signupPassword) {
+                      setFieldError('signupPassword', validatePassword(text, { isSignUp: true }));
+                    }
                   }}
+                  onFocus={() => handleFieldFocus('signupPassword')}
+                  onBlur={() =>
+                    setFieldError('signupPassword', validatePassword(signupPassword, { isSignUp: true }))
+                  }
                   secureTextEntry={signupObscurePassword}
                 />
                 <TouchableOpacity

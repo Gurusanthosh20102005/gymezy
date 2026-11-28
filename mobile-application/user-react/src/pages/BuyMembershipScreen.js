@@ -22,7 +22,7 @@ import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { membershipService } from '../services/membershipService';
 import { apiService } from '../services/apiService';
-import { walletService } from '../services/walletService';
+import { gymService } from '../services/gymService';
 import { getSafeImageUri, DEFAULT_TRAINER_AVATAR } from '../utils/mediaUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -44,15 +44,37 @@ const buildGymPlans = (gym) => {
   const custom = Array.isArray(gym?.customPricingPlans) ? gym.customPricingPlans : [];
   const flat = gym?.pricingPlans || {};
 
-  const monthlyTier = custom.find((p) => p?.tierId === 'monthly' || p?.badge?.toLowerCase().includes('month') || p?.duration?.includes('30'));
-  const quarterlyTier = custom.find((p) => p?.tierId === 'quarterly' || p?.badge?.toLowerCase().includes('quarter') || p?.duration?.includes('90'));
-  const halfYearlyTier = custom.find((p) => p?.tierId === 'half_yearly' || p?.badge?.toLowerCase().includes('half') || p?.duration?.includes('180'));
-  const annualTier = custom.find((p) => p?.tierId === 'annual' || p?.badge?.toLowerCase().includes('annual') || p?.badge?.toLowerCase().includes('year') || p?.duration?.includes('365'));
+  const findTier = (tierId, fallbackMatcher) =>
+    custom.find((p) => p?.tierId === tierId) || custom.find(fallbackMatcher);
 
-  const monthlyPrice = Number(monthlyTier?.price ?? flat.monthly ?? 1299);
-  const quarterlyPrice = Number(quarterlyTier?.price ?? flat.quarterly ?? 3299);
-  const halfYearlyPrice = Number(halfYearlyTier?.price ?? flat.halfYearly ?? 5999);
-  const annualPrice = Number(annualTier?.price ?? flat.annual ?? 11999);
+  const monthlyTier = findTier(
+    'monthly',
+    (p) => p?.badge?.toLowerCase().includes('month') || p?.duration?.includes('30')
+  );
+  const quarterlyTier = findTier(
+    'quarterly',
+    (p) => p?.badge?.toLowerCase().includes('quarter') || p?.duration?.includes('90')
+  );
+  const halfYearlyTier = findTier(
+    'half_yearly',
+    (p) => p?.badge?.toLowerCase().includes('half') || p?.duration?.includes('180')
+  );
+  const annualTier = findTier(
+    'annual',
+    (p) => {
+      const badge = p?.badge?.toLowerCase() || '';
+      return (
+        badge.includes('annual') ||
+        (badge.includes('year') && !badge.includes('half')) ||
+        p?.duration?.includes('365')
+      );
+    }
+  );
+
+  const monthlyPrice = Number(monthlyTier?.price ?? flat.monthly ?? flat.monthlyPrice ?? 1299);
+  const quarterlyPrice = Number(quarterlyTier?.price ?? flat.quarterly ?? flat.quarterlyPrice ?? 3299);
+  const halfYearlyPrice = Number(halfYearlyTier?.price ?? flat.halfYearly ?? flat.halfYearlyPrice ?? 5999);
+  const annualPrice = Number(annualTier?.price ?? flat.annual ?? flat.annualPrice ?? flat.yearly ?? 11999);
 
   const calcSavings = (price, months) => {
     const diff = monthlyPrice * months - price;
@@ -189,7 +211,8 @@ export const generateTrainerSlots = (startTime, endTime) => {
 
 export const BuyMembershipScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { gym, initialWithTrainer = true } = route.params;
+  const { gym: routeGym, initialWithTrainer = true } = route.params;
+  const [gym, setGym] = useState(routeGym);
   const { isDark, colors } = useTheme();
   const { addMembership } = useBookingRepository();
   const { showToast } = useToast();
@@ -209,9 +232,14 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
   const [gymTrainers, setGymTrainers] = useState(gym?.trainers || []);
 
   useEffect(() => {
-    const gymId = gym?._id || gym?.id || gym?.partnerId;
+    const gymId = routeGym?._id || routeGym?.id || routeGym?.partnerId;
     if (!gymId) return;
     let isMounted = true;
+    gymService.fetchGymById(gymId).then((freshGym) => {
+      if (isMounted && freshGym) {
+        setGym((prev) => ({ ...prev, ...freshGym }));
+      }
+    }).catch(() => {});
     apiService.getGymTrainers(gymId).then((fetched) => {
       if (isMounted && Array.isArray(fetched) && fetched.length > 0) {
         setGymTrainers(fetched);
@@ -220,7 +248,7 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
     return () => {
       isMounted = false;
     };
-  }, [gym?._id, gym?.id, gym?.partnerId]);
+  }, [routeGym?._id, routeGym?.id, routeGym?.partnerId]);
 
   // Compute trainer rate mapped to the chosen membership tier (0 means not available)
   const getTrainerFeeForPlan = useCallback((trainer, planKey) => {
@@ -362,41 +390,8 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
 
   // Payment & Confirmation States
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('UPI');
-  const [useWalletBalance, setUseWalletBalance] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [confirmedMembership, setConfirmedMembership] = useState(null);
-  const [gymWallet, setGymWallet] = useState(null);
-  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
-
-  const targetGymId = gym?._id || gym?.id || gym?.partnerId;
-
-  useEffect(() => {
-    let isMounted = true;
-    if (targetGymId) {
-      setIsLoadingWallet(true);
-      walletService
-        .fetchGymWallet(targetGymId)
-        .then((data) => {
-          if (isMounted && data) {
-            setGymWallet(data);
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (isMounted) setIsLoadingWallet(false);
-        });
-    }
-    return () => {
-      isMounted = false;
-    };
-  }, [targetGymId]);
-
-  const gymWalletBalance = gymWallet?.balanceINR ?? 0;
-  const applicableWalletDiscount = useWalletBalance && gymWalletBalance > 0
-    ? Math.min(gymWalletBalance, totalAmount)
-    : 0;
-  const netPayableAmount = Math.max(0, totalAmount - applicableWalletDiscount);
-  const isFullWalletPayment = applicableWalletDiscount >= totalAmount && totalAmount > 0;
 
   // Dynamic Trainer Determination
   const hasRealTrainer = withTrainer && selectedTrainer && selectedTrainer !== 'No Personal Trainer';
@@ -484,16 +479,23 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
 
       const isSelectedWithTrainer = withTrainer && selectedTrainer && selectedTrainer !== 'No Personal Trainer';
       const resolvedTrainerId = isSelectedWithTrainer ? (activeSelectedTrainerObj?._id || activeSelectedTrainerObj?.id || null) : null;
+      const validStartDate = startDate instanceof Date && !Number.isNaN(startDate.getTime()) ? startDate : new Date();
+      // Use 12:00 UTC for the user's selected calendar date so UTC/local servers never shift it to the previous day
+      const startDateIso = new Date(
+        Date.UTC(validStartDate.getFullYear(), validStartDate.getMonth(), validStartDate.getDate(), 12, 0, 0)
+      ).toISOString();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const selectedDayStart = new Date(validStartDate.getFullYear(), validStartDate.getMonth(), validStartDate.getDate());
+      const expectedStatus = selectedDayStart > todayStart ? 'Upcoming' : 'Active';
 
       const payload = {
         gymId: gym?._id || gym?.id || gym?.partnerId,
         membershipTier: selectedPlan,
-        startDate: (startDate instanceof Date ? startDate : new Date()).toISOString(),
+        startDate: startDateIso,
         trainerId: resolvedTrainerId,
         trainerSlot: isSelectedWithTrainer ? selectedSlot : null,
-        paymentMethod: isFullWalletPayment ? 'Wallet' : (selectedPaymentMethod || 'UPI'),
-        useWallet: useWalletBalance && applicableWalletDiscount > 0,
-        appliedWalletAmount: applicableWalletDiscount,
+        paymentMethod: selectedPaymentMethod || 'UPI',
         userId: currentUserId,
         totalAmount,
       };
@@ -514,10 +516,11 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
         planName: `${selectedPlan} Membership`,
         durationDays: plans[selectedPlan]?.duration,
         amountPaid: result?.pricing?.totalAmount || totalAmount,
-        startDate: formatDate(startDate),
+        startDate: formatDate(validStartDate),
         endDate: formatDate(endDate),
+        rawStartDate: result?.startDate || startDateIso,
         paymentMode: selectedPaymentMethod,
-        status: result?.status || 'Active',
+        status: result?.status || expectedStatus,
         hasPersonalTrainer: isSelectedWithTrainer,
         trainerName: isSelectedWithTrainer ? selectedTrainer : null,
         trainerSchedule: isSelectedWithTrainer ? trainerSchedule : null,
@@ -530,6 +533,11 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
       console.warn('[BUY MEMBERSHIP] Purchase error, completing with 200 OK simulated confirmation:', error.message);
       const isSelectedWithTrainer = withTrainer && selectedTrainer && selectedTrainer !== 'No Personal Trainer';
       const fallbackDocId = `mock_mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const validStartDate = startDate instanceof Date && !Number.isNaN(startDate.getTime()) ? startDate : new Date();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const selectedDayStart = new Date(validStartDate.getFullYear(), validStartDate.getMonth(), validStartDate.getDate());
+      const fallbackStatus = selectedDayStart > todayStart ? 'Upcoming' : 'Active';
       const fallbackMembership = {
         id: fallbackDocId,
         membershipId: `MEM00${Math.floor(100 + Math.random() * 900)}`,
@@ -541,10 +549,10 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
         planName: `${selectedPlan} Membership`,
         durationDays: plans[selectedPlan]?.duration,
         amountPaid: totalAmount,
-        startDate: formatDate(startDate),
+        startDate: formatDate(validStartDate),
         endDate: formatDate(endDate),
         paymentMode: selectedPaymentMethod,
-        status: 'Active',
+        status: fallbackStatus,
         hasPersonalTrainer: isSelectedWithTrainer,
         trainerName: isSelectedWithTrainer ? selectedTrainer : null,
         trainerSchedule: isSelectedWithTrainer ? trainerSchedule : null,
@@ -1184,127 +1192,45 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
           <View>
             <Text style={[styles.stepHeading, { color: textColor }]}>Select Payment Method</Text>
 
-            {/* 1. Wallet Offset / Partial Split Card (If user has balance at this gym) */}
-            {gymWalletBalance > 0 && (
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => setUseWalletBalance(!useWalletBalance)}
-                style={[
-                  styles.walletOffsetCard,
-                  {
-                    backgroundColor: useWalletBalance
-                      ? (isDark ? '#064E3B' : '#E6F7EF')
-                      : (isDark ? '#1E293B' : '#F8FAFC'),
-                    borderColor: useWalletBalance
-                      ? (isDark ? '#34D399' : '#059669')
-                      : (isDark ? '#334155' : '#E2E8F0'),
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.walletOffsetIconBox,
-                    { backgroundColor: useWalletBalance ? (isDark ? '#059669' : '#FFFFFF') : (isDark ? '#0F172A' : '#F1F5F9') },
-                  ]}
-                >
-                  <MaterialIcons
-                    name="account-balance-wallet"
-                    size={22}
-                    color={useWalletBalance ? (isDark ? '#FFFFFF' : '#059669') : (isDark ? '#94A3B8' : '#64748B')}
-                  />
-                </View>
-
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[styles.walletOffsetTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                    Use {gym?.name || 'Gym'} Wallet Balance
-                  </Text>
-                  <Text style={[styles.walletOffsetSubtitle, { color: isDark ? '#A7F3D0' : '#047857' }]}>
-                    Available: ₹{gymWalletBalance.toLocaleString('en-IN')}
-                    {useWalletBalance && ` • Applying: -₹${applicableWalletDiscount.toLocaleString('en-IN')}`}
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.checkboxCircle,
-                    {
-                      backgroundColor: useWalletBalance ? (isDark ? '#34D399' : '#059669') : 'transparent',
-                      borderColor: useWalletBalance ? (isDark ? '#34D399' : '#059669') : (isDark ? '#475569' : '#CBD5E1'),
-                    },
-                  ]}
-                >
-                  {useWalletBalance && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
-                </View>
-              </TouchableOpacity>
-            )}
-
-            {/* 2. Covered 100% Banner OR Secondary Payment Method Selector */}
-            {isFullWalletPayment ? (
-              <View
-                style={[
-                  styles.fullWalletCoveredBanner,
-                  {
-                    backgroundColor: isDark ? '#064E3B' : '#E6F7EF',
-                    borderColor: isDark ? '#34D399' : '#059669',
-                  },
-                ]}
-              >
-                <MaterialIcons name="check-circle" size={24} color={isDark ? '#34D399' : '#059669'} />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.fullWalletTitle, { color: isDark ? '#FFFFFF' : '#064E3B' }]}>
-                    100% Covered by Wallet Balance
-                  </Text>
-                  <Text style={[styles.fullWalletSub, { color: isDark ? '#A7F3D0' : '#047857' }]}>
-                    Your {gym?.name || 'gym'} wallet covers the entire purchase. No external gateway payment needed!
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              <View style={{ marginTop: gymWalletBalance > 0 ? 8 : 12 }}>
-                {useWalletBalance && applicableWalletDiscount > 0 && (
-                  <Text style={[styles.remainingSubheading, { color: subtitleColor, marginBottom: 10 }]}>
-                    Select payment method for remaining balance (₹{Math.round(netPayableAmount).toLocaleString('en-IN')})
-                  </Text>
-                )}
-                {[
-                  { id: 'UPI', title: 'UPI', subtitle: 'Pay using any UPI app', icon: 'account-balance-wallet' },
-                  { id: 'Card', title: 'Card', subtitle: 'Debit / Credit Card', icon: 'credit-card' },
-                  { id: 'NetBanking', title: 'Net Banking', subtitle: 'All major banks', icon: 'account-balance' },
-                ].map((m) => {
-                  const isSel = selectedPaymentMethod === m.id;
-                  return (
-                    <TouchableOpacity
-                      key={m.id}
-                      activeOpacity={0.85}
-                      onPress={() => setSelectedPaymentMethod(m.id)}
-                      style={[
-                        styles.paymentMethodCard,
-                        {
-                          backgroundColor: isSel ? (isDark ? '#1E293B' : '#F0F4FF') : cardColor,
-                          borderColor: isSel ? primaryAccent : borderColor,
-                          borderWidth: isSel ? 1.5 : 1,
-                        },
-                      ]}
-                    >
-                      <MaterialIcons
-                        name={m.icon}
-                        size={22}
-                        color={isSel ? (isDark ? '#93C5FD' : '#003882') : subtitleColor}
-                      />
-                      <View style={{ flex: 1, marginLeft: 14 }}>
-                        <Text style={[styles.paymentMethodTitle, { color: textColor }]}>{m.title}</Text>
-                        <Text style={[styles.paymentMethodSub, { color: subtitleColor }]}>{m.subtitle}</Text>
-                      </View>
-                      <MaterialIcons
-                        name={isSel ? 'radio-button-checked' : 'radio-button-unchecked'}
-                        size={20}
-                        color={isSel ? primaryAccent : subtitleColor}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
+            <View style={{ marginTop: 12 }}>
+              {[
+                { id: 'UPI', title: 'UPI', subtitle: 'Pay using any UPI app', icon: 'qr-code-2' },
+                { id: 'Card', title: 'Card', subtitle: 'Debit / Credit Card', icon: 'credit-card' },
+                { id: 'NetBanking', title: 'Net Banking', subtitle: 'All major banks', icon: 'account-balance' },
+              ].map((m) => {
+                const isSel = selectedPaymentMethod === m.id;
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedPaymentMethod(m.id)}
+                    style={[
+                      styles.paymentMethodCard,
+                      {
+                        backgroundColor: isSel ? (isDark ? '#1E293B' : '#F0F4FF') : cardColor,
+                        borderColor: isSel ? primaryAccent : borderColor,
+                        borderWidth: isSel ? 1.5 : 1,
+                      },
+                    ]}
+                  >
+                    <MaterialIcons
+                      name={m.icon}
+                      size={22}
+                      color={isSel ? (isDark ? '#93C5FD' : '#003882') : subtitleColor}
+                    />
+                    <View style={{ flex: 1, marginLeft: 14 }}>
+                      <Text style={[styles.paymentMethodTitle, { color: textColor }]}>{m.title}</Text>
+                      <Text style={[styles.paymentMethodSub, { color: subtitleColor }]}>{m.subtitle}</Text>
+                    </View>
+                    <MaterialIcons
+                      name={isSel ? 'radio-button-checked' : 'radio-button-unchecked'}
+                      size={20}
+                      color={isSel ? primaryAccent : subtitleColor}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
             <Text style={[styles.sectionSubtitle, { color: textColor, marginTop: 20 }]}>
               Price Details
@@ -1327,29 +1253,9 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
               )}
               <View style={[styles.receiptDivider, { backgroundColor: borderColor }]} />
               <View style={styles.receiptRow}>
-                <Text style={[styles.receiptLabel, { color: subtitleColor }]}>Total Amount</Text>
-                <Text style={[styles.receiptValue, { color: textColor, fontWeight: '600' }]}>
-                  ₹{Math.round(totalAmount)}
-                </Text>
-              </View>
-              {applicableWalletDiscount > 0 && (
-                <>
-                  <View style={[styles.receiptDivider, { backgroundColor: borderColor }]} />
-                  <View style={styles.receiptRow}>
-                    <Text style={[styles.receiptLabel, { color: '#059669', fontWeight: '600' }]}>
-                      Wallet Applied ({gym?.name || 'Gym'})
-                    </Text>
-                    <Text style={[styles.receiptValue, { color: '#059669', fontWeight: 'bold' }]}>
-                      -₹{Math.round(applicableWalletDiscount)}
-                    </Text>
-                  </View>
-                </>
-              )}
-              <View style={[styles.receiptDivider, { backgroundColor: borderColor }]} />
-              <View style={styles.receiptRow}>
-                <Text style={[styles.receiptLabel, { color: textColor, fontWeight: '700' }]}>Net Payable Amount</Text>
+                <Text style={[styles.receiptLabel, { color: textColor, fontWeight: '700' }]}>Total Payable Amount</Text>
                 <Text style={[styles.receiptValue, { color: '#00BF62', fontWeight: 'bold', fontSize: 16 }]}>
-                  ₹{Math.round(netPayableAmount)}
+                  ₹{Math.round(totalAmount)}
                 </Text>
               </View>
             </View>
@@ -1385,9 +1291,7 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
             {isProcessing
               ? 'Processing Payment...'
               : currentStep === totalSteps
-              ? netPayableAmount === 0
-                ? 'Pay ₹0 with Wallet'
-                : `Pay ₹${Math.round(netPayableAmount)}${applicableWalletDiscount > 0 ? ` (₹${Math.round(applicableWalletDiscount)} from Wallet)` : ''}`
+              ? `Pay ₹${Math.round(totalAmount)}`
               : 'Continue'}
           </Text>
         </TouchableOpacity>
@@ -1968,67 +1872,5 @@ const styles = StyleSheet.create({
   loadingSubtitle: {
     fontSize: 13,
     textAlign: 'center',
-  },
-  walletOffsetCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    marginTop: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  walletOffsetIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  walletOffsetTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  walletOffsetSubtitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  checkboxCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fullWalletCoveredBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    marginTop: 8,
-    marginBottom: 6,
-  },
-  fullWalletTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  fullWalletSub: {
-    fontSize: 12,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  remainingSubheading: {
-    fontSize: 12.5,
-    fontWeight: '600',
   },
 });

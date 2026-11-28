@@ -4,6 +4,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme/ThemeContext';
@@ -15,6 +16,34 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
  * Engineered for 60FPS Native Driver execution, zero cumulative layout shift (CLS = 0),
  * and dynamic light/dark theme adaptation.
  */
+
+export const SmoothFadeIn = ({ children, duration = 260, translateY = 8, style }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const offset = useRef(new Animated.Value(translateY)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(offset, {
+        toValue: 0,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [opacity, offset, duration]);
+
+  return (
+    <Animated.View style={[{ opacity, transform: [{ translateY: offset }] }, style]}>
+      {children}
+    </Animated.View>
+  );
+};
 
 export const SkeletonBox = ({
   width = '100%',
