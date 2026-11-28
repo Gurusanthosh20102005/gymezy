@@ -212,6 +212,22 @@ export const createSection = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Both start time and end time are required.');
   }
 
+  const toMinutes = (t) => {
+    const m = String(t || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!m) return -1;
+    let h = Number(m[1]);
+    const min = Number(m[2]);
+    const p = m[3].toUpperCase();
+    if (p === 'PM' && h !== 12) h += 12;
+    if (p === 'AM' && h === 12) h = 0;
+    return h * 60 + min;
+  };
+  const sMin = toMinutes(startTime);
+  const eMin = toMinutes(endTime);
+  if (sMin >= 0 && eMin >= 0 && eMin <= sMin) {
+    throw new ApiError(400, 'Daily end time must be after daily start time.');
+  }
+
   if (!Array.isArray(activeDays) || activeDays.length === 0) {
     throw new ApiError(400, 'At least one active recurring day must be selected.');
   }
@@ -560,6 +576,22 @@ export const updateSection = asyncHandler(async (req, res) => {
     activeDays: days,
     excludeSectionId: id,
   };
+
+  const toMinutes = (t) => {
+    const m = String(t || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!m) return -1;
+    let h = Number(m[1]);
+    const min = Number(m[2]);
+    const p = m[3].toUpperCase();
+    if (p === 'PM' && h !== 12) h += 12;
+    if (p === 'AM' && h === 12) h = 0;
+    return h * 60 + min;
+  };
+  const sMin = toMinutes(effectiveSchedule.startTime);
+  const eMin = toMinutes(effectiveSchedule.endTime);
+  if (sMin >= 0 && eMin >= 0 && eMin <= sMin) {
+    throw new ApiError(400, 'Daily end time must be after daily start time.');
+  }
 
   const existingTrainerSections = await Section.find({
     _id: { $ne: new mongoose.Types.ObjectId(id) },

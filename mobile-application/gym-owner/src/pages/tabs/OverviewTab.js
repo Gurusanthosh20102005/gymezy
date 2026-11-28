@@ -313,12 +313,8 @@ export const OverviewTab = ({
     navigation,
   ]);
 
-  // Dynamic Staff Attendance Counts
+  // Dynamic Staff Count
   const totalStaff = employees.length;
-  const presentStaff = employees.filter(
-    (e) => e.status === 'Active' || e.attendance === 'Present' || e.attendance === 'Checked In'
-  ).length;
-  const absentStaff = Math.max(0, totalStaff - presentStaff);
 
   // Live Member Check-ins
   const liveCheckins = Array.isArray(gym?.recentCheckins) ? gym.recentCheckins : [];
@@ -470,25 +466,14 @@ export const OverviewTab = ({
               onPress={card.onPress}
               activeOpacity={card.onPress ? 0.8 : 1}
             >
-              <View style={[styles.metricIconCircle, { backgroundColor: card.iconBg }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 {card.isTextIcon ? (
-                  <Text style={[styles.metricTextIcon, { color: card.iconColor }]}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: card.iconColor }}>
                     {card.textIcon}
                   </Text>
                 ) : (
-                  <MaterialIcons name={card.iconName} size={18} color={card.iconColor} />
+                  <MaterialIcons name={card.iconName} size={14} color={card.iconColor} />
                 )}
-              </View>
-              <View style={styles.metricTextCol}>
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.metricLabel,
-                    { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' },
-                  ]}
-                >
-                  {card.title}
-                </Text>
                 <Text
                   numberOfLines={1}
                   adjustsFontSizeToFit
@@ -500,25 +485,23 @@ export const OverviewTab = ({
                 >
                   {card.value}
                 </Text>
-                {!!card.subtitle && (
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.metricSub,
-                      { color: isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8' },
-                    ]}
-                  >
-                    {card.subtitle}
-                  </Text>
-                )}
               </View>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.metricLabel,
+                  { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' },
+                ]}
+              >
+                {card.title}
+              </Text>
             </CardComp>
           );
         })
       )}
       </View>
 
-      {/* Quick Desk Actions Grid: Walk-in Booking & Walk-in Member */}
+      {/* Quick Desk Actions Grid: Walk-in Booking & Walk-in Member (commented out)
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
         <TouchableOpacity
           style={[
@@ -574,38 +557,9 @@ export const OverviewTab = ({
           </Text>
         </TouchableOpacity>
       </View>
+      */}
 
-      {/* Staff Attendance Quick Access Card */}
-      <TouchableOpacity
-        style={[
-          styles.staffAttendanceQuickCard,
-          {
-            backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-          },
-        ]}
-        onPress={() => onNavigateToEmployees && onNavigateToEmployees()}
-        activeOpacity={0.85}
-      >
-        <View style={styles.staffQuickLeft}>
-          <View style={[styles.staffIconBadge, { backgroundColor: 'rgba(99, 102, 241, 0.12)' }]}>
-            <MaterialIcons name="badge" size={20} color={AppColors.accentColor} />
-          </View>
-          <View>
-            <Text style={[styles.staffQuickTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-              Staff & Trainer Attendance
-            </Text>
-            <Text style={[styles.staffQuickSub, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
-              {totalStaff > 0
-                ? `${presentStaff} / ${totalStaff} Present Today • ${absentStaff} Absent`
-                : '0 Staff Configured • Tap to Manage Staff'}
-            </Text>
-          </View>
-        </View>
-        <MaterialIcons name="chevron-right" size={22} color={isDark ? 'rgba(255,255,255,0.4)' : '#94A3B8'} />
-      </TouchableOpacity>
-
-            {/* 5. Live Member Check-Ins Activity Feed */}
+      {/* 5. Live Member Check-Ins Activity Feed */}
 
       <View style={styles.sectionHeaderRow}>
         <Text
@@ -1079,55 +1033,28 @@ const styles = StyleSheet.create({
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 16,
   },
   metricCard: {
-    width: '48%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-    borderRadius: 16,
+    width: '31.5%',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 12,
     borderWidth: 1,
-    gap: 8,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  metricIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  metricTextIcon: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  metricTextCol: {
-    flex: 1,
     justifyContent: 'center',
   },
   metricLabel: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: '600',
-    marginBottom: 2,
+    marginTop: 2,
+    textAlign: 'center',
   },
   metricNum: {
-    fontSize: 17,
+    fontSize: 14.5,
     fontWeight: '800',
     letterSpacing: -0.3,
-    marginBottom: 1,
-  },
-  metricSub: {
-    fontSize: 9.5,
-    fontWeight: '500',
   },
   actionButtonsRow: {
     flexDirection: 'row',
@@ -1231,20 +1158,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
   },
-  staffAttendanceQuickCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
   walkInQuickHalfCard: {
     flex: 1,
     padding: 12,
@@ -1297,28 +1210,6 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     fontWeight: '800',
     letterSpacing: 0.5,
-  },
-  staffQuickLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  staffIconBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  staffQuickTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  staffQuickSub: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 2,
   },
   emptyCheckinsBox: {
     alignItems: 'center',

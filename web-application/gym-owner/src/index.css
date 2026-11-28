@@ -847,3 +847,14 @@ label.ant-form-item-required::before,
   color: #ef4444 !important;
   font-family: inherit !important;
 }
+
+/* ==========================================================================
+   TEXTAREA: DISABLE DRAG-RESIZE & AUTO-GROW WITH CONTENT
+   ========================================================================== */
+textarea,
+.ant-input-textarea textarea,
+textarea.ant-input {
+  resize: none !important;
+  overflow-y: hidden !important;
+  field-sizing: content;
+}

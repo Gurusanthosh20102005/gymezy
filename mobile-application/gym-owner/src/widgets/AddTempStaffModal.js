@@ -21,6 +21,16 @@ import { useToast } from './CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
 import { pickImageFromDevice, capturePhotoFromCamera } from '../utils/filePickerUtils';
+import {
+  validateName,
+  validateMobile,
+  validateEmail,
+  validateDateString,
+  validateTimeRange,
+  validatePositiveNumber,
+  sanitizeMobile,
+  regionFromCountryCode,
+} from '../utils/formValidation';
 
 export const TEMP_ROLES = [
   'Trainer',
@@ -142,9 +152,21 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
   };
 
   // Reset form
+  const [errors, setErrors] = useState({});
+
+  const clearFieldError = (field) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
   const resetForm = () => {
     setPhotoUri(null);
     setName('');
+    setCountryCode('+91');
     setPhone('');
     setEmail('');
     setRole('Trainer');
@@ -160,6 +182,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
     setPayAmount('500');
     setPayFreq('Weekly');
     setNotes('');
+    setErrors({});
   };
 
   const handleClose = () => {
@@ -167,27 +190,54 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
     onClose?.();
   };
 
-  // Submit Handler matching exact Website Logic
+  // Submit Handler matching exact Website Logic & form-input-validation rules
   const handleSubmit = async () => {
-    if (!name.trim()) {
-      showToast({ message: 'Full name is required', isError: true });
-      return;
-    }
-    if (!phone.trim()) {
-      showToast({ message: 'Phone number is required', isError: true });
-      return;
-    }
+    const nextErrors = {};
+    const nameRes = validateName(name, { label: 'full name' });
+    if (!nameRes.valid) nextErrors.name = nameRes.message;
+
+    const phoneRes = validateMobile(phone, countryCode);
+    if (!phoneRes.valid) nextErrors.phone = phoneRes.message;
+
+    const emailRes = validateEmail(email, { required: false });
+    if (!emailRes.valid) nextErrors.email = emailRes.message;
 
     if (employmentType === 'Temporary') {
-      if (!startDate.trim() || !endDate.trim()) {
-        showToast({ message: 'Start date and end date are required for temporary staff', isError: true });
-        return;
+      const startRes = validateDateString(startDate, 'start date');
+      if (!startRes.valid) nextErrors.startDate = startRes.message;
+      const endRes = validateDateString(endDate, 'end date');
+      if (!endRes.valid) nextErrors.endDate = endRes.message;
+      if (startRes.valid && endRes.valid && endRes.normalized < startRes.normalized) {
+        nextErrors.endDate = 'End date cannot be earlier than start date';
       }
     } else if (employmentType === 'Part-Time') {
       if (workingDays.length === 0) {
-        showToast({ message: 'Please select at least one working day', isError: true });
-        return;
+        nextErrors.workingDays = 'Please select at least one working day';
       }
+      if (!isDifferentDays) {
+        const timeRes = validateTimeRange(workingTimeStart, workingTimeEnd);
+        if (!timeRes.valid) nextErrors.workingTime = timeRes.message;
+      } else {
+        for (const d of workingDays) {
+          const s = dayWiseHours[d]?.startTime || workingTimeStart;
+          const e = dayWiseHours[d]?.endTime || workingTimeEnd;
+          const timeRes = validateTimeRange(s, e);
+          if (!timeRes.valid) {
+            nextErrors.workingTime = `${d}: ${timeRes.message}`;
+            break;
+          }
+        }
+      }
+    }
+
+    const payRes = validatePositiveNumber(payAmount, { label: 'pay amount', min: 1 });
+    if (!payRes.valid) nextErrors.payAmount = payRes.message;
+
+    setErrors(nextErrors);
+    const firstError = Object.values(nextErrors)[0];
+    if (firstError) {
+      showToast({ message: firstError, isError: true });
+      return;
     }
 
     setIsSubmitting(true);
@@ -341,18 +391,28 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                   </Text>
                   <TextInput
                     value={name}
-                    onChangeText={setName}
+                    onChangeText={(val) => {
+                      setName(val);
+                      clearFieldError('name');
+                    }}
+                    onBlur={() => {
+                      const res = validateName(name, { label: 'full name' });
+                      if (!res.valid) setErrors((prev) => ({ ...prev, name: res.message }));
+                    }}
                     placeholder="e.g. Ramesh Kumar"
                     placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                     style={[
                       styles.input,
                       {
                         backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
-                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        borderColor: errors.name ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                         color: isDark ? '#FFFFFF' : '#0F172A',
                       },
                     ]}
                   />
+                  {errors.name && (
+                    <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{errors.name}</Text>
+                  )}
                 </View>
               </View>
 
@@ -367,24 +427,42 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       styles.phoneInputWrap,
                       {
                         backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
-                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        borderColor: errors.phone ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                       },
                     ]}
                   >
-                    <View style={styles.countryCodeBadge}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCountryCode((prev) => (prev === '+91' ? '+1' : '+91'));
+                        clearFieldError('phone');
+                      }}
+                      style={styles.countryCodeBadge}
+                      activeOpacity={0.7}
+                    >
                       <Text style={[styles.countryCodeText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                         {countryCode}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                     <TextInput
                       value={phone}
-                      onChangeText={setPhone}
+                      onChangeText={(val) => {
+                        const region = regionFromCountryCode(countryCode) || 'IN';
+                        setPhone(sanitizeMobile(val, region, { pasted: val.length > 10, cap: true }));
+                        clearFieldError('phone');
+                      }}
+                      onBlur={() => {
+                        const res = validateMobile(phone, countryCode);
+                        if (!res.valid) setErrors((prev) => ({ ...prev, phone: res.message }));
+                      }}
                       keyboardType="phone-pad"
                       placeholder="9876543210"
                       placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                       style={[styles.phoneTextInput, { color: isDark ? '#FFFFFF' : '#0F172A' }]}
                     />
                   </View>
+                  {errors.phone && (
+                    <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{errors.phone}</Text>
+                  )}
                 </View>
 
                 <View style={{ flex: 1 }}>
@@ -393,7 +471,14 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                   </Text>
                   <TextInput
                     value={email}
-                    onChangeText={setEmail}
+                    onChangeText={(val) => {
+                      setEmail(val);
+                      clearFieldError('email');
+                    }}
+                    onBlur={() => {
+                      const res = validateEmail(email, { required: false });
+                      if (!res.valid) setErrors((prev) => ({ ...prev, email: res.message }));
+                    }}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     placeholder="staff@gymezy.com"
@@ -402,11 +487,14 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       styles.input,
                       {
                         backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
-                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        borderColor: errors.email ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                         color: isDark ? '#FFFFFF' : '#0F172A',
                       },
                     ]}
                   />
+                  {errors.email && (
+                    <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{errors.email}</Text>
+                  )}
                 </View>
               </View>
 
@@ -585,18 +673,24 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       </Text>
                       <TextInput
                         value={startDate}
-                        onChangeText={setStartDate}
+                        onChangeText={(val) => {
+                          setStartDate(val);
+                          clearFieldError('startDate');
+                        }}
                         placeholder="2026-11-04"
                         placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                         style={[
                           styles.input,
                           {
                             backgroundColor: isDark ? AppColors.darkSurface : '#FFFFFF',
-                            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                            borderColor: errors.startDate ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                             color: isDark ? '#FFFFFF' : '#0F172A',
                           },
                         ]}
                       />
+                      {errors.startDate && (
+                        <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{errors.startDate}</Text>
+                      )}
                     </View>
 
                     <View style={{ flex: 1 }}>
@@ -605,18 +699,24 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       </Text>
                       <TextInput
                         value={endDate}
-                        onChangeText={setEndDate}
+                        onChangeText={(val) => {
+                          setEndDate(val);
+                          clearFieldError('endDate');
+                        }}
                         placeholder="2026-12-04"
                         placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                         style={[
                           styles.input,
                           {
                             backgroundColor: isDark ? AppColors.darkSurface : '#FFFFFF',
-                            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                            borderColor: errors.endDate ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                             color: isDark ? '#FFFFFF' : '#0F172A',
                           },
                         ]}
                       />
+                      {errors.endDate && (
+                        <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{errors.endDate}</Text>
+                      )}
                     </View>
                   </View>
 
@@ -890,7 +990,14 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                     </Text>
                     <TextInput
                       value={payAmount}
-                      onChangeText={setPayAmount}
+                      onChangeText={(val) => {
+                        setPayAmount(val.replace(/[^\d.]/g, ''));
+                        clearFieldError('payAmount');
+                      }}
+                      onBlur={() => {
+                        const res = validatePositiveNumber(payAmount, { label: 'pay amount', min: 1 });
+                        if (!res.valid) setErrors((prev) => ({ ...prev, payAmount: res.message }));
+                      }}
                       keyboardType="numeric"
                       placeholder="500"
                       placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
@@ -898,12 +1005,15 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                         styles.input,
                         {
                           backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                          borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                          borderColor: errors.payAmount ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                           color: isDark ? '#FFFFFF' : '#0F172A',
                           fontWeight: '700',
                         },
                       ]}
                     />
+                    {errors.payAmount && (
+                      <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{errors.payAmount}</Text>
+                    )}
                   </View>
 
                   <View style={{ flex: 1 }}>

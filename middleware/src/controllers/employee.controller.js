@@ -559,8 +559,9 @@ export const getEmployees = asyncHandler(async (req, res) => {
   const totalPages = parsedLimit > 0 ? Math.ceil(totalEmployees / parsedLimit) : 1;
 
   let query = Employee.find(finalFilter)
-    .select('-documents.fileData -trainerCerts.fileData')
-    .sort({ createdAt: -1 });
+    .select('-documents.fileData -trainerCerts.fileData -auditHistory -pendingChanges')
+    .sort({ createdAt: -1 })
+    .lean();
   if (parsedLimit > 0) {
     query = query.skip(skip).limit(parsedLimit);
   }
@@ -568,9 +569,10 @@ export const getEmployees = asyncHandler(async (req, res) => {
   const employees = await query;
 
   const gymCondition = andConditions.length > 0 ? andConditions[0] : {};
-  const [totalGymStaff, trainersCount, pendingCount] = await Promise.all([
+  const [totalGymStaff, trainersCount, managersCount, pendingCount] = await Promise.all([
     Employee.countDocuments(gymCondition),
     Employee.countDocuments({ ...gymCondition, role: /trainer|coach/i }),
+    Employee.countDocuments({ ...gymCondition, role: /manager/i }),
     Employee.countDocuments({ ...gymCondition, approvalStatus: 'Pending Approval' }),
   ]);
   const staffCount = Math.max(0, totalGymStaff - trainersCount);
@@ -581,6 +583,7 @@ export const getEmployees = asyncHandler(async (req, res) => {
         employees,
         summary: {
           trainersCount,
+          managersCount,
           staffCount,
           pendingCount,
           totalEmployees: totalGymStaff,
