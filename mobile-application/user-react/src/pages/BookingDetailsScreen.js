@@ -223,7 +223,7 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
     setShowCancelSheet(true);
     setIsLoadingQuote(true);
     try {
-      const quote = await apiService.getBookingCancellationQuote(booking.id || booking._id || booking.bookingId);
+      const quote = await apiService.getBookingCancellationQuote(booking._id || booking.id || booking.bookingId);
       setCancellationQuote(quote);
     } catch (err) {
       console.warn('Failed to load cancellation quote:', err?.message);
@@ -235,7 +235,7 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
   const handleConfirmCancel = async () => {
     setIsSubmittingCancel(true);
     try {
-      const updated = await cancelBooking(booking.id || booking._id || booking.bookingId, cancelReason);
+      const updated = await cancelBooking(booking._id || booking.id || booking.bookingId, cancelReason);
       setShowCancelSheet(false);
       if (updated?.status === 'Cancellation_Requested') {
         showToast({
@@ -386,7 +386,7 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
           activeOpacity={0.7}
           onPress={() =>
             navigation.navigate('AttendanceHistory', {
-              bookingId: booking.id || booking._id,
+              bookingId: booking._id || booking.id,
               title: `${booking.sessionSubtitle || booking.title || 'Session'} Attendance`,
               contextName: `${booking.gymName || 'Gym'} • ${booking.id || booking.bookingId}`,
             })
@@ -833,7 +833,7 @@ export const BookingDetailsScreen = ({ route, navigation }) => {
                   JSON.stringify({
                     type: 'BOOKING',
                     id: booking.id,
-                    bookingId: booking.id,
+                    bookingId: booking._id || booking.id,
                     customerId: booking.customerId,
                     entryOtp: booking.otp,
                   })

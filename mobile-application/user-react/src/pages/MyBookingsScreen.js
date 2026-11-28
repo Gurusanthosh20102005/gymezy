@@ -192,14 +192,15 @@ export const MyBookingsScreen = ({ navigation }) => {
               </SmoothFadeIn>
             ) : (
               <SmoothFadeIn key={`list_${selectedTab}`} duration={260} translateY={8}>
-                {filteredBookings.map((booking) => {
+                {filteredBookings.map((booking, idx) => {
                 const isUpcoming =
                   booking.status === 'Upcoming' ||
                   booking.status === 'Active' ||
                   booking.status === 'Confirmed';
                 const catMeta = getCategoryIcon(booking.type, booking.iconName);
+                const bookingKey = booking._id ? String(booking._id) : `${booking.id || 'bk'}_${idx}`;
                 const gymLogoUri =
-                  !failedLogos[booking.id] &&
+                  !failedLogos[bookingKey] &&
                   (getSafeImageUri(booking.gymLogo) ||
                     getGymLogoUri(booking.gymId) ||
                     getSafeImageUri(booking.gymImageUrl) ||
@@ -207,7 +208,7 @@ export const MyBookingsScreen = ({ navigation }) => {
 
                 return (
                   <TouchableOpacity
-                    key={booking.id}
+                    key={bookingKey}
                     onPress={() => openBookingDetails(booking)}
                     activeOpacity={0.88}
                     style={[

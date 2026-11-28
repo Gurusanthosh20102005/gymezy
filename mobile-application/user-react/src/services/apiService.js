@@ -2,14 +2,14 @@ import { NativeModules } from 'react-native';
 import { getCloudApiUrl, ACTIVE_ENV, ENV_TARGETS } from '../config/envConfig';
 
 const BACKEND_PORT = 5001;
-const CURRENT_MAC_IP = '192.168.0.104';
-const LOCAL_WIFI_IP = '192.168.0.104';
+const CURRENT_MAC_IP = '192.168.0.101';
+const LOCAL_WIFI_IP = '192.168.0.101';
 
 const getMetroHost = () => {
   try {
     const scriptURL = NativeModules?.SourceCode?.scriptURL;
     if (scriptURL) {
-      const match = scriptURL.match(/^https?:\/\/([^:/]+)/);
+      const match = scriptURL.match(/^(?:https?|exp):\/\/([^:/]+)/);
       if (match?.[1] && match[1] !== 'localhost' && match[1] !== '127.0.0.1') {
         return match[1];
       }
@@ -109,12 +109,14 @@ class ApiService {
             this.verifiedBase,
             cloudUrl,
             metroHost ? `http://${metroHost}:${BACKEND_PORT}/api/v1` : null,
+            `http://${LOCAL_WIFI_IP}:${BACKEND_PORT}/api/v1`,
             `http://localhost:${BACKEND_PORT}/api/v1`,
             `http://10.0.2.2:${BACKEND_PORT}/api/v1`,
           ]
         : [
             this.verifiedBase,
             metroHost ? `http://${metroHost}:${BACKEND_PORT}/api/v1` : null,
+            `http://${LOCAL_WIFI_IP}:${BACKEND_PORT}/api/v1`,
             `http://localhost:${BACKEND_PORT}/api/v1`,
             `http://10.0.2.2:${BACKEND_PORT}/api/v1`,
             cloudUrl,
@@ -229,6 +231,52 @@ class ApiService {
       user: payload,
       token: authToken,
       message: json.message || 'Login successful',
+    };
+  }
+
+  /**
+   * Google Single Sign-On Login (via Firebase ID Token)
+   */
+  async googleLogin({ idToken, portal = 'user-app', expectedRole = 'CUSTOMER' }) {
+    if (!idToken) {
+      throw new Error('Google ID token is required.');
+    }
+
+    const response = await this.executeFetch('/auth/google-login', {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        idToken,
+        portal,
+        expectedRole,
+      }),
+    });
+
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Google authentication failed. Please try again.');
+    }
+
+    const payload = json.data || {};
+    if (payload.exists === false) {
+      return {
+        exists: false,
+        isNewUser: true,
+        profile: payload.profile,
+        message: json.message,
+      };
+    }
+
+    const authToken = payload.token || null;
+    if (authToken) {
+      this.setAuthToken(authToken);
+    }
+
+    return {
+      exists: true,
+      user: payload.user || payload,
+      token: authToken,
+      message: json.message || 'Google login successful',
     };
   }
 

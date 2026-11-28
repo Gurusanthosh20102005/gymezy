@@ -1050,11 +1050,11 @@ export const requestCancellationNegotiation = async (req, res, next) => {
   try {
     const { id } = req.params;
     const reason = String(req.body?.reason || 'Cancelled by member').trim();
-    const membership = await Membership.findOne(
-      mongoose.Types.ObjectId.isValid(id)
-        ? { $or: [{ _id: id }, { membershipId: id }] }
-        : { membershipId: id }
-    );
+    const isObjId = mongoose.Types.ObjectId.isValid(id);
+    const membershipQuery = isObjId
+      ? { _id: id }
+      : { membershipId: id, ...(req.user?._id ? { userId: req.user._id } : {}) };
+    const membership = await Membership.findOne(membershipQuery);
     if (!membership) throw ApiError.notFound('Membership not found.');
     if (membership.status === 'Cancelled') {
       throw ApiError.badRequest('Membership is already cancelled.');
@@ -1194,29 +1194,32 @@ export const getMyCancellationNegotiations = async (req, res, next) => {
       req.query.user;
     const rawMembershipId = req.query.membershipId;
 
-    let filter = null;
+    const userFilter =
+      userId && mongoose.Types.ObjectId.isValid(userId)
+        ? { userId: new mongoose.Types.ObjectId(userId) }
+        : userId
+        ? { userId }
+        : null;
 
-    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      filter = { userId: new mongoose.Types.ObjectId(userId) };
-    } else if (userId) {
-      filter = { userId };
-    }
+    let filter = userFilter;
 
     if (rawMembershipId) {
       let resolvedMemId = null;
       if (mongoose.Types.ObjectId.isValid(rawMembershipId)) {
         resolvedMemId = new mongoose.Types.ObjectId(rawMembershipId);
       } else {
-        const memDoc = await Membership.findOne({ membershipId: rawMembershipId }).select('_id').lean();
+        const memQuery = { membershipId: rawMembershipId };
+        if (userFilter?.userId) memQuery.userId = userFilter.userId;
+        const memDoc = await Membership.findOne(memQuery).select('_id').lean();
         if (memDoc) resolvedMemId = memDoc._id;
       }
 
       if (resolvedMemId) {
-        if (filter) {
-          filter = { $or: [filter, { membershipId: resolvedMemId }] };
-        } else {
-          filter = { membershipId: resolvedMemId };
-        }
+        filter = filter
+          ? { ...filter, membershipId: resolvedMemId }
+          : { membershipId: resolvedMemId };
+      } else if (!filter) {
+        return res.status(200).json(ApiResponse.success([], 'Cancellation negotiations retrieved.'));
       }
     }
 

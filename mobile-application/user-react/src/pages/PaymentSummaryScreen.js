@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Modal,
   Platform,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,6 +35,7 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [createdBooking, setCreatedBooking] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [bookingErrorMessage, setBookingErrorMessage] = useState('');
 
   const totalAmount = Math.max(0, subtotal - discount);
 
@@ -85,10 +85,8 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
       setShowConfirmModal(true);
     } catch (err) {
       console.warn('[PAYMENT SUMMARY] Booking creation failed:', err?.message);
-      Alert.alert(
-        'Booking Notice',
-        err.message || 'Unable to complete your booking right now. Please try again.',
-        [{ text: 'OK' }]
+      setBookingErrorMessage(
+        err?.message || 'Unable to complete your booking right now. Please try again.'
       );
     } finally {
       setIsProcessing(false);
@@ -291,6 +289,48 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
           </View>
         </View>
       </Modal>
+
+      {/* Booking Notice / Error Modal */}
+      <Modal
+        visible={Boolean(bookingErrorMessage)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBookingErrorMessage('')}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.dialogCard, { backgroundColor: cardColor }]}>
+            <View style={styles.dialogErrorBadge}>
+              <MaterialIcons name="error-outline" size={38} color="#EF4444" />
+            </View>
+
+            <Text style={[styles.dialogTitle, { color: textColor }]}>Booking Notice</Text>
+            <Text style={[styles.dialogDesc, { color: subtitleColor, marginTop: 10, marginBottom: 22 }]}>
+              {bookingErrorMessage}
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setBookingErrorMessage('')}
+              style={styles.errorDismissBtn}
+            >
+              <Text style={styles.errorDismissBtnText}>Got It</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                setBookingErrorMessage('');
+                navigation.goBack();
+              }}
+              style={{ marginTop: 12 }}
+            >
+              <Text style={[styles.dialogBackHomeText, { color: subtitleColor }]}>
+                Change Selection
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -444,6 +484,25 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 40,
     marginBottom: 18,
+  },
+  dialogErrorBadge: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    padding: 16,
+    borderRadius: 40,
+    marginBottom: 18,
+  },
+  errorDismissBtn: {
+    width: '100%',
+    height: 48,
+    backgroundColor: '#003882',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorDismissBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
   },
   dialogTitle: {
     fontSize: 20,
