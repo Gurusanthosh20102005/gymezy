@@ -14,14 +14,24 @@ import { notificationService } from '../services/notificationService';
 export const DashboardScreen = ({ navigation, route }) => {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const [currentTab, setCurrentTab] = useState(
-    typeof route?.params?.initialTab === 'number' ? route.params.initialTab : 0
-  );
+  const initialTab = typeof route?.params?.initialTab === 'number' ? route.params.initialTab : 0;
+  const [currentTab, setCurrentTab] = useState(initialTab);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([initialTab]));
   const [membersMode, setMembersMode] = useState('MEMBERS');
+
+  const switchTab = (tabIndex) => {
+    setVisitedTabs((prev) => {
+      if (prev.has(tabIndex)) return prev;
+      const next = new Set(prev);
+      next.add(tabIndex);
+      return next;
+    });
+    setCurrentTab(tabIndex);
+  };
 
   useEffect(() => {
     if (typeof route?.params?.initialTab === 'number') {
-      setCurrentTab(route.params.initialTab);
+      switchTab(route.params.initialTab);
     }
   }, [route?.params?.initialTab]);
 
@@ -49,51 +59,61 @@ export const DashboardScreen = ({ navigation, route }) => {
       />
 
       <View style={styles.tabContentContainer}>
-        {currentTab === 0 && (
-          <OverviewTab
-            topInset={topInset}
-            navigation={navigation}
-            onNavigateToMembers={() => setCurrentTab(1)}
-            onNavigateToBookings={() => setCurrentTab(2)}
-            onNavigateToEmployees={() => setCurrentTab(3)}
-            onNavigateToSections={() => setCurrentTab(4)}
-          />
+        {visitedTabs.has(0) && (
+          <View style={[styles.tabPane, { display: currentTab === 0 ? 'flex' : 'none' }]}>
+            <OverviewTab
+              topInset={topInset}
+              navigation={navigation}
+              onNavigateToMembers={() => switchTab(1)}
+              onNavigateToBookings={() => switchTab(2)}
+              onNavigateToEmployees={() => switchTab(3)}
+              onNavigateToSections={() => switchTab(4)}
+            />
+          </View>
         )}
-        {currentTab === 1 && (
-          <MembersTab
-            topInset={topInset}
-            activeMode={membersMode}
-            onChangeMode={setMembersMode}
-          />
+        {visitedTabs.has(1) && (
+          <View style={[styles.tabPane, { display: currentTab === 1 ? 'flex' : 'none' }]}>
+            <MembersTab
+              topInset={topInset}
+              activeMode={membersMode}
+              onChangeMode={setMembersMode}
+            />
+          </View>
         )}
-        {currentTab === 2 && (
-          <BookingsTab
-            topInset={topInset}
-            navigation={navigation}
-          />
+        {visitedTabs.has(2) && (
+          <View style={[styles.tabPane, { display: currentTab === 2 ? 'flex' : 'none' }]}>
+            <BookingsTab
+              topInset={topInset}
+              navigation={navigation}
+            />
+          </View>
         )}
-        {currentTab === 3 && (
-          <EmployeesTab
-            topInset={topInset}
-            navigation={navigation}
-          />
+        {visitedTabs.has(3) && (
+          <View style={[styles.tabPane, { display: currentTab === 3 ? 'flex' : 'none' }]}>
+            <EmployeesTab
+              topInset={topInset}
+              navigation={navigation}
+            />
+          </View>
         )}
-        {currentTab === 4 && (
-          <SectionsTab
-            topInset={topInset}
-            navigation={navigation}
-          />
+        {visitedTabs.has(4) && (
+          <View style={[styles.tabPane, { display: currentTab === 4 ? 'flex' : 'none' }]}>
+            <SectionsTab
+              topInset={topInset}
+              navigation={navigation}
+            />
+          </View>
         )}
       </View>
 
       {/* Floating Bottom Navigation Bar with Smooth Physics Animations */}
       <CustomFloatingNavBar
         currentIndex={currentTab}
-        onTap={(index) => setCurrentTab(index)}
+        onTap={(index) => switchTab(index)}
         membersMode={membersMode}
         onSelectMembersMode={(mode) => {
           setMembersMode(mode);
-          setCurrentTab(1);
+          switchTab(1);
         }}
       />
     </View>
@@ -105,6 +125,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabContentContainer: {
+    flex: 1,
+  },
+  tabPane: {
     flex: 1,
   },
 });

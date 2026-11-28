@@ -206,6 +206,12 @@ const bankDetailsSchema = new mongoose.Schema(
     branch: { type: String, trim: true, default: '' },
     payoutSchedule: { type: String, trim: true, default: 'Daily T+1 Automated Direct Bank Deposit' },
     gstInvoiceEnabled: { type: Boolean, default: true },
+    razorpayLinkedAccountId: { type: String, trim: true, default: '' },
+    razorpayKycStatus: {
+      type: String,
+      enum: ['NOT_LINKED', 'PENDING', 'VERIFIED', 'FAILED'],
+      default: 'NOT_LINKED',
+    },
   },
   { _id: false }
 );

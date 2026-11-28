@@ -184,10 +184,21 @@ export function validatePositiveNumber(value, { label = 'amount', min = 1, max =
 export function validateDateString(value, label = 'date') {
   const v = String(value ?? '').trim();
   if (!v) return fail(`Select ${label}`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return fail(`Use YYYY-MM-DD format for ${label}`);
-  const d = new Date(`${v}T00:00:00`);
+  let iso = v;
+  const ddmmyyyy = v.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (ddmmyyyy) {
+    const [, dd, mm, yyyy] = ddmmyyyy;
+    iso = `${yyyy}-${mm}-${dd}`;
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    return fail(`Use DD-MM-YYYY format for ${label}`);
+  }
+  const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return fail(`Enter a valid ${label}`);
-  return { valid: true, message: '', normalized: v };
+  const [y, m, day] = iso.split('-').map(Number);
+  if (d.getFullYear() !== y || d.getMonth() + 1 !== m || d.getDate() !== day) {
+    return fail(`Enter a valid ${label}`);
+  }
+  return { valid: true, message: '', normalized: iso };
 }
 
 export function parseTimeToMinutes(timeStr) {

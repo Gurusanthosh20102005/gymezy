@@ -191,9 +191,11 @@ class ApiService {
       const targetUrl = `${currentBase}${endpoint}`;
       try {
         const attemptTimeout =
-          currentBase.includes('10.0.2.2')
-            ? 2500
-            : Math.max(timeoutMs, 12000);
+          currentBase === this.verifiedBase || currentBase === cloudUrl
+            ? Math.max(timeoutMs, 12000)
+            : currentBase.includes('10.0.2.2')
+            ? 2000
+            : 3000;
         const response = await fetchWithTimeout(targetUrl, options, attemptTimeout);
 
         // Safely extract response text to inspect before treating as valid JSON

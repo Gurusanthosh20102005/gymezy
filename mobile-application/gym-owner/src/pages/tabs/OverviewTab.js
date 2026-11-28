@@ -393,32 +393,8 @@ export const OverviewTab = ({
           </View>
         </View>
 
-        {/* Top Right Actions: Notifications & Settings */}
+        {/* Top Right Actions: Settings */}
         <View style={styles.topHeaderRight}>
-          <TouchableOpacity
-            style={[
-              styles.notifBtn,
-              {
-                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-              },
-            ]}
-            onPress={() =>
-              Alert.alert(
-                `${gym?.name || 'Gym'} Notifications`,
-                `• Super Admin Status: ${gym?.approvalStatus || 'Approved'}\n• Staff Registered: ${totalStaff} staff members\n• Active Platform Plans: ${(gym?.pricingPlans ? Object.keys(gym.pricingPlans).length : 0)} configured`
-              )
-            }
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="notifications-outline"
-              size={20}
-              color={isDark ? '#FFFFFF' : '#0F172A'}
-            />
-            <View style={styles.notifDot} />
-          </TouchableOpacity>
-
           <TouchableOpacity
             style={[
               styles.settingsHeaderBtn,

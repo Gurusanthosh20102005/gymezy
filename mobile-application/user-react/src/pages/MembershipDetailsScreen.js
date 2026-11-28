@@ -25,6 +25,7 @@ import { useBookingRepository } from '../data/BookingContext';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { calculateMembershipProgress } from '../utils/dateUtils';
 import { membershipService } from '../services/membershipService';
+import { paymentService } from '../services/paymentService';
 import { apiService } from '../services/apiService';
 import { gymService } from '../services/gymService';
 import { useAuth } from '../context/AuthContext';
@@ -671,14 +672,32 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
     if (!selectedTargetPlan) return;
     setIsSubmittingSwitch(true);
     try {
-      const result = await membershipService.requestSwitchPlan(membership._id || membership.id, {
+      const switchPayload = {
+        membershipId: membership._id || membership.id,
         targetTier: selectedTargetPlan.tierId || selectedTargetPlan.name,
         targetPlanId: selectedTargetPlan.planId || selectedTargetPlan.tierId,
         downgradeSettlementPreference: downgradeOption,
-        paymentMethod: 'UPI',
-        transactionId: `TXN_SW_${Date.now()}`,
         useWalletBalance: false,
-      });
+      };
+      const netPayableAmount = Number(
+        switchQuote?.financialBreakdown?.netAmountToPayINR ??
+        switchQuote?.financialBreakdown?.netAmountToPay ??
+        (switchQuote?.financialBreakdown?.netAmountToPayPaise != null
+          ? switchQuote.financialBreakdown.netAmountToPayPaise / 100
+          : switchQuote?.netPayable) ??
+        0
+      );
+      const isUpgradePayment = netPayableAmount > 0;
+      const result = isUpgradePayment
+        ? await paymentService.payWithRazorpay({
+            flowType: 'PLAN_SWITCH_UPGRADE',
+            payload: switchPayload,
+            description: `Upgrade to ${switchPayload.targetTier}`,
+          })
+        : await membershipService.requestSwitchPlan(membership._id || membership.id, {
+            ...switchPayload,
+            paymentMethod: 'Wallet',
+          });
       setPendingSwitchRequest(result);
       setShowSwitchSheet(false);
       showToast({

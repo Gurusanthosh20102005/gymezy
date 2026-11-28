@@ -770,6 +770,42 @@ class ApiService {
       return [];
     }
   }
+
+  /**
+   * Create authoritative Razorpay Order on backend
+   */
+  async createPaymentOrder({ flowType, payload }) {
+    const response = await this.executeFetch('/payments/create-order', {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ flowType, payload }),
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Failed to initiate payment order.');
+    }
+    return json.data;
+  }
+
+  /**
+   * Verify Razorpay HMAC signature and fulfill purchase/booking on backend
+   */
+  async verifyPayment({ razorpay_order_id, razorpay_payment_id, razorpay_signature }) {
+    const response = await this.executeFetch('/payments/verify', {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+      }),
+    });
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || 'Payment verification failed.');
+    }
+    return json.data;
+  }
 }
 
 export const apiService = new ApiService();

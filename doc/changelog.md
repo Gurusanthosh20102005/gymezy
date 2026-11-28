@@ -5,6 +5,11 @@ All notable changes to this project are recorded here, newest first. The format 
 ## Unreleased
 
 ### Added
+- **Razorpay Payment, Refund & Route Settlement Integration** ([`doc/RAZORPAY_PAYMENT_ARCHITECTURE.md`](./RAZORPAY_PAYMENT_ARCHITECTURE.md)):
+  - Added [`middleware/src/services/razorpay.service.js`](../middleware/src/services/razorpay.service.js), [`middleware/src/models/paymentTransaction.model.js`](../middleware/src/models/paymentTransaction.model.js), [`middleware/src/controllers/payment.controller.js`](../middleware/src/controllers/payment.controller.js), and [`middleware/src/routes/payment.routes.js`](../middleware/src/routes/payment.routes.js) (`/api/v1/payments/create-order`, `/verify`, `/webhook`).
+  - Integrated `react-native-razorpay` native checkout in `mobile-application/user-react` via [`paymentService.js`](../mobile-application/user-react/src/services/paymentService.js) across membership purchases, session/class bookings, and plan switch upgrades, removing `mock_mem_*` fallbacks.
+  - Wired automated Razorpay refunds on approved membership and booking cancellations and added Super Admin Route linked-account & settlement payout endpoints (`/api/v1/admin/gyms/:id/razorpay-account`, `/api/v1/admin/settlements/:transactionId/transfer`).
+- **Shared Form Input Validation** ([`web-application/gym-owner/src/utils/formValidation.js`](../web-application/gym-owner/src/utils/formValidation.js), [`mobile-application/gym-owner/src/utils/formValidation.js`](../mobile-application/gym-owner/src/utils/formValidation.js)): standardized name, mobile, email, Manager password complexity, date range, and working-time validation across Gym Owner Web and Mobile employee modals.
 - **Gym Application Rejection, Hold, and Resubmission Tracking Subsystem**:
   - **Schema Enhancements** ([`middleware/src/models/gym.model.js`](../middleware/src/models/gym.model.js)): added `rejectionReason` (categorical reason), `rejectionNote` (detailed administrator remarks), `resubmissionNote` (partner explanation of fixes), and `resubmittedAt` timestamp to `gymSchema`.
   - **Decision Engine Updates** ([`middleware/src/controllers/gym.controller.js`](../middleware/src/controllers/gym.controller.js)):

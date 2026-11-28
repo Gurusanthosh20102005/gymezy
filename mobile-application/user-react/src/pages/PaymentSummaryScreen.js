@@ -15,6 +15,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { AppColors, AppTheme } from '../theme/appTheme';
 import { useBookingRepository, mapBackendBookingToClient } from '../data/BookingContext';
 import { apiService } from '../services/apiService';
+import { paymentService } from '../services/paymentService';
 
 export const PaymentSummaryScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
@@ -78,7 +79,11 @@ export const PaymentSummaryScreen = ({ route, navigation }) => {
         },
       };
 
-      const serverBooking = await apiService.createBooking(payload);
+      const serverBooking = await paymentService.payWithRazorpay({
+        flowType: 'BOOKING_PASS',
+        payload,
+        description: bookingTitle || 'Gym Session Pass',
+      });
       const mapped = mapBackendBookingToClient(serverBooking);
       addBooking(mapped);
       setCreatedBooking(mapped);

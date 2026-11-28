@@ -18,6 +18,7 @@ import { ApiResponse } from '../utils/apiResponse.js';
 import { getSearchTerm, escapeRegex } from '../utils/searchHelper.js';
 import { findOrCreateWalkInCustomer } from '../utils/walkInHelper.js';
 import { sanitizeDocument } from '../utils/responseTransformer.js';
+import { refundPaymentForReference } from '../services/razorpay.service.js';
 
 const TIER_DURATION_DAYS = {
   Monthly: 30,
@@ -1020,6 +1021,15 @@ export const cancelMembership = async (req, res, next) => {
         });
       }
 
+      if (isUpcoming && totalPaid > 0) {
+        await refundPaymentForReference({
+          referenceId: membership._id,
+          amountPaise: Math.round(Number(totalPaid) * 100),
+          reason: reason || 'Pre-activation membership cancellation',
+          initiatedBy: String(req.user?._id || 'SYSTEM'),
+        }).catch((err) => console.warn('Razorpay pre-activation membership refund warning:', err.message));
+      }
+
       const populated = await Membership.findById(membership._id)
         .populate('userId', 'fullName name email phone avatar customerId')
         .populate('trainerId', 'name specialty avatar')
@@ -1152,6 +1162,15 @@ export const requestCancellationNegotiation = async (req, res, next) => {
         approvedRefundAmount: totalPaid,
         completedAt: now,
       });
+
+      if (totalPaid > 0) {
+        await refundPaymentForReference({
+          referenceId: membership._id,
+          amountPaise: Math.round(Number(totalPaid) * 100),
+          reason: reason || 'Pre-activation membership cancellation',
+          initiatedBy: String(req.user?._id || 'USER'),
+        }).catch((err) => console.warn('Razorpay pre-activation membership refund warning:', err.message));
+      }
 
       return res.status(200).json(
         ApiResponse.success(
@@ -1352,6 +1371,14 @@ export const gymAcceptCancellation = async (req, res, next) => {
       { _id: negotiation.membershipId },
       { $set: { status: 'Cancelled', cancellation: { cancelledAt: new Date(), reason: negotiation.reason } } }
     );
+    if (refundAmount > 0) {
+      await refundPaymentForReference({
+        referenceId: negotiation.membershipId,
+        amountPaise: Math.round(Number(refundAmount) * 100),
+        reason: negotiation.reason || 'Membership cancellation approved',
+        initiatedBy: String(req.user?._id || 'GYM_OWNER'),
+      }).catch((err) => console.warn('Razorpay membership refund warning:', err.message));
+    }
     return res.status(200).json(ApiResponse.success(negotiation, 'Cancellation accepted and refund approved.'));
   } catch (error) {
     next(error);
@@ -1399,6 +1426,14 @@ export const memberRespondCancellationOffer = async (req, res, next) => {
         { _id: negotiation.membershipId },
         { $set: { status: 'Cancelled', cancellation: { cancelledAt: new Date(), reason: negotiation.reason } } }
       );
+      if (negotiation.approvedRefundAmount > 0) {
+        await refundPaymentForReference({
+          referenceId: negotiation.membershipId,
+          amountPaise: Math.round(Number(negotiation.approvedRefundAmount) * 100),
+          reason: negotiation.reason || 'Member accepted cancellation refund offer',
+          initiatedBy: String(req.user?._id || 'USER'),
+        }).catch((err) => console.warn('Razorpay accepted-offer membership refund warning:', err.message));
+      }
     } else {
       negotiation.status = 'PENDING_GYM_APPROVAL';
     }
@@ -1412,7 +1447,7 @@ export const memberRespondCancellationOffer = async (req, res, next) => {
 /**
  * Helper to resolve target plan details from gym
  */
-const resolveTargetPlanDetails = (gym, targetTier, targetPlanId) => {
+export const resolveTargetPlanDetails = (gym, targetTier, targetPlanId) => {
   const tierClean = String(targetTier || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   if (Array.isArray(gym?.customPricingPlans) && gym.customPricingPlans.length > 0) {

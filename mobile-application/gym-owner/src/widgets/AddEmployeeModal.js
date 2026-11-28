@@ -357,7 +357,7 @@ export const AddEmployeeModal = ({
         text: 'Take Photo',
         onPress: async () => {
           try {
-            const result = await capturePhotoFromCamera({ maxWidth: 800, maxHeight: 800 });
+            const result = await capturePhotoFromCamera({ maxWidth: 800, maxHeight: 800, maxSizeBytes: 1024 * 1024 });
             if (result?.fileData || result?.uri) {
               setAvatar(result.fileData || result.uri);
             }
@@ -370,7 +370,7 @@ export const AddEmployeeModal = ({
         text: 'Choose from Gallery',
         onPress: async () => {
           try {
-            const result = await pickImageFromDevice({ maxWidth: 800, maxHeight: 800 });
+            const result = await pickImageFromDevice({ maxWidth: 800, maxHeight: 800, maxSizeBytes: 1024 * 1024 });
             if (result?.fileData || result?.uri) {
               setAvatar(result.fileData || result.uri);
             }
@@ -627,7 +627,7 @@ export const AddEmployeeModal = ({
                     Employee Photo
                   </Text>
                   <Text style={[styles.photoHelpSub, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
-                    {avatar ? 'Photo attached. Tap to change.' : 'Upload Photo (JPG, PNG Max 2MB)'}
+                    {avatar ? 'Photo attached. Tap to change.' : 'Upload Photo (JPG, PNG Max 1MB)'}
                   </Text>
                   <TouchableOpacity onPress={handlePickPhoto} style={{ marginTop: 6 }}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: AppColors.primaryColor }}>
@@ -1143,7 +1143,7 @@ export const AddEmployeeModal = ({
                 )}
 
                 {/* Experience & Languages */}
-                <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 4, alignItems: 'flex-start' }}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                       Experience
@@ -1152,6 +1152,8 @@ export const AddEmployeeModal = ({
                       style={[
                         styles.formInput,
                         {
+                          height: 44,
+                          paddingVertical: 0,
                           backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
                           borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                           color: isDark ? '#FFFFFF' : '#0F172A',
@@ -1172,12 +1174,13 @@ export const AddEmployeeModal = ({
                       style={[
                         styles.formInput,
                         {
+                          height: 44,
+                          paddingVertical: 0,
                           backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
                           borderColor: showLanguagesDropdown ? AppColors.primaryColor : (isDark ? AppColors.darkBorder : '#E2E8F0'),
                           flexDirection: 'row',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          height: 46,
                         },
                       ]}
                       onPress={() => setShowLanguagesDropdown(!showLanguagesDropdown)}
