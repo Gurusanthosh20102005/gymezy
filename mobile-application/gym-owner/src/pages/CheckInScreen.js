@@ -183,17 +183,10 @@ export const CheckInScreen = ({ navigation, route }) => {
     }
   }, [currentStep, successScaleAnim, successRotateAnim]);
 
-  // Filter members based on search query and active search chip
+  // Filter members across all searchable fields (name, phone, IDs, OTP)
   const filteredResults = liveMembers.filter((m) => {
     if (!searchQuery.trim()) return false;
     const q = searchQuery.toLowerCase().trim();
-
-    if (activeChip === 'Customer Name') return m.name?.toLowerCase().includes(q);
-    if (activeChip === 'Phone Number') return m.phone?.includes(q);
-    if (activeChip === 'Customer ID') return m.customerId?.toLowerCase().includes(q) || m.userId?.toLowerCase().includes(q);
-    if (activeChip === 'Member ID') return m.membershipId?.toLowerCase().includes(q) || m.id?.toLowerCase().includes(q);
-    if (activeChip === 'Booking ID') return m.bookingId?.toLowerCase().includes(q);
-    if (activeChip === 'Entry OTP') return m.entryOtp?.toLowerCase().includes(q);
 
     return (
       m.name?.toLowerCase().includes(q) ||
@@ -201,6 +194,7 @@ export const CheckInScreen = ({ navigation, route }) => {
       m.customerId?.toLowerCase().includes(q) ||
       m.userId?.toLowerCase().includes(q) ||
       m.membershipId?.toLowerCase().includes(q) ||
+      m.id?.toLowerCase().includes(q) ||
       m.bookingId?.toLowerCase().includes(q) ||
       m.entryOtp?.toLowerCase().includes(q)
     );
@@ -804,55 +798,6 @@ export const CheckInScreen = ({ navigation, route }) => {
           )}
         </View>
 
-        {/* Search Filter Mode Chips */}
-        <Text style={[styles.filterByLabel, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
-          Search using any of the details below
-        </Text>
-
-        <View style={styles.chipsWrapRow}>
-          {SEARCH_FILTER_CHIPS.map((chip) => {
-            const isSelected = activeChip === chip;
-            return (
-              <TouchableOpacity
-                key={chip}
-                style={[
-                  styles.filterChipItem,
-                  {
-                    backgroundColor: isSelected
-                      ? AppColors.primaryColor
-                      : isDark
-                      ? AppColors.darkCard
-                      : '#FFFFFF',
-                    borderColor: isSelected
-                      ? AppColors.primaryColor
-                      : isDark
-                      ? AppColors.darkBorder
-                      : '#E2E8F0',
-                  },
-                ]}
-                onPress={() => setActiveChip(chip)}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.filterChipItemText,
-                    {
-                      color: isSelected
-                        ? '#FFFFFF'
-                        : isDark
-                        ? 'rgba(255,255,255,0.7)'
-                        : '#475569',
-                      fontWeight: isSelected ? '700' : '500',
-                    },
-                  ]}
-                >
-                  {chip}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         {/* Search Results Section */}
         {searchQuery.trim().length > 0 ? (
           <View style={styles.resultsSection}>
@@ -894,7 +839,7 @@ export const CheckInScreen = ({ navigation, route }) => {
                       {m.name}
                     </Text>
                     <Text style={[styles.resultId, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
-                      {activeChip === 'Member ID' ? `Member ID: ${m.id}` : activeChip === 'Booking ID' ? `Booking ID: ${m.bookingId}` : `Customer ID: ${m.customerId}`}
+                      {m.membershipId || m.id ? `Member ID: ${m.membershipId || m.id}` : m.bookingId ? `Booking ID: ${m.bookingId}` : `Customer ID: ${m.customerId}`}
                     </Text>
                     <Text style={[styles.resultPhone, { color: isDark ? 'rgba(255,255,255,0.5)' : '#94A3B8' }]}>
                       {m.phone}

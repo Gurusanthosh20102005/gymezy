@@ -3,27 +3,33 @@ import { Alert } from 'react-native';
 
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 
-const isAssetOverLimit = (asset) => {
+const isAssetOverLimit = (asset, maxBytes = MAX_IMAGE_SIZE_BYTES) => {
   const byteSize =
     typeof asset?.fileSize === 'number' && asset.fileSize > 0
       ? asset.fileSize
       : asset?.base64
       ? Math.ceil((asset.base64.length * 3) / 4)
       : 0;
-  return byteSize > MAX_IMAGE_SIZE_BYTES;
+  return byteSize > maxBytes;
+};
+
+const isImageAsset = (asset) => {
+  if (!asset?.type) return true;
+  return String(asset.type).toLowerCase().startsWith('image/');
 };
 
 /**
  * Pick an image from gallery or camera and return base64 / uri
  */
 export const pickImageFromDevice = async (options = {}) => {
+  const { maxSizeBytes = MAX_IMAGE_SIZE_BYTES, ...pickerOptions } = options;
   const defaultOptions = {
     mediaType: 'photo',
     includeBase64: true,
     quality: 0.8,
     maxWidth: 1200,
     maxHeight: 1200,
-    ...options,
+    ...pickerOptions,
   };
 
   try {
@@ -41,8 +47,14 @@ export const pickImageFromDevice = async (options = {}) => {
     const asset = result.assets?.[0];
     if (!asset) return null;
 
-    if (isAssetOverLimit(asset)) {
-      Alert.alert('File Too Large', 'Please select an image that is 2 MB or smaller.');
+    if (!isImageAsset(asset)) {
+      Alert.alert('Invalid File Type', 'Only image files (JPG, PNG) are supported.');
+      return null;
+    }
+
+    if (isAssetOverLimit(asset, maxSizeBytes)) {
+      const limitLabel = maxSizeBytes <= 1024 * 1024 ? '1 MB' : '2 MB';
+      Alert.alert('File Too Large', `Please select an image that is ${limitLabel} or smaller.`);
       return null;
     }
 
@@ -67,6 +79,7 @@ export const pickImageFromDevice = async (options = {}) => {
  * Capture a photo using camera
  */
 export const capturePhotoFromCamera = async (options = {}) => {
+  const { maxSizeBytes = MAX_IMAGE_SIZE_BYTES, ...cameraOptions } = options;
   const defaultOptions = {
     mediaType: 'photo',
     includeBase64: true,
@@ -74,7 +87,7 @@ export const capturePhotoFromCamera = async (options = {}) => {
     maxWidth: 1200,
     maxHeight: 1200,
     saveToPhotos: true,
-    ...options,
+    ...cameraOptions,
   };
 
   try {
@@ -92,8 +105,14 @@ export const capturePhotoFromCamera = async (options = {}) => {
     const asset = result.assets?.[0];
     if (!asset) return null;
 
-    if (isAssetOverLimit(asset)) {
-      Alert.alert('File Too Large', 'Please select an image that is 2 MB or smaller.');
+    if (!isImageAsset(asset)) {
+      Alert.alert('Invalid File Type', 'Only image files (JPG, PNG) are supported.');
+      return null;
+    }
+
+    if (isAssetOverLimit(asset, maxSizeBytes)) {
+      const limitLabel = maxSizeBytes <= 1024 * 1024 ? '1 MB' : '2 MB';
+      Alert.alert('File Too Large', `Please select an image that is ${limitLabel} or smaller.`);
       return null;
     }
 

@@ -7,6 +7,12 @@ import Attendance from '../models/attendance.model.js';
 import Counter from '../models/counter.model.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/apiResponse.js';
+import { PaymentTransaction } from '../models/paymentTransaction.model.js';
+import { ENV } from '../config/env.js';
+import {
+  createRazorpayLinkedAccount,
+  createRazorpayRouteTransfer,
+} from '../services/razorpay.service.js';
 import {
   getSearchTerm,
   escapeRegex,
@@ -1805,5 +1811,147 @@ export const getAdminCustomerReports = asyncHandler(async (req, res) => {
       },
       'Customer reports retrieved successfully'
     )
+  );
+});
+
+/**
+ * POST /api/v1/admin/gyms/:id/razorpay-account
+ * Onboard/link a Gym Partner's Razorpay Route Linked Account.
+ */
+export const createGymRazorpayAccount = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const gym = await Gym.findOne({
+    $or: [{ _id: mongoose.Types.ObjectId.isValid(id) ? id : null }, { partnerId: id }],
+  });
+  if (!gym) {
+    throw new ApiError(404, `Gym partner not found with ID ${id}`);
+  }
+
+  if (gym.bankDetails?.razorpayLinkedAccountId) {
+    return res.status(200).json(
+      ApiResponse.success(
+        {
+          gymId: gym._id,
+          razorpayLinkedAccountId: gym.bankDetails.razorpayLinkedAccountId,
+          razorpayKycStatus: gym.bankDetails.razorpayKycStatus,
+        },
+        'Gym already has a Razorpay linked account.'
+      )
+    );
+  }
+
+  const account = await createRazorpayLinkedAccount({
+    name: gym.name,
+    email: gym.email,
+    phone: gym.phone,
+    legalBusinessName: gym.name,
+    bankDetails: gym.bankDetails || {},
+  });
+
+  gym.bankDetails = {
+    ...(gym.bankDetails?.toObject ? gym.bankDetails.toObject() : gym.bankDetails || {}),
+    razorpayLinkedAccountId: account.id,
+    razorpayKycStatus: account.status === 'activated' ? 'VERIFIED' : 'PENDING',
+  };
+  await gym.save();
+
+  return res.status(201).json(
+    ApiResponse.success(
+      {
+        gymId: gym._id,
+        razorpayLinkedAccountId: account.id,
+        razorpayKycStatus: gym.bankDetails.razorpayKycStatus,
+      },
+      'Razorpay Route linked account created for gym partner.'
+    )
+  );
+});
+
+/**
+ * GET /api/v1/admin/razorpay-payments
+ * List PaymentTransaction records with Route transfer & refund status.
+ */
+export const getRazorpayPayments = asyncHandler(async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
+  const skip = (page - 1) * limit;
+
+  const filter = {};
+  if (req.query.status && req.query.status !== 'ALL') {
+    filter.status = req.query.status;
+  }
+
+  const [items, total] = await Promise.all([
+    PaymentTransaction.find(filter)
+      .populate('userId', 'fullName name email phone')
+      .populate('gymId', 'name partnerId bankDetails.razorpayLinkedAccountId bankDetails.razorpayKycStatus')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    PaymentTransaction.countDocuments(filter),
+  ]);
+
+  return res.status(200).json(
+    ApiResponse.success(
+      { items, total, page, totalPages: Math.ceil(total / limit) || 1 },
+      'Razorpay payment transactions retrieved.'
+    )
+  );
+});
+
+/**
+ * POST /api/v1/admin/settlements/:transactionId/transfer
+ * Trigger Razorpay Route transfer to Gym Partner after Super Admin settlement approval.
+ */
+export const executeSettlementTransfer = asyncHandler(async (req, res) => {
+  const { transactionId } = req.params;
+  const txn = await PaymentTransaction.findById(transactionId);
+  if (!txn) {
+    throw new ApiError(404, 'Payment transaction not found.');
+  }
+  if (txn.status !== 'PAID') {
+    throw ApiError.badRequest(`Cannot settle transaction in status ${txn.status}.`);
+  }
+  if (txn.routeTransfer?.status === 'TRANSFERRED') {
+    return res.status(200).json(ApiResponse.success(txn, 'Settlement already transferred.'));
+  }
+
+  const gym = await Gym.findById(txn.gymId).lean();
+  const linkedAccountId = gym?.bankDetails?.razorpayLinkedAccountId;
+  if (!linkedAccountId) {
+    throw ApiError.badRequest('Gym partner does not have a Razorpay Linked Account configured.');
+  }
+
+  const commissionPercent = Number.isFinite(ENV.PLATFORM_COMMISSION_PERCENT) ? ENV.PLATFORM_COMMISSION_PERCENT : 10;
+  const commissionPaise = Math.round((txn.amountPaise * commissionPercent) / 100);
+  const netAmountPaise = Math.max(0, txn.amountPaise - commissionPaise);
+
+  const transferResp = await createRazorpayRouteTransfer({
+    paymentId: txn.paymentId,
+    linkedAccountId,
+    amountPaise: netAmountPaise,
+    notes: {
+      transactionId: String(txn._id),
+      gymId: String(txn.gymId),
+      commissionPercent: String(commissionPercent),
+    },
+  });
+
+  const createdTransfer = transferResp?.items?.[0] || transferResp;
+  txn.routeTransfer = {
+    transferId: createdTransfer?.id || '',
+    linkedAccountId,
+    grossAmountPaise: txn.amountPaise,
+    commissionPaise,
+    netAmountPaise,
+    status: 'TRANSFERRED',
+    approvedBy: String(req.user?._id || 'SUPER_ADMIN'),
+    transferredAt: new Date(),
+  };
+  await txn.save();
+
+  return res.status(200).json(
+    ApiResponse.success(txn, 'Razorpay Route settlement transfer executed successfully.')
   );
 });

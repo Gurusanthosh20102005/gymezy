@@ -13,6 +13,7 @@ import { getSearchTerm, escapeRegex, parsePagination } from '../utils/searchHelp
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { findOrCreateWalkInCustomer } from '../utils/walkInHelper.js';
 import { isBookingCompleted, evaluateBookingStatus, calculateBookingCancellationQuote } from '../services/bookingProration.service.js';
+import { refundPaymentForReference } from '../services/razorpay.service.js';
 
 /**
  * Resolve User ID from token or request body
@@ -989,6 +990,15 @@ export const cancelBooking = asyncHandler(async (req, res) => {
 
     await booking.save();
 
+    if (quote.refundAmount > 0) {
+      await refundPaymentForReference({
+        referenceId: booking._id,
+        amountPaise: Math.round(Number(quote.refundAmount) * 100),
+        reason: booking.cancellation.reason || 'Pre-start booking cancellation',
+        initiatedBy: String(req.user?._id || 'USER'),
+      }).catch((err) => console.warn('Razorpay booking refund warning:', err.message));
+    }
+
     // Synchronize section enrolledCount strictly from real active bookings
     if (booking.sectionId) {
       const remainingCount = await Booking.countDocuments({
@@ -1078,6 +1088,16 @@ export const reviewBookingCancellation = asyncHandler(async (req, res) => {
     booking.cancellation.rejectionReason = '';
 
     await booking.save();
+
+    // Trigger automated Razorpay refund if paid via Razorpay
+    if (booking.cancellation.refundAmount > 0) {
+      await refundPaymentForReference({
+        referenceId: booking._id,
+        amountPaise: Math.round(Number(booking.cancellation.refundAmount) * 100),
+        reason: booking.cancellation.reason || 'Booking cancellation approved',
+        initiatedBy: String(req.user?._id || 'GYM_OWNER'),
+      }).catch((err) => console.warn('Razorpay booking refund warning:', err.message));
+    }
 
     // Synchronize section capacity from real active bookings
     if (booking.sectionId) {

@@ -27,6 +27,7 @@
     "mongoose": "^9.9.3",
     "morgan": "^1.11.0",
     "node-cron": "^4.6.0",
+    "razorpay": "^2.9.8",
     "sharp": "^0.35.5"
   },
   "devDependencies": {

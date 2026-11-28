@@ -32,14 +32,7 @@ import {
   regionFromCountryCode,
 } from '../utils/formValidation';
 
-export const TEMP_ROLES = [
-  'Trainer',
-  'Coach',
-  'Yoga Instructor',
-  'Zumba Instructor',
-  'Floor Assistant',
-  'Nutritionist',
-];
+export const TEMP_ROLES = ['Trainer'];
 
 export const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -68,11 +61,17 @@ export const TIME_OPTIONS = [
   '08:00 PM', '08:30 PM', '09:00 PM', '09:30 PM', '10:00 PM', '10:30 PM',
 ];
 
-const formatDateYYYYMMDD = (d) => {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
+const formatDateDDMMYYYY = (d) => {
   const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+const parseDDMMYYYYToDate = (str) => {
+  const match = String(str ?? '').trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) return new Date();
+  return new Date(`${match[3]}-${match[2]}-${match[1]}T00:00:00`);
 };
 
 export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
@@ -91,11 +90,11 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
   const [employmentType, setEmploymentType] = useState('Temporary'); // 'Temporary' | 'Part-Time'
 
   // Temporary Staff Period
-  const todayStr = useMemo(() => formatDateYYYYMMDD(new Date()), []);
+  const todayStr = useMemo(() => formatDateDDMMYYYY(new Date()), []);
   const defaultEndStr = useMemo(() => {
     const end = new Date();
     end.setMonth(end.getMonth() + 1);
-    return formatDateYYYYMMDD(end);
+    return formatDateDDMMYYYY(end);
   }, []);
 
   const [startDate, setStartDate] = useState(todayStr);
@@ -117,6 +116,8 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
   // Auxiliary UI States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timePickerTarget, setTimePickerTarget] = useState(null); // { type: 'global-start' | 'global-end' | 'day-start' | 'day-end', day?: string }
+  const [showPayTypeDropdown, setShowPayTypeDropdown] = useState(false);
+  const [showPayFreqDropdown, setShowPayFreqDropdown] = useState(false);
 
   // Toggle Day Selection
   const handleToggleDay = (day) => {
@@ -135,20 +136,22 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
 
   // Add preset months to end date
   const handleAddMonthsToEndDate = (months) => {
-    const base = startDate ? new Date(startDate) : new Date();
+    const base = startDate ? parseDDMMYYYYToDate(startDate) : new Date();
     base.setMonth(base.getMonth() + months);
-    setEndDate(formatDateYYYYMMDD(base));
+    setEndDate(formatDateDDMMYYYY(base));
   };
 
   // Photo Pick Handler
-  const handlePickPhoto = () => {
-    pickImageFromDevice({
-      onSuccess: (uri) => {
-        setPhotoUri(uri);
-        showToast({ message: 'Photo selected successfully', isSuccess: true });
-      },
-      onError: (err) => showToast({ message: err.message, isError: true }),
+  const handlePickPhoto = async () => {
+    const picked = await pickImageFromDevice({
+      maxWidth: 800,
+      maxHeight: 800,
+      maxSizeBytes: 1024 * 1024,
     });
+    if (picked) {
+      setPhotoUri(picked.fileData || picked.uri);
+      showToast({ message: 'Photo selected successfully', isSuccess: true });
+    }
   };
 
   // Reset form
@@ -181,6 +184,8 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
     setPayType('Hourly');
     setPayAmount('500');
     setPayFreq('Weekly');
+    setShowPayTypeDropdown(false);
+    setShowPayFreqDropdown(false);
     setNotes('');
     setErrors({});
   };
@@ -284,8 +289,8 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
           workingTimeEnd,
           isDifferentDays: employmentType === 'Part-Time' ? isDifferentDays : false,
           dayWiseHours: employmentType === 'Part-Time' ? dayWiseArray : [],
-          startDate: employmentType === 'Temporary' ? startDate : '',
-          endDate: employmentType === 'Temporary' ? endDate : '',
+          startDate: employmentType === 'Temporary' ? (validateDateString(startDate, 'start date').normalized || startDate) : '',
+          endDate: employmentType === 'Temporary' ? (validateDateString(endDate, 'end date').normalized || endDate) : '',
         },
         compensation: {
           payType,
@@ -333,8 +338,8 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
             {/* Header */}
             <View style={styles.modalHeader}>
               <View style={styles.headerLeft}>
-                <View style={styles.headerIconWrap}>
-                  <MaterialIcons name="group-add" size={20} color="#7C3AED" />
+                <View style={[styles.headerIconWrap, { backgroundColor: isDark ? 'rgba(0, 56, 130, 0.25)' : '#EEF4FF' }]}>
+                  <MaterialIcons name="group-add" size={20} color={AppColors.primaryColor} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.modalTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
@@ -371,12 +376,12 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       style={[
                         styles.photoPlaceholder,
                         {
-                          backgroundColor: isDark ? 'rgba(124, 58, 237, 0.12)' : '#F5F3FF',
-                          borderColor: isDark ? 'rgba(124, 58, 237, 0.35)' : '#DDD6FE',
+                          backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                          borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
                         },
                       ]}
                     >
-                      <MaterialIcons name="add-a-photo" size={24} color="#7C3AED" />
+                      <MaterialIcons name="add-a-photo" size={22} color={AppColors.primaryColor} />
                       <Text style={styles.photoPlaceholderText}>Photo</Text>
                     </View>
                   )}
@@ -554,8 +559,8 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       styles.typeCard,
                       employmentType === 'Temporary'
                         ? {
-                            backgroundColor: isDark ? 'rgba(124, 58, 237, 0.16)' : '#F5F3FF',
-                            borderColor: '#7C3AED',
+                            backgroundColor: isDark ? 'rgba(0, 56, 130, 0.2)' : '#EEF4FF',
+                            borderColor: AppColors.primaryColor,
                           }
                         : {
                             backgroundColor: isDark ? AppColors.darkSurface : '#FFFFFF',
@@ -568,8 +573,8 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                     <View style={styles.typeCardHeader}>
                       <MaterialIcons
                         name="event"
-                        size={20}
-                        color={employmentType === 'Temporary' ? '#7C3AED' : '#94A3B8'}
+                        size={19}
+                        color={employmentType === 'Temporary' ? AppColors.primaryColor : '#94A3B8'}
                       />
                       <Text
                         style={[
@@ -577,7 +582,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                           {
                             color:
                               employmentType === 'Temporary'
-                                ? '#7C3AED'
+                                ? AppColors.primaryColor
                                 : isDark
                                 ? '#FFFFFF'
                                 : '#0F172A',
@@ -603,8 +608,8 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       styles.typeCard,
                       employmentType === 'Part-Time'
                         ? {
-                            backgroundColor: isDark ? 'rgba(8, 145, 178, 0.16)' : '#ECFEFF',
-                            borderColor: '#0891B2',
+                            backgroundColor: isDark ? 'rgba(0, 56, 130, 0.2)' : '#EEF4FF',
+                            borderColor: AppColors.primaryColor,
                           }
                         : {
                             backgroundColor: isDark ? AppColors.darkSurface : '#FFFFFF',
@@ -617,8 +622,8 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                     <View style={styles.typeCardHeader}>
                       <MaterialIcons
                         name="schedule"
-                        size={20}
-                        color={employmentType === 'Part-Time' ? '#0891B2' : '#94A3B8'}
+                        size={19}
+                        color={employmentType === 'Part-Time' ? AppColors.primaryColor : '#94A3B8'}
                       />
                       <Text
                         style={[
@@ -626,7 +631,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                           {
                             color:
                               employmentType === 'Part-Time'
-                                ? '#0891B2'
+                                ? AppColors.primaryColor
                                 : isDark
                                 ? '#FFFFFF'
                                 : '#0F172A',
@@ -654,14 +659,14 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                   style={[
                     styles.subSectionBox,
                     {
-                      backgroundColor: isDark ? 'rgba(124, 58, 237, 0.08)' : '#FAF5FF',
-                      borderColor: isDark ? 'rgba(124, 58, 237, 0.25)' : '#E9D5FF',
+                      backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                     },
                   ]}
                 >
                   <View style={styles.subSectionHeader}>
-                    <MaterialIcons name="date-range" size={17} color="#7C3AED" />
-                    <Text style={[styles.subSectionTitle, { color: isDark ? '#DDD6FE' : '#6B21A8' }]}>
+                    <MaterialIcons name="date-range" size={17} color={AppColors.primaryColor} />
+                    <Text style={[styles.subSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                       Engagement Period (For Temporary Staff)
                     </Text>
                   </View>
@@ -669,7 +674,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                   <View style={styles.rowTwoCols}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
-                        Start Date (YYYY-MM-DD)
+                        Start Date (DD-MM-YYYY)
                       </Text>
                       <TextInput
                         value={startDate}
@@ -677,7 +682,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                           setStartDate(val);
                           clearFieldError('startDate');
                         }}
-                        placeholder="2026-11-04"
+                        placeholder="28-11-2026"
                         placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                         style={[
                           styles.input,
@@ -695,7 +700,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
 
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
-                        End Date (YYYY-MM-DD)
+                        End Date (DD-MM-YYYY)
                       </Text>
                       <TextInput
                         value={endDate}
@@ -703,7 +708,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                           setEndDate(val);
                           clearFieldError('endDate');
                         }}
-                        placeholder="2026-12-04"
+                        placeholder="28-12-2026"
                         placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
                         style={[
                           styles.input,
@@ -735,13 +740,13 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                         style={[
                           styles.durationChip,
                           {
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#FFFFFF',
-                            borderColor: isDark ? 'rgba(124, 58, 237, 0.4)' : '#DDD6FE',
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
+                            borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
                           },
                         ]}
                         onPress={() => handleAddMonthsToEndDate(opt.months)}
                       >
-                        <Text style={[styles.durationChipText, { color: isDark ? '#C084FC' : '#7C3AED' }]}>
+                        <Text style={[styles.durationChipText, { color: isDark ? '#E2E8F0' : '#334155' }]}>
                           {opt.label}
                         </Text>
                       </TouchableOpacity>
@@ -820,10 +825,13 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                             styles.timeBtn,
                             {
                               backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                              borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                              borderColor: errors.workingTime ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                             },
                           ]}
-                          onPress={() => setTimePickerTarget({ type: 'global-start' })}
+                          onPress={() => {
+                            clearFieldError('workingTime');
+                            setTimePickerTarget({ type: 'global-start' });
+                          }}
                         >
                           <MaterialIcons name="schedule" size={16} color={AppColors.primaryColor} />
                           <Text style={[styles.timeBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
@@ -841,10 +849,13 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                             styles.timeBtn,
                             {
                               backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                              borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                              borderColor: errors.workingTime ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                             },
                           ]}
-                          onPress={() => setTimePickerTarget({ type: 'global-end' })}
+                          onPress={() => {
+                            clearFieldError('workingTime');
+                            setTimePickerTarget({ type: 'global-end' });
+                          }}
                         >
                           <MaterialIcons name="schedule" size={16} color={AppColors.primaryColor} />
                           <Text style={[styles.timeBtnText, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
@@ -853,6 +864,9 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                         </TouchableOpacity>
                       </View>
                     </View>
+                  )}
+                  {errors.workingTime && (
+                    <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{errors.workingTime}</Text>
                   )}
 
                   {/* Different time for different days toggle */}
@@ -936,54 +950,47 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                 ]}
               >
                 <View style={styles.subSectionHeader}>
-                  <MaterialIcons name="payments" size={17} color={AppColors.successGreen} />
+                  <MaterialIcons name="payments" size={17} color={AppColors.primaryColor} />
                   <Text style={[styles.subSectionTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                     Pay & Compensation
                   </Text>
                 </View>
 
-                {/* Pay Type Chips */}
-                <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
-                  Pay Type <Text style={styles.requiredStar}>*</Text>
-                </Text>
-                <View style={styles.chipsWrap}>
-                  {PAY_TYPES.map((pt) => {
-                    const isSelected = payType === pt.key;
-                    return (
-                      <TouchableOpacity
-                        key={pt.key}
-                        style={[
-                          styles.chipItem,
-                          isSelected
-                            ? {
-                                backgroundColor: AppColors.primaryColor,
-                                borderColor: AppColors.primaryColor,
-                              }
-                            : {
-                                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                              },
-                        ]}
-                        onPress={() => setPayType(pt.key)}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            {
-                              color: isSelected ? '#FFFFFF' : isDark ? '#CBD5E1' : '#475569',
-                              fontWeight: isSelected ? '700' : '500',
-                            },
-                          ]}
-                        >
-                          {pt.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                {/* Pay Type & Amount */}
+                <View style={styles.rowTwoCols}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
+                      Pay Type <Text style={styles.requiredStar}>*</Text>
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                          borderColor: showPayTypeDropdown ? AppColors.primaryColor : (isDark ? AppColors.darkBorder : '#E2E8F0'),
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          height: 44,
+                        },
+                      ]}
+                      onPress={() => {
+                        setShowPayTypeDropdown(!showPayTypeDropdown);
+                        setShowPayFreqDropdown(false);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ fontSize: 13.5, fontWeight: '600', color: isDark ? '#FFFFFF' : '#0F172A' }}>
+                        {PAY_TYPES.find((pt) => pt.key === payType)?.label || payType}
+                      </Text>
+                      <MaterialIcons
+                        name={showPayTypeDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                        size={20}
+                        color={isDark ? '#94A3B8' : '#64748B'}
+                      />
+                    </TouchableOpacity>
+                  </View>
 
-                {/* Amount & Frequency */}
-                <View style={[styles.rowTwoCols, { marginTop: 8 }]}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
                       Amount (₹) <Text style={styles.requiredStar}>*</Text>
@@ -1004,6 +1011,7 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       style={[
                         styles.input,
                         {
+                          height: 44,
                           backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
                           borderColor: errors.payAmount ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                           color: isDark ? '#FFFFFF' : '#0F172A',
@@ -1015,42 +1023,137 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                       <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 4 }}>{errors.payAmount}</Text>
                     )}
                   </View>
+                </View>
 
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
-                      Payout Frequency
+                {showPayTypeDropdown && (
+                  <View
+                    style={{
+                      backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                      borderRadius: 12,
+                      marginTop: 8,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {PAY_TYPES.map((pt) => {
+                      const isSelected = payType === pt.key;
+                      return (
+                        <TouchableOpacity
+                          key={pt.key}
+                          style={{
+                            paddingVertical: 11,
+                            paddingHorizontal: 14,
+                            backgroundColor: isSelected
+                              ? (isDark ? 'rgba(0, 56, 130, 0.28)' : '#EFF6FF')
+                              : 'transparent',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            borderBottomWidth: 1,
+                            borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                          }}
+                          onPress={() => {
+                            setPayType(pt.key);
+                            setShowPayTypeDropdown(false);
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isSelected ? '700' : '500',
+                              color: isSelected ? AppColors.primaryColor : (isDark ? '#FFFFFF' : '#0F172A'),
+                            }}
+                          >
+                            {pt.label}
+                          </Text>
+                          {isSelected && <MaterialIcons name="check" size={18} color={AppColors.primaryColor} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Payout Frequency Dropdown */}
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[styles.fieldLabel, { color: isDark ? '#E2E8F0' : '#334155' }]}>
+                    Payment Frequency <Text style={styles.requiredStar}>*</Text>
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                        borderColor: showPayFreqDropdown ? AppColors.primaryColor : (isDark ? AppColors.darkBorder : '#E2E8F0'),
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        height: 44,
+                      },
+                    ]}
+                    onPress={() => {
+                      setShowPayFreqDropdown(!showPayFreqDropdown);
+                      setShowPayTypeDropdown(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ fontSize: 13.5, fontWeight: '600', color: isDark ? '#FFFFFF' : '#0F172A' }}>
+                      {payFreq}
                     </Text>
-                    <View style={styles.chipsWrap}>
-                      {['Daily', 'Weekly', 'Monthly'].map((f) => {
+                    <MaterialIcons
+                      name={showPayFreqDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                      size={20}
+                      color={isDark ? '#94A3B8' : '#64748B'}
+                    />
+                  </TouchableOpacity>
+                  {showPayFreqDropdown && (
+                    <View
+                      style={{
+                        backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                        borderWidth: 1,
+                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        borderRadius: 12,
+                        marginTop: 8,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {PAY_FREQUENCIES.map((f) => {
                         const isSelected = payFreq === f;
                         return (
                           <TouchableOpacity
                             key={f}
-                            style={[
-                              styles.chipItemMini,
-                              isSelected
-                                ? { backgroundColor: '#7C3AED', borderColor: '#7C3AED' }
-                                : {
-                                    backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                                  },
-                            ]}
-                            onPress={() => setPayFreq(f)}
+                            style={{
+                              paddingVertical: 11,
+                              paddingHorizontal: 14,
+                              backgroundColor: isSelected
+                                ? (isDark ? 'rgba(0, 56, 130, 0.28)' : '#EFF6FF')
+                                : 'transparent',
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              borderBottomWidth: 1,
+                              borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                            }}
+                            onPress={() => {
+                              setPayFreq(f);
+                              setShowPayFreqDropdown(false);
+                            }}
                           >
                             <Text
                               style={{
-                                fontSize: 11,
+                                fontSize: 13,
                                 fontWeight: isSelected ? '700' : '500',
-                                color: isSelected ? '#FFFFFF' : isDark ? '#CBD5E1' : '#475569',
+                                color: isSelected ? AppColors.primaryColor : (isDark ? '#FFFFFF' : '#0F172A'),
                               }}
                             >
                               {f}
                             </Text>
+                            {isSelected && <MaterialIcons name="check" size={18} color={AppColors.primaryColor} />}
                           </TouchableOpacity>
                         );
                       })}
                     </View>
-                  </View>
+                  )}
                 </View>
               </View>
 
@@ -1077,18 +1180,18 @@ export const AddTempStaffModal = ({ visible, onClose, onSuccess }) => {
                 />
               </View>
 
-              {/* Deactivation Notice Banner (Exact Web Copy) */}
+              {/* Deactivation Notice Banner */}
               <View
                 style={[
                   styles.deactivationBanner,
                   {
-                    backgroundColor: isDark ? 'rgba(124, 58, 237, 0.12)' : '#F5F3FF',
-                    borderColor: isDark ? 'rgba(124, 58, 237, 0.3)' : '#DDD6FE',
+                    backgroundColor: isDark ? AppColors.darkSurface : '#F8FAFC',
+                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                   },
                 ]}
               >
-                <MaterialIcons name="info-outline" size={18} color="#7C3AED" />
-                <Text style={[styles.deactivationBannerText, { color: isDark ? '#DDD6FE' : '#6B21A8' }]}>
+                <MaterialIcons name="info-outline" size={18} color={isDark ? '#94A3B8' : '#64748B'} />
+                <Text style={[styles.deactivationBannerText, { color: isDark ? '#CBD5E1' : '#475569' }]}>
                   Temporary staff will be automatically deactivated after the engagement end date.
                 </Text>
               </View>
@@ -1278,7 +1381,7 @@ const styles = StyleSheet.create({
     height: 68,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: '#7C3AED',
+    borderColor: AppColors.primaryColor,
   },
   photoPlaceholder: {
     width: 68,
@@ -1293,13 +1396,13 @@ const styles = StyleSheet.create({
   photoPlaceholderText: {
     fontSize: 9.5,
     fontWeight: '700',
-    color: '#7C3AED',
+    color: AppColors.primaryColor,
   },
   photoEditBadge: {
     position: 'absolute',
     bottom: -3,
     right: -3,
-    backgroundColor: '#7C3AED',
+    backgroundColor: AppColors.primaryColor,
     width: 20,
     height: 20,
     borderRadius: 10,

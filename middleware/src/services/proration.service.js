@@ -6,6 +6,7 @@ import { Wallet } from '../models/wallet.model.js';
 import Employee from '../models/employee.model.js';
 import Counter from '../models/counter.model.js';
 import { ApiError } from '../utils/apiError.js';
+import { refundPaymentForReference } from './razorpay.service.js';
 
 const TIER_PRICE_KEYS = {
   Monthly: 'monthly',
@@ -430,11 +431,26 @@ export class ProrationEngine {
       };
     };
 
+    const triggerDowngradeRefundIfNeeded = async (res) => {
+      const leftover = res?.previousMembership?.switchMetadata?.leftoverCreditPaise || 0;
+      const actionTaken = res?.previousMembership?.switchMetadata?.leftoverActionTaken;
+      if (leftover > 0 && actionTaken === 'REFUNDED') {
+        await refundPaymentForReference({
+          referenceId: res.previousMembership._id,
+          amountPaise: leftover,
+          reason: `Plan switch downgrade refund (${res.request?.requestId || res.previousMembership.membershipTier})`,
+          initiatedBy: 'SYSTEM',
+        }).catch((err) => console.warn('Razorpay plan switch downgrade refund warning:', err.message));
+      }
+      return res;
+    };
+
     const topologyType = mongoose.connection?.client?.topology?.description?.type;
     const supportsTransactions = ['ReplicaSetWithPrimary', 'ReplicaSetNoPrimary', 'Sharded'].includes(topologyType);
 
     if (!supportsTransactions) {
-      return runExecution(null);
+      const res = await runExecution(null);
+      return triggerDowngradeRefundIfNeeded(res);
     }
 
     const session = await mongoose.startSession();
@@ -443,12 +459,13 @@ export class ProrationEngine {
       const result = await runExecution(session);
       await session.commitTransaction();
       session.endSession();
-      return result;
+      return triggerDowngradeRefundIfNeeded(result);
     } catch (error) {
       await session.abortTransaction().catch(() => {});
       session.endSession();
       if (error?.code === 20 || String(error?.message || '').includes('replica set member or mongos')) {
-        return runExecution(null);
+        const res = await runExecution(null);
+        return triggerDowngradeRefundIfNeeded(res);
       }
       throw error;
     }

@@ -11,6 +11,9 @@ import {
   getAdminCustomerReports,
   getAdminPartnerSubscriptions,
   updateAdminPartnerSubscription,
+  createGymRazorpayAccount,
+  getRazorpayPayments,
+  executeSettlementTransfer,
 } from '../controllers/admin.controller.js';
 import { getAdminGymsFleet, getGymOptions } from '../controllers/gym.controller.js';
 import {
@@ -49,6 +52,9 @@ router.get('/bookings', getAdminBookings);
 // All Financial Transactions & Payments Fleet (Super Admin)
 router.get('/transactions', getAdminTransactions);
 router.get('/payments', getAdminTransactions);
+router.get('/razorpay-payments', getRazorpayPayments);
+router.post('/gyms/:id/razorpay-account', createGymRazorpayAccount);
+router.post('/settlements/:transactionId/transfer', executeSettlementTransfer);
 
 // All Gym Memberships Fleet (Super Admin)
 router.get('/memberships', getAdminAllGymMemberships);

@@ -6,35 +6,17 @@ class MembershipService {
    * @param {Object} payload - { gymId, membershipTier, startDate, trainerId, trainerSlot, paymentMethod, transactionId, userId }
    */
   async buyMembership(payload) {
-    try {
-      const response = await apiService.executeFetch('/memberships', {
-        method: 'POST',
-        headers: apiService.getHeaders(),
-        body: JSON.stringify(payload),
-      }, 5000);
+    const response = await apiService.executeFetch('/memberships', {
+      method: 'POST',
+      headers: apiService.getHeaders(),
+      body: JSON.stringify(payload),
+    }, 10000);
 
-      const json = await response.json();
-      if (response.ok && json.success) {
-        return json.data;
-      }
-      console.warn('[MEMBERSHIP SERVICE] Backend returned non-success, using simulated 200 OK confirmation:', json?.message);
-    } catch (error) {
-      console.warn('[MEMBERSHIP SERVICE] Payment gateway / backend timeout, simulating 200 OK response:', error.message);
+    const json = await response.json();
+    if (!response.ok || !json.success) {
+      throw new Error(json?.message || 'Failed to create membership.');
     }
-
-    // Direct simulated 200 OK confirmation (Gateway not implemented yet)
-    return {
-      _id: `mock_mem_${Date.now()}`,
-      membershipId: `MEM00${Math.floor(100 + Math.random() * 900)}`,
-      membershipTier: payload.membershipTier,
-      startDate: payload.startDate,
-      status: 'Active',
-      paymentMethod: payload.paymentMethod || 'UPI',
-      pricing: {
-        totalAmount: payload.totalAmount || 0,
-      },
-      isSimulatedSuccess: true,
-    };
+    return json.data;
   }
 
   /**

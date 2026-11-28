@@ -5,7 +5,7 @@ export const BOOKING_TYPES = ['SECTION', 'GROUP_CLASS', 'GYM_SESSION'];
 export const BOOKING_STATUS = ['Upcoming', 'Active', 'Completed', 'Cancelled', 'Cancellation_Requested'];
 export const BOOKING_CANCELLATION_STATUS = ['PENDING_GYM_APPROVAL', 'APPROVED', 'REJECTED', 'DIRECT_CANCELLED'];
 export const BOOKING_SOURCES = ['APP', 'WALK_IN'];
-export const PAYMENT_METHODS = ['UPI', 'Card', 'Net Banking', 'Cash', 'Wallet', 'Online', 'GPay', 'POS', 'COD'];
+export const PAYMENT_METHODS = ['Razorpay', 'UPI', 'Card', 'Net Banking', 'Cash', 'Wallet', 'Online', 'GPay', 'POS', 'COD'];
 export const PAYMENT_STATUS = ['Completed', 'Pending', 'Failed', 'Refunded'];
 
 const bookingSchema = new mongoose.Schema(

@@ -11,6 +11,7 @@ import {
   Platform,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
@@ -21,6 +22,7 @@ import { useBookingRepository } from '../data/BookingContext';
 import { useToast } from '../widgets/CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { membershipService } from '../services/membershipService';
+import { paymentService } from '../services/paymentService';
 import { apiService } from '../services/apiService';
 import { gymService } from '../services/gymService';
 import { getSafeImageUri, DEFAULT_TRAINER_AVATAR } from '../utils/mediaUtils';
@@ -500,7 +502,16 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
         totalAmount,
       };
 
-      const result = await membershipService.buyMembership(payload);
+      const result = await paymentService.payWithRazorpay({
+        flowType: 'MEMBERSHIP_PURCHASE',
+        payload,
+        description: `${selectedPlan} Membership - ${gym.name}`,
+        prefill: {
+          name: user?.fullName || user?.name || '',
+          email: user?.email || '',
+          contact: user?.phone || '',
+        },
+      });
 
       const generatedId = result?.membershipId || `MEM00${Math.floor(100 + Math.random() * 900)}`;
       const uniqueDocId = result?._id ? String(result._id) : `mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -519,7 +530,7 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
         startDate: formatDate(validStartDate),
         endDate: formatDate(endDate),
         rawStartDate: result?.startDate || startDateIso,
-        paymentMode: selectedPaymentMethod,
+        paymentMode: 'Razorpay',
         status: result?.status || expectedStatus,
         hasPersonalTrainer: isSelectedWithTrainer,
         trainerName: isSelectedWithTrainer ? selectedTrainer : null,
@@ -530,36 +541,11 @@ export const BuyMembershipScreen = ({ route, navigation }) => {
       addMembership(newMembership);
       setConfirmedMembership(newMembership);
     } catch (error) {
-      console.warn('[BUY MEMBERSHIP] Purchase error, completing with 200 OK simulated confirmation:', error.message);
-      const isSelectedWithTrainer = withTrainer && selectedTrainer && selectedTrainer !== 'No Personal Trainer';
-      const fallbackDocId = `mock_mem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const validStartDate = startDate instanceof Date && !Number.isNaN(startDate.getTime()) ? startDate : new Date();
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const selectedDayStart = new Date(validStartDate.getFullYear(), validStartDate.getMonth(), validStartDate.getDate());
-      const fallbackStatus = selectedDayStart > todayStart ? 'Upcoming' : 'Active';
-      const fallbackMembership = {
-        id: fallbackDocId,
-        membershipId: `MEM00${Math.floor(100 + Math.random() * 900)}`,
-        _id: fallbackDocId,
-        customerId: user?.fullName || user?.name || user?.email || 'Member',
-        gymName: gym.name,
-        gymLocation: gym.location,
-        gymImageUrl: gym.imageUrl,
-        planName: `${selectedPlan} Membership`,
-        durationDays: plans[selectedPlan]?.duration,
-        amountPaid: totalAmount,
-        startDate: formatDate(validStartDate),
-        endDate: formatDate(endDate),
-        paymentMode: selectedPaymentMethod,
-        status: fallbackStatus,
-        hasPersonalTrainer: isSelectedWithTrainer,
-        trainerName: isSelectedWithTrainer ? selectedTrainer : null,
-        trainerSchedule: isSelectedWithTrainer ? trainerSchedule : null,
-        trainerFee: actualTrainerFee,
-      };
-      addMembership(fallbackMembership);
-      setConfirmedMembership(fallbackMembership);
+      Alert.alert(
+        'Payment Failed',
+        error?.message || 'Unable to complete Razorpay payment. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsProcessing(false);
     }

@@ -248,7 +248,6 @@ export const EmployeeManagement = ({
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [attendanceFilter, setAttendanceFilter] = useState('ALL');
-  const [staffTypeFilter, setStaffTypeFilter] = useState('ALL');
   const [selectedDateRange, setSelectedDateRange] = useState(`${todayFormatted} - ${oneYearLaterFormatted}`);
   const [isDifferentDays, setIsDifferentDays] = useState(false);
   const [dayWiseHours, setDayWiseHours] = useState({});
@@ -260,7 +259,7 @@ export const EmployeeManagement = ({
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedNamePhoneSearch, roleFilter, statusFilter, staffTypeFilter]);
+  }, [debouncedNamePhoneSearch, roleFilter, statusFilter]);
 
   // Fetch live employees from server with pagination & filters
   const loadEmployees = async (page = currentPage, limit = pageSize) => {
@@ -275,7 +274,6 @@ export const EmployeeManagement = ({
       if (debouncedNamePhoneSearch?.trim()) params.search = debouncedNamePhoneSearch.trim();
       if (roleFilter && roleFilter !== 'ALL') params.role = roleFilter;
       if (statusFilter && statusFilter !== 'ALL') params.status = statusFilter;
-      if (staffTypeFilter && staffTypeFilter !== 'ALL') params.type = staffTypeFilter;
 
       const response = await apiClient.get('/employees', { params });
       const rawData = response.data?.data;
@@ -306,7 +304,7 @@ export const EmployeeManagement = ({
 
   useEffect(() => {
     loadEmployees(currentPage, pageSize);
-  }, [gymId, gymPartnerId, currentPage, pageSize, debouncedNamePhoneSearch, roleFilter, statusFilter, staffTypeFilter]);
+  }, [gymId, gymPartnerId, currentPage, pageSize, debouncedNamePhoneSearch, roleFilter, statusFilter]);
 
   const currentMonthName = useMemo(() => {
     return new Date().toLocaleDateString('en-GB', { month: 'long' });
@@ -507,19 +505,17 @@ export const EmployeeManagement = ({
       item.employeeId?.toLowerCase().includes(searchLower);
 
     const matchRole = roleFilter === 'ALL' || item.role === roleFilter;
-    const matchType = staffTypeFilter === 'ALL' || (item.type || 'Full-Time') === staffTypeFilter;
     const matchStatus =
       statusFilter === 'ALL' ||
       item.status === statusFilter ||
       item.approvalStatus === statusFilter;
-    return matchSearch && matchRole && matchType && matchStatus;
+    return matchSearch && matchRole && matchStatus;
   });
 
   const clearFilters = () => {
     setNamePhoneSearch('');
     setRoleFilter('ALL');
     setStatusFilter('ALL');
-    setStaffTypeFilter('ALL');
     message.info('Filters cleared');
   };
 
@@ -708,17 +704,17 @@ export const EmployeeManagement = ({
       notes: values.notes !== undefined ? values.notes : (selectedEmployee.notes || ''),
       managerPermissions: isManager
         ? (selectedEmployee.managerPermissions || {
-            requireStaffApproval: true,
-            requirePlanSwitchApproval: true,
-            requireCancellationApproval: true,
-            requireProfileEditApproval: true,
-          })
+          requireStaffApproval: true,
+          requirePlanSwitchApproval: true,
+          requireCancellationApproval: true,
+          requireProfileEditApproval: true,
+        })
         : {
-            requireStaffApproval: values.requireStaffApproval !== undefined ? values.requireStaffApproval : (selectedEmployee.managerPermissions?.requireStaffApproval ?? true),
-            requirePlanSwitchApproval: values.requirePlanSwitchApproval !== undefined ? values.requirePlanSwitchApproval : (selectedEmployee.managerPermissions?.requirePlanSwitchApproval ?? true),
-            requireCancellationApproval: values.requireCancellationApproval !== undefined ? values.requireCancellationApproval : (selectedEmployee.managerPermissions?.requireCancellationApproval ?? true),
-            requireProfileEditApproval: values.requireProfileEditApproval !== undefined ? values.requireProfileEditApproval : (selectedEmployee.managerPermissions?.requireProfileEditApproval ?? true),
-          },
+          requireStaffApproval: values.requireStaffApproval !== undefined ? values.requireStaffApproval : (selectedEmployee.managerPermissions?.requireStaffApproval ?? true),
+          requirePlanSwitchApproval: values.requirePlanSwitchApproval !== undefined ? values.requirePlanSwitchApproval : (selectedEmployee.managerPermissions?.requirePlanSwitchApproval ?? true),
+          requireCancellationApproval: values.requireCancellationApproval !== undefined ? values.requireCancellationApproval : (selectedEmployee.managerPermissions?.requireCancellationApproval ?? true),
+          requireProfileEditApproval: values.requireProfileEditApproval !== undefined ? values.requireProfileEditApproval : (selectedEmployee.managerPermissions?.requireProfileEditApproval ?? true),
+        },
     };
 
     try {
@@ -936,6 +932,25 @@ export const EmployeeManagement = ({
       if (!workingDays || workingDays.length === 0) {
         message.warning('Please select at least one working day for part-time staff.');
         return;
+      }
+      if (!isDifferentDays) {
+        if (!values.workingTimeStart || !values.workingTimeEnd) {
+          message.warning('Please select start and end working time.');
+          return;
+        }
+        if (values.workingTimeEnd.format('HH:mm') <= values.workingTimeStart.format('HH:mm')) {
+          message.warning('End time must be after start time.');
+          return;
+        }
+      } else {
+        for (const d of workingDays) {
+          const s = dayWiseHours[d]?.startTime;
+          const e = dayWiseHours[d]?.endTime;
+          if (s && e && e.format('HH:mm') <= s.format('HH:mm')) {
+            message.warning(`${d}: End time must be after start time.`);
+            return;
+          }
+        }
       }
     }
 
@@ -1346,65 +1361,6 @@ export const EmployeeManagement = ({
           );
         }
         return <Tag>{status}</Tag>;
-      },
-    },
-    {
-      title: "Today's Attendance",
-      dataIndex: 'attendance',
-      key: 'attendance',
-      render: (att) => {
-        if (att === 'Present') {
-          return (
-            <Tag
-              style={{
-                backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.15)' : '#eaf8ef',
-                color: '#00bf62',
-                border: 'none',
-                borderRadius: 'var(--radius-base)',
-                fontWeight: 600,
-                fontSize: 11,
-                padding: '2px 10px',
-              }}
-            >
-              Present
-            </Tag>
-          );
-        }
-        if (att === 'Absent') {
-          return (
-            <Tag
-              style={{
-                backgroundColor: isDarkMode ? 'rgba(225, 29, 72, 0.15)' : '#fdeeed',
-                color: '#e11d48',
-                border: 'none',
-                borderRadius: 'var(--radius-base)',
-                fontWeight: 600,
-                fontSize: 11,
-                padding: '2px 10px',
-              }}
-            >
-              Absent
-            </Tag>
-          );
-        }
-        if (att === 'On Leave') {
-          return (
-            <Tag
-              style={{
-                backgroundColor: isDarkMode ? 'rgba(250, 140, 22, 0.15)' : '#fef4e8',
-                color: '#fa8c16',
-                border: 'none',
-                borderRadius: 'var(--radius-base)',
-                fontWeight: 600,
-                fontSize: 11,
-                padding: '2px 10px',
-              }}
-            >
-              On Leave
-            </Tag>
-          );
-        }
-        return <span style={{ color: isDarkMode ? '#666666' : '#94a3b8' }}>—</span>;
       },
     },
     {
@@ -1825,43 +1781,8 @@ export const EmployeeManagement = ({
       {/* EMPLOYEES TABLE CARD */}
       <Card
         title={
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
-              Employees
-            </div>
-            {/* Filter Segment Tabs */}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {[
-                { key: 'ALL', label: 'All Staff' },
-                { key: 'Full-Time', label: 'Full-Time' },
-                { key: 'Part-Time', label: 'Part-Time' },
-                { key: 'Temporary', label: 'Temporary' },
-              ].map((tab) => {
-                const count = isLoadingEmployees
-                  ? 0
-                  : tab.key === 'ALL'
-                  ? totalServerEmployees || employeesList.length
-                  : employeesList.filter((e) => (e.type || 'Full-Time') === tab.key).length;
-                const isSelected = staffTypeFilter === tab.key;
-                return (
-                  <Button
-                    key={tab.key}
-                    size="small"
-                    onClick={() => setStaffTypeFilter(tab.key)}
-                    type={isSelected ? 'primary' : 'default'}
-                    style={{
-                      borderRadius: 16,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      height: 30,
-                      padding: '0 12px',
-                    }}
-                  >
-                    {tab.label} ({count})
-                  </Button>
-                );
-              })}
-            </div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a' }}>
+            Employees
           </div>
         }
       >
@@ -2013,8 +1934,12 @@ export const EmployeeManagement = ({
                     input.onchange = (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 2 * 1024 * 1024) {
-                        message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
+                      if (!file.type.startsWith('image/')) {
+                        message.error('Only image files (JPG, PNG) are supported.');
+                        return;
+                      }
+                      if (file.size > 1024 * 1024) {
+                        message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -3116,8 +3041,12 @@ export const EmployeeManagement = ({
                     input.onchange = (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 2 * 1024 * 1024) {
-                        message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
+                      if (!file.type.startsWith('image/')) {
+                        message.error('Only image files (JPG, PNG) are supported.');
+                        return;
+                      }
+                      if (file.size > 1024 * 1024) {
+                        message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -3136,8 +3065,8 @@ export const EmployeeManagement = ({
                       message.error('Please drop an image file (JPG, PNG).');
                       return;
                     }
-                    if (file.size > 2 * 1024 * 1024) {
-                        message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
+                    if (file.size > 1024 * 1024) {
+                      message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
                       return;
                     }
                     const reader = new FileReader();
@@ -3165,7 +3094,7 @@ export const EmployeeManagement = ({
                     <>
                       <CameraOutlined style={{ fontSize: 28, color: '#722ed1', marginBottom: 6 }} />
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: '#722ed1' }}>Upload Photo</div>
-                      <div style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2 }}>JPG, PNG (Max 2MB)</div>
+                      <div style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2 }}>JPG, PNG (Max 1MB)</div>
                     </>
                   )}
                 </div>
@@ -4212,8 +4141,12 @@ export const EmployeeManagement = ({
                       input.onchange = (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        if (file.size > 2 * 1024 * 1024) {
-                          message.error('Staff photo exceeds 2MB limit. Please select an image under 2MB.');
+                        if (!file.type.startsWith('image/')) {
+                          message.error('Only image files (JPG, PNG) are supported.');
+                          return;
+                        }
+                        if (file.size > 1024 * 1024) {
+                          message.error('Staff photo exceeds 1MB limit. Please select an image under 1MB.');
                           return;
                         }
                         const reader = new FileReader();
@@ -4232,8 +4165,8 @@ export const EmployeeManagement = ({
                         message.error('Please drop an image file (JPG, PNG).');
                         return;
                       }
-                      if (file.size > 2 * 1024 * 1024) {
-                        message.error('Staff photo exceeds 2MB limit. Please select an image under 2MB.');
+                      if (file.size > 1024 * 1024) {
+                        message.error('Staff photo exceeds 1MB limit. Please select an image under 1MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -4261,7 +4194,7 @@ export const EmployeeManagement = ({
                       <>
                         <CameraOutlined style={{ fontSize: 24, color: '#722ed1', marginBottom: 4 }} />
                         <div style={{ fontSize: 11.5, fontWeight: 700, color: '#722ed1' }}>Upload Photo</div>
-                        <div style={{ fontSize: 9.5, color: isDarkMode ? '#888888' : '#64748b' }}>JPG, PNG (Max 2MB)</div>
+                        <div style={{ fontSize: 9.5, color: isDarkMode ? '#888888' : '#64748b' }}>JPG, PNG (Max 1MB)</div>
                       </>
                     )}
                   </div>
@@ -4328,17 +4261,11 @@ export const EmployeeManagement = ({
                 <Input placeholder="Enter email address" style={{ height: 38, borderRadius: 'var(--radius-base)' }} />
               </Form.Item>
 
-              <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12 }}>Role / Designation</span>} name="role" initialValue="Trainer" rules={[{ required: true }]} style={{ marginBottom: 4 }}>
+              <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12 }}>Role / Designation</span>} name="role" initialValue="Trainer" rules={[{ required: true }]} style={{ marginBottom: 14 }}>
                 <Select style={{ height: 38 }}>
                   <Option value="Trainer">Trainer</Option>
-                  <Option value="Coach">Coach</Option>
-                  <Option value="Yoga Instructor">Yoga Instructor</Option>
-                  <Option value="Zumba Instructor">Zumba Instructor</Option>
                 </Select>
               </Form.Item>
-              <div style={{ fontSize: 10.5, color: isDarkMode ? '#888888' : '#64748b', marginBottom: 14 }}>
-                e.g., Trainer, Coach, Yoga Instructor
-              </div>
 
               {/* Employment Type Selection */}
               <div style={{ marginBottom: 16 }}>
@@ -4404,12 +4331,12 @@ export const EmployeeManagement = ({
                   <Row gutter={10}>
                     <Col span={12}>
                       <Form.Item label={<span style={{ fontSize: 11 }}>Start Date</span>} name="startDate" rules={[{ required: true, message: 'Select start date' }]} style={{ marginBottom: 4 }}>
-                        <DatePicker placeholder="Select start date" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
+                        <DatePicker format="DD-MM-YYYY" placeholder="DD-MM-YYYY" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
                       <Form.Item label={<span style={{ fontSize: 11 }}>End Date</span>} name="endDate" rules={[{ required: true, message: 'Select end date' }]} style={{ marginBottom: 4 }}>
-                        <DatePicker placeholder="Select end date" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
+                        <DatePicker format="DD-MM-YYYY" placeholder="DD-MM-YYYY" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
                       </Form.Item>
                     </Col>
                   </Row>
@@ -4473,15 +4400,36 @@ export const EmployeeManagement = ({
                       Working Time <span style={{ color: '#ef4444' }}>*</span>
                     </div>
                     {!isDifferentDays ? (
-                      <Row gutter={8} align="middle">
+                      <Row gutter={8} align="top">
                         <Col span={11}>
-                          <Form.Item name="workingTimeStart" noStyle>
+                          <Form.Item
+                            name="workingTimeStart"
+                            rules={[{ required: !isDifferentDays, message: 'Select start time' }]}
+                            style={{ marginBottom: 0 }}
+                          >
                             <TimePicker use12Hours format="h:mm a" placeholder="09:00 AM" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
                           </Form.Item>
                         </Col>
-                        <Col span={2} style={{ textAlign: 'center', color: '#888888' }}>to</Col>
+                        <Col span={2} style={{ textAlign: 'center', color: '#888888', lineHeight: '38px' }}>to</Col>
                         <Col span={11}>
-                          <Form.Item name="workingTimeEnd" noStyle>
+                          <Form.Item
+                            name="workingTimeEnd"
+                            dependencies={['workingTimeStart']}
+                            rules={[
+                              { required: !isDifferentDays, message: 'Select end time' },
+                              ({ getFieldValue }) => ({
+                                validator(_, value) {
+                                  const start = getFieldValue('workingTimeStart');
+                                  if (!value || !start) return Promise.resolve();
+                                  if (value.format('HH:mm') <= start.format('HH:mm')) {
+                                    return Promise.reject(new Error('End time must be after start time'));
+                                  }
+                                  return Promise.resolve();
+                                },
+                              }),
+                            ]}
+                            style={{ marginBottom: 0 }}
+                          >
                             <TimePicker use12Hours format="h:mm a" placeholder="06:00 PM" style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }} />
                           </Form.Item>
                         </Col>

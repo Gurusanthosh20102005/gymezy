@@ -18,4 +18,8 @@ export const ENV = {
   COOKIE_EXPIRES_DAYS: Number.parseInt(process.env.COOKIE_EXPIRES_DAYS || '7', 10),
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
   IS_PRODUCTION: process.env.NODE_ENV === 'production',
+  RAZORPAY_KEY_ID: (process.env.RAZORPAY_KEY_ID || '').trim(),
+  RAZORPAY_KEY_SECRET: (process.env.RAZORPAY_KEY_SECRET || '').trim(),
+  RAZORPAY_WEBHOOK_SECRET: (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim(),
+  PLATFORM_COMMISSION_PERCENT: Number.parseFloat(process.env.PLATFORM_COMMISSION_PERCENT || '10'),
 };

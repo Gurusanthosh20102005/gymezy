@@ -65,6 +65,9 @@ app.use(
   })
 );
 
+// Razorpay webhook requires raw Buffer body for HMAC signature verification before express.json()
+app.use('/api/v1/payments/webhook', express.raw({ type: 'application/json' }));
+
 // Request body parsers (50mb to allow high-res base64 media uploads before compression)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));

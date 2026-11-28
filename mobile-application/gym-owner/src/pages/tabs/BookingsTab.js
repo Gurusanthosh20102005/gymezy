@@ -9,6 +9,7 @@ import {
   TextInput,
   RefreshControl,
   ActivityIndicator,
+  Image,
   Linking,
   Alert,
 } from 'react-native';
@@ -55,10 +56,11 @@ export const BookingsTab = ({ topInset, navigation }) => {
   // Modal State
   const [showAddWalkInModal, setShowAddWalkInModal] = useState(false);
 
-  // Pagination State (SSOT Server Pagination)
+  // Pagination State (Infinite Scroll)
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
 
@@ -102,7 +104,7 @@ export const BookingsTab = ({ topInset, navigation }) => {
           customerId: b.userId?.customerId || b.customerId || (b.userId?._id ? `CUST${String(b.userId._id).slice(-4).toUpperCase()}` : '-'),
           customerName: b.userId?.fullName || b.userId?.name || b.customerName || 'Guest Visitor',
           phone: b.userId?.phone || b.phone || '',
-          avatar: b.userId?.avatar || b.userId?.profilePicture,
+          avatar: b.userId?.avatar || b.userId?.profileImage || b.userId?.profilePicture || b.customerAvatar || b.profileImage || b.avatar || null,
           type: b.bookingType === 'GROUP_CLASS'
             ? 'Group Class'
             : b.bookingType === 'GYM_SESSION'
@@ -118,12 +120,19 @@ export const BookingsTab = ({ topInset, navigation }) => {
           payment: b.payment?.method || b.paymentMethod || 'Cash',
           isCustomDates: b.isCustomDates,
           customDates: b.customDates || [],
-          trainerName: b.trainerId?.name || (typeof b.trainerId === 'string' ? b.trainerId : null),
+          trainerName: b.trainerId?.name || b.trainerName || (typeof b.trainerId === 'string' && !/^[0-9a-fA-F]{24}$/.test(b.trainerId.trim()) ? b.trainerId.trim() : null),
           cancellation: b.cancellation || null,
         };
       });
 
-      setBookings(mapped);
+      if (page > 1) {
+        setBookings((prev) => {
+          const seen = new Set(prev.map((item) => item.key));
+          return [...prev, ...mapped.filter((item) => !seen.has(item.key))];
+        });
+      } else {
+        setBookings(mapped);
+      }
       setTotalPages(res?.pagination?.totalPages || res?.totalPages || Math.ceil((res?.total || rawList.length) / 10) || 1);
       setTotalCount(res?.pagination?.total ?? res?.total ?? rawList.length);
     } catch (err) {
@@ -131,6 +140,7 @@ export const BookingsTab = ({ topInset, navigation }) => {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      setIsLoadingMore(false);
     }
   }, [targetGymId, selectedSource, selectedStatus, selectedType, debouncedSearch, page]);
 
@@ -140,8 +150,18 @@ export const BookingsTab = ({ topInset, navigation }) => {
 
   const onRefresh = async () => {
     setIsRefreshing(true);
-    await fetchBookings();
+    if (page !== 1) {
+      setPage(1);
+    } else {
+      await fetchBookings();
+    }
   };
+
+  const handleLoadMore = useCallback(() => {
+    if (isLoading || isLoadingMore || isRefreshing || page >= totalPages) return;
+    setIsLoadingMore(true);
+    setPage((prev) => prev + 1);
+  }, [isLoading, isLoadingMore, isRefreshing, page, totalPages]);
 
   // 1-Tap Check-in Action
   const handleCheckInBooking = (bookingKey) => {
@@ -228,6 +248,13 @@ export const BookingsTab = ({ topInset, navigation }) => {
           },
         ]}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={({ nativeEvent }) => {
+          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 250) {
+            handleLoadMore();
+          }
+        }}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -320,49 +347,6 @@ export const BookingsTab = ({ topInset, navigation }) => {
               </TouchableOpacity>
             )}
           </View>
-        </View>
-
-        {/* 4. Source Selector (All Sources | GYMEZY App | Front-Desk Walk-in) */}
-        <View
-          style={[
-            styles.sourceSegmentContainer,
-            {
-              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#F1F5F9',
-              borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-            },
-          ]}
-        >
-          {SOURCE_FILTERS.map((s) => {
-            const isSelected = selectedSource === s.key;
-            return (
-              <TouchableOpacity
-                key={s.key}
-                style={[
-                  styles.sourceSegmentTab,
-                  isSelected && [
-                    styles.sourceSegmentTabActive,
-                    { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF' },
-                  ],
-                ]}
-                onPress={() => setSelectedSource(s.key)}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.sourceSegmentText,
-                    {
-                      color: isSelected
-                        ? isDark ? '#FFFFFF' : '#0F172A'
-                        : isDark ? '#94A3B8' : '#64748B',
-                      fontWeight: isSelected ? '700' : '600',
-                    },
-                  ]}
-                >
-                  {s.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
         </View>
 
         {/* 5. Status Filter Horizontal Chips */}
@@ -477,95 +461,91 @@ export const BookingsTab = ({ topInset, navigation }) => {
                   ]}
                 >
                   {/* Top Customer Info Row */}
-                  <View style={styles.bookingTopRow}>
+                  <View style={[styles.bookingTopRow, { alignItems: 'flex-start' }]}>
                     <View
                       style={[
                         styles.bookingAvatar,
                         {
-                          backgroundColor: isWalkIn ? '#7C3AED' : AppColors.primaryColor,
+                          backgroundColor: isWalkIn ? '#334155' : AppColors.primaryColor,
                           alignItems: 'center',
                           justifyContent: 'center',
+                          overflow: 'hidden',
                         },
                       ]}
                     >
-                      <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 }}>
-                        {(b.customerName || 'U').substring(0, 2).toUpperCase()}
-                      </Text>
+                      {b.avatar ? (
+                        <Image
+                          source={{ uri: b.avatar }}
+                          style={{ width: '100%', height: '100%' }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>
+                          {(b.customerName || 'U').substring(0, 2).toUpperCase()}
+                        </Text>
+                      )}
                     </View>
 
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 2 }}>
-                        <Text style={[styles.bookingCustomerName, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                          {b.customerName}
-                        </Text>
-                        <View
-                          style={[
-                            styles.bookingSourceBadge,
-                            {
-                              backgroundColor: isWalkIn
-                                ? (isDark ? 'rgba(124, 58, 237, 0.25)' : '#F5F3FF')
-                                : (isDark ? 'rgba(37, 99, 235, 0.25)' : '#EFF6FF'),
-                              borderColor: isWalkIn ? '#8B5CF6' : '#3B82F6',
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.bookingSourceBadgeText,
-                              { color: isWalkIn ? '#7C3AED' : '#2563EB' },
-                            ]}
-                          >
-                            {isWalkIn ? 'WALK-IN' : 'APP'}
-                          </Text>
-                        </View>
-                        <Text style={styles.bookingTypeTag}>{b.type}</Text>
-                      </View>
-
-                      <Text style={[styles.bookingMetaSub, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }]}>
-                        ID: {b.bookingId} • {b.date} • {b.time}
+                    <View style={{ flex: 1, marginLeft: 10, marginRight: 8 }}>
+                      <Text
+                        style={[styles.bookingCustomerName, { color: isDark ? '#FFFFFF' : '#0F172A' }]}
+                        numberOfLines={1}
+                      >
+                        {b.customerName}
+                      </Text>
+                      <Text
+                        style={[styles.bookingMetaSub, { color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }]}
+                        numberOfLines={1}
+                      >
+                        {isWalkIn ? 'Walk-in' : 'App'} · {b.type} · #{b.bookingId}
+                      </Text>
+                      <Text
+                        style={[styles.bookingMetaSub, { color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }]}
+                      >
+                        {b.date} · {b.time}
                       </Text>
 
                       {!!b.trainerName && (
-                        <Text style={[styles.bookingMetaSub, { color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B', marginTop: 2 }]}>
+                        <Text style={[styles.bookingMetaSub, { color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }]}>
                           Coach: {b.trainerName}
                         </Text>
                       )}
 
                       {b.isCustomDates && Array.isArray(b.customDates) && b.customDates.length > 0 && (
-                        <Text style={[styles.bookingMetaSub, { color: '#7C3AED', fontWeight: '600', marginTop: 2 }]}>
-                          {b.customDates.length} Custom Dates: {b.customDates.join(', ')}
+                        <Text style={[styles.bookingMetaSub, { color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }]}>
+                          {b.customDates.length} Custom Dates:{' '}
+                          {b.customDates
+                            .map((d) => {
+                              const raw = typeof d === 'string' ? d : d?.date || d?.label || '';
+                              if (!raw) return '';
+                              const dt = new Date(raw);
+                              if (!Number.isNaN(dt.getTime())) {
+                                return dt.toLocaleDateString('en-GB', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                });
+                              }
+                              return raw;
+                            })
+                            .filter(Boolean)
+                            .join(', ')}
                         </Text>
                       )}
                     </View>
 
-                    {/* Quick Call & WhatsApp */}
-                    {!!b.phone && (
-                      <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginRight: 4 }}>
-                        <TouchableOpacity
-                          onPress={() => handleCall(b.phone)}
-                          style={[
-                            styles.smallActionIconBtn,
-                            { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9' },
-                          ]}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <MaterialIcons name="call" size={15} color={isDark ? '#94A3B8' : '#475569'} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleWhatsApp(b.phone, b.customerName)}
-                          style={[
-                            styles.smallActionIconBtn,
-                            { backgroundColor: 'rgba(34, 197, 94, 0.12)' },
-                          ]}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Ionicons name="logo-whatsapp" size={15} color="#16A34A" />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {/* Status Badge */}
-                    <View style={styles.statusBadge}>
+                    {/* Single Status Badge */}
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor:
+                            b.status === 'Active' || b.status === 'Checked-in'
+                              ? (isDark ? 'rgba(16, 185, 129, 0.14)' : '#ECFDF5')
+                              : (isDark ? 'rgba(148, 163, 184, 0.14)' : '#F1F5F9'),
+                        },
+                      ]}
+                    >
                       <Text style={[styles.statusBadgeText, { color: statusColor }]}>
                         {b.status}
                       </Text>
@@ -580,15 +560,40 @@ export const BookingsTab = ({ topInset, navigation }) => {
                     ]}
                   />
 
-                  {/* Bottom Row: Amount, Payment & Check-in Action */}
+                  {/* Bottom Row: Amount/Payment & Actions */}
                   <View style={styles.bookingBottomRow}>
-                    <View>
-                      <Text style={[styles.metaLabel, { color: isDark ? 'rgba(255,255,255,0.45)' : '#94A3B8' }]}>
-                        AMOUNT & PAYMENT
-                      </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                       <Text style={[styles.metaValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                        {b.amount} ({b.payment})
+                        {b.amount}{' '}
+                        <Text style={{ fontSize: 12, fontWeight: '500', color: isDark ? '#94A3B8' : '#64748B' }}>
+                          · {b.payment}
+                        </Text>
                       </Text>
+
+                      {!!b.phone && (
+                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                          <TouchableOpacity
+                            onPress={() => handleCall(b.phone)}
+                            style={[
+                              styles.smallActionIconBtn,
+                              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9' },
+                            ]}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <MaterialIcons name="call" size={14} color={isDark ? '#94A3B8' : '#475569'} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleWhatsApp(b.phone, b.customerName)}
+                            style={[
+                              styles.smallActionIconBtn,
+                              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9' },
+                            ]}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <Ionicons name="logo-whatsapp" size={14} color="#16A34A" />
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
 
                     {b.status === 'Cancellation_Requested' || b.cancellation?.cancellationStatus === 'PENDING_GYM_APPROVAL' ? (
@@ -638,12 +643,7 @@ export const BookingsTab = ({ topInset, navigation }) => {
                         <MaterialIcons name="qr-code-scanner" size={16} color="#FFFFFF" />
                         <Text style={styles.verifyCheckinBtnText}>Check In Pass</Text>
                       </TouchableOpacity>
-                    ) : b.status === 'Completed' ? (
-                      <View style={[styles.verifiedPassBadge, { backgroundColor: 'rgba(107, 114, 128, 0.12)' }]}>
-                        <MaterialIcons name="check-circle" size={14} color="#6B7280" />
-                        <Text style={[styles.verifiedPassText, { color: '#6B7280' }]}>Completed</Text>
-                      </View>
-                    ) : (
+                    ) : (isCheckedIn || b.status === 'Checked-in') ? (
                       <View style={styles.verifiedPassBadge}>
                         <MaterialIcons
                           name="check-circle"
@@ -652,7 +652,7 @@ export const BookingsTab = ({ topInset, navigation }) => {
                         />
                         <Text style={styles.verifiedPassText}>Access Granted</Text>
                       </View>
-                    )}
+                    ) : null}
                   </View>
                 </View>
               );
@@ -660,67 +660,10 @@ export const BookingsTab = ({ topInset, navigation }) => {
           </View>
         )}
 
-        {/* Bookings Pagination Toolbar */}
-        {totalPages > 1 && (
-          <View
-            style={[
-              styles.paginationRow,
-              {
-                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-              },
-            ]}
-          >
-            <TouchableOpacity
-              style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}
-              disabled={page <= 1 || isLoading}
-              onPress={() => setPage((prev) => Math.max(1, prev - 1))}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons
-                name="chevron-left"
-                size={20}
-                color={page <= 1 ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor}
-              />
-              <Text
-                style={[
-                  styles.pageBtnText,
-                  { color: page <= 1 ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor },
-                ]}
-              >
-                Prev
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.pageInfoBox}>
-              <Text style={[styles.pageInfoText, { color: isDark ? '#F1F5F9' : '#0F172A' }]}>
-                Page <Text style={{ fontWeight: '700' }}>{page}</Text> of <Text style={{ fontWeight: '700' }}>{totalPages}</Text>
-              </Text>
-              <Text style={[styles.pageTotalSubtext, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                {totalCount} total bookings
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}
-              disabled={page >= totalPages || isLoading}
-              onPress={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.pageBtnText,
-                  { color: page >= totalPages ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor },
-                ]}
-              >
-                Next
-              </Text>
-              <MaterialIcons
-                name="chevron-right"
-                size={20}
-                color={page >= totalPages ? (isDark ? '#64748B' : '#94A3B8') : AppColors.primaryColor}
-              />
-            </TouchableOpacity>
+        {/* Infinite Scroll Loading Indicator */}
+        {isLoadingMore && (
+          <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={AppColors.primaryColor} />
           </View>
         )}
 

@@ -813,9 +813,17 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
   // Filtered Arrays
   const filteredMembers = useMemo(() => {
     return members.filter((m) => {
+      const isExpiringSoon =
+        m.status === 'Expiring Soon' ||
+        (m.status === 'Active' &&
+          m.rawEndDate &&
+          Math.ceil((new Date(m.rawEndDate) - Date.now()) / (1000 * 60 * 60 * 24)) <= 7);
+
       const matchesFilter =
         memberFilter === 'All'
           ? true
+          : memberFilter === 'Expiring Soon'
+          ? isExpiringSoon
           : memberFilter === 'Cancellation Requested'
           ? m.status === 'Cancellation Requested'
           : m.status === memberFilter;
@@ -1536,7 +1544,7 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
               </View>
             )}
 
-            {!hasMoreMembers && members.length > 0 && !isLoadingMore && (
+            {!hasMoreMembers && filteredMembers.length > 0 && !isLoadingMore && (
               <View style={styles.endOfListBox}>
                 <MaterialIcons name="check-circle" size={14} color={AppColors.secondaryColor} />
                 <Text
@@ -1665,37 +1673,43 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                             </Text>
                           </View>
                         )}
-                        <View style={{ flex: 1, marginLeft: 10 }}>
-                          <View style={styles.switchNameRow}>
-                            <Text
-                              style={[
-                                styles.switchUserName,
-                                { color: isDark ? '#FFFFFF' : '#0F172A' },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {userObj.fullName || 'Gym Member'}
-                            </Text>
-                            <View style={styles.switchReqBadge}>
-                              <Text style={styles.switchReqBadgeText}>
-                                {req.requestId || (req._id ? req._id.substring(req._id.length - 8).toUpperCase() : 'REQ')}
-                              </Text>
-                            </View>
-                          </View>
+                        <View style={{ flex: 1, marginLeft: 10, marginRight: 8 }}>
+                          <Text
+                            style={[
+                              styles.switchUserName,
+                              { color: isDark ? '#FFFFFF' : '#0F172A' },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {userObj.fullName || 'Gym Member'}
+                          </Text>
                           <Text
                             style={[
                               styles.switchUserPhone,
-                              { color: isDark ? '#94A3B8' : '#64748B' },
+                              { color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 },
                             ]}
+                            numberOfLines={1}
                           >
-                            {userObj.phone || userObj.email || 'Member ID: ' + (req.membershipId?.membershipId || (req.membershipId?._id ? `MEM-${req.membershipId._id.toString().slice(-6).toUpperCase()}` : '--'))}
-                            {reqDate ? ` • ${reqDate}` : ''}
+                            {req.requestId || (req._id ? req._id.substring(req._id.length - 8).toUpperCase() : 'REQ')}
+                            {' · '}
+                            {userObj.phone || userObj.email || '--'}
+                            {reqDate ? ` · ${reqDate}` : ''}
                           </Text>
                         </View>
                       </View>
 
-                      {/* Status Tag */}
-                      <View style={styles.switchStatusTag}>
+                      {/* Status Pill */}
+                      <View
+                        style={[
+                          styles.switchStatusTag,
+                          {
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            borderRadius: 8,
+                          },
+                        ]}
+                      >
                         <Text style={[styles.switchStatusText, { color: statusBadgeText }]}>
                           {statusLabel}
                         </Text>
@@ -1713,19 +1727,19 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                       ]}
                     >
                       <View style={styles.switchPlanCol}>
-                        <Text style={styles.switchPlanColLabel}>CURRENT PLAN</Text>
+                        <Text style={styles.switchPlanColLabel}>CURRENT</Text>
                         <Text
                           style={[
                             styles.switchPlanColValue,
-                            { color: '#722ED1' },
+                            { color: isDark ? '#E2E8F0' : '#0F172A' },
                           ]}
                           numberOfLines={1}
                         >
-                          {currentTier} Plan
+                          {currentTier}
                         </Text>
                         {quote.daysRemaining != null && (
                           <Text style={styles.switchPlanColSub}>
-                            {quote.daysRemaining} days left
+                            {quote.daysRemaining}d left
                           </Text>
                         )}
                       </View>
@@ -1733,21 +1747,21 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                       <View style={styles.switchArrowContainer}>
                         <MaterialIcons
                           name="arrow-forward"
-                          size={18}
+                          size={16}
                           color={isDark ? '#94A3B8' : '#64748B'}
                         />
                         <View
                           style={[
                             styles.switchTypePill,
                             {
-                              backgroundColor: isUpgrade ? 'rgba(37, 99, 235, 0.1)' : 'rgba(217, 119, 6, 0.1)',
+                              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0',
                             },
                           ]}
                         >
                           <Text
                             style={[
                               styles.switchTypePillText,
-                              { color: isUpgrade ? '#2563EB' : '#D97706' },
+                              { color: isDark ? '#CBD5E1' : '#475569' },
                             ]}
                           >
                             {switchType}
@@ -1756,18 +1770,15 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                       </View>
 
                       <View style={[styles.switchPlanCol, { alignItems: 'flex-end' }]}>
-                        <Text style={styles.switchPlanColLabel}>REQUESTED PLAN</Text>
+                        <Text style={styles.switchPlanColLabel}>REQUESTED</Text>
                         <Text
                           style={[
                             styles.switchPlanColValue,
-                            { color: isUpgrade ? '#2563EB' : '#D97706' },
+                            { color: AppColors.primaryColor },
                           ]}
                           numberOfLines={1}
                         >
-                          {targetTier} Plan
-                        </Text>
-                        <Text style={styles.switchPlanColSub}>
-                          Target tier
+                          {targetTier}
                         </Text>
                       </View>
                     </View>
@@ -1780,8 +1791,8 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                       ]}
                     >
                       <View style={styles.switchSettlementItem}>
-                        <Text style={styles.switchSettlementItemLabel}>Prorated Credit</Text>
-                        <Text style={[styles.switchSettlementItemValue, { color: '#16A34A' }]}>
+                        <Text style={styles.switchSettlementItemLabel}>Credit</Text>
+                        <Text style={[styles.switchSettlementItemValue, { color: isDark ? '#CBD5E1' : '#334155' }]}>
                           -₹{creditAmountStr}
                         </Text>
                       </View>
@@ -1791,7 +1802,7 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                         <Text
                           style={[
                             styles.switchSettlementItemValue,
-                            { color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: '800' },
+                            { color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: '700' },
                           ]}
                         >
                           ₹{netAmountStr}
@@ -2107,29 +2118,27 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                             </Text>
                           </View>
                         )}
-                        <View style={{ flex: 1, marginLeft: 10 }}>
-                          <View style={styles.switchNameRow}>
-                            <Text
-                              style={[
-                                styles.switchUserName,
-                                { color: isDark ? '#FFFFFF' : '#0F172A' },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {req.memberName}
-                            </Text>
-                            <View style={styles.switchReqBadge}>
-                              <Text style={styles.switchReqBadgeText}>{req.requestId}</Text>
-                            </View>
-                          </View>
+                        <View style={{ flex: 1, marginLeft: 10, marginRight: 8 }}>
+                          <Text
+                            style={[
+                              styles.switchUserName,
+                              { color: isDark ? '#FFFFFF' : '#0F172A' },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {req.memberName}
+                          </Text>
                           <Text
                             style={[
                               styles.switchUserPhone,
-                              { color: isDark ? '#94A3B8' : '#64748B' },
+                              { color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 },
                             ]}
+                            numberOfLines={1}
                           >
+                            {req.requestId}
+                            {' · '}
                             {req.phone || ('ID: ' + req.memberId)}
-                            {req.requestDate ? ` • ${req.requestDate}` : ''}
+                            {req.requestDate ? ` · ${req.requestDate}` : ''}
                           </Text>
                         </View>
                       </View>
@@ -2147,33 +2156,47 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                       style={[
                         styles.cancelPlanBox,
                         {
+                          gap: 10,
                           backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
                           borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                         },
                       ]}
                     >
-                      <View style={styles.cancelPlanCol}>
-                        <Text style={styles.switchPlanColLabel}>MEMBERSHIP PLAN</Text>
-                        <Text style={[styles.cancelPlanValue, { color: '#722ED1' }]} numberOfLines={1}>
+                      <View style={[styles.cancelPlanCol, { flex: 1.2, paddingRight: 4 }]}>
+                        <Text style={styles.switchPlanColLabel}>PLAN</Text>
+                        <Text
+                          style={[
+                            styles.cancelPlanValue,
+                            { color: isDark ? '#FFFFFF' : '#0F172A' },
+                          ]}
+                          numberOfLines={1}
+                        >
                           {req.plan}
                         </Text>
                       </View>
 
-                      <View style={styles.cancelPlanCol}>
-                        <Text style={styles.switchPlanColLabel}>FEE PAID</Text>
+                      <View style={[styles.cancelPlanCol, { flex: 0.9 }]}>
+                        <Text style={styles.switchPlanColLabel}>PAID</Text>
                         <Text
                           style={[
                             styles.cancelPlanValue,
-                            { color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: '700' },
+                            { color: isDark ? '#CBD5E1' : '#334155', fontWeight: '600' },
                           ]}
+                          numberOfLines={1}
                         >
                           {req.amount}
                         </Text>
                       </View>
 
-                      <View style={[styles.cancelPlanCol, { alignItems: 'flex-end' }]}>
+                      <View style={[styles.cancelPlanCol, { flex: 0.9, alignItems: 'flex-end' }]}>
                         <Text style={styles.switchPlanColLabel}>EST. REFUND</Text>
-                        <Text style={[styles.cancelPlanValue, { color: '#16A34A', fontWeight: '800' }]}>
+                        <Text
+                          style={[
+                            styles.cancelPlanValue,
+                            { color: AppColors.primaryColor, fontWeight: '700' },
+                          ]}
+                          numberOfLines={1}
+                        >
                           {req.refundableAmount || '₹0'}
                         </Text>
                       </View>
@@ -2184,16 +2207,18 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
                       style={[
                         styles.cancelReasonBox,
                         {
-                          backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : '#FEF2F2',
-                          borderColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEE2E2',
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                          borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
                         },
                       ]}
                     >
-                      <Text style={styles.cancelReasonTitle}>REASON FOR CANCELLATION</Text>
+                      <Text style={[styles.cancelReasonTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                        REASON
+                      </Text>
                       <Text
                         style={[
                           styles.cancelReasonText,
-                          { color: isDark ? '#FCA5A5' : '#B91C1C' },
+                          { color: isDark ? '#E2E8F0' : '#334155' },
                         ]}
                       >
                         {req.reason}
