@@ -339,7 +339,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
   const [availablePlans, setAvailablePlans] = useState([]);
   const [selectedTargetPlan, setSelectedTargetPlan] = useState(null);
   const [switchQuote, setSwitchQuote] = useState(null);
-  const [downgradeOption, setDowngradeOption] = useState('WALLET'); // 'WALLET' | 'REFUND' | 'EXTEND'
+  const [downgradeOption, setDowngradeOption] = useState('REFUND'); // 'REFUND' | 'EXTEND'
   const [quoteError, setQuoteError] = useState(null);
   const [isCalculatingQuote, setIsCalculatingQuote] = useState(false);
   const [isSubmittingSwitch, setIsSubmittingSwitch] = useState(false);
@@ -554,17 +554,14 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
     const newDurationDays = targetPlan.durationDays || 30;
     const newPerDayCost = newDurationDays > 0 ? newPrice / newDurationDays : 0;
     let extraDays = 0;
-    let leftoverWalletCredit = 0;
     let leftoverRefund = 0;
 
     if (!isUpgrade && leftoverCredit > 0) {
       if (option === 'EXTEND' && newPerDayCost > 0) {
         extraDays = Math.floor(leftoverCredit / newPerDayCost);
-        leftoverWalletCredit = Math.max(0, Math.round((leftoverCredit - extraDays * newPerDayCost) * 100) / 100);
-      } else if (option === 'REFUND') {
-        leftoverRefund = leftoverCredit;
+        leftoverRefund = Math.max(0, Math.round((leftoverCredit - extraDays * newPerDayCost) * 100) / 100);
       } else {
-        leftoverWalletCredit = leftoverCredit;
+        leftoverRefund = leftoverCredit;
       }
     }
 
@@ -597,7 +594,6 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
         leftoverCreditINR: leftoverCredit,
         leftoverCredit: leftoverCredit,
         leftoverCreditPaise: Math.round(leftoverCredit * 100),
-        leftoverWalletCreditINR: leftoverWalletCredit,
         leftoverRefundINR: leftoverRefund,
         policyApplied: option,
         grossPayableINR: netPayable,
@@ -617,7 +613,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
         targetTier: targetPlan.tierId || targetPlan.name,
         targetPlanId: targetPlan.planId || targetPlan.tierId,
         downgradeSettlementPreference: option,
-        useWalletBalance: true,
+        useWalletBalance: false,
       });
       if (quote && quote.financialBreakdown) {
         setSwitchQuote(quote);
@@ -684,7 +680,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
         downgradeSettlementPreference: downgradeOption,
         paymentMethod: 'UPI',
         transactionId: `TXN_SW_${Date.now()}`,
-        useWalletBalance: true,
+        useWalletBalance: false,
       });
       setPendingSwitchRequest(result);
       setShowSwitchSheet(false);
@@ -1748,9 +1744,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                             {displayLeftoverCredit > 0 && (
                               <View style={styles.quoteRow}>
                                 <Text style={[styles.quoteLabel, { color: colors.subtitle }]}>
-                                  {downgradeOption === 'WALLET'
-                                    ? 'Balance Added to Gym Wallet:'
-                                    : downgradeOption === 'REFUND'
+                                  {downgradeOption === 'REFUND'
                                     ? 'Refund to Source Account:'
                                     : 'Converted Unused Credit:'}
                                 </Text>
@@ -1805,48 +1799,7 @@ export const MembershipDetailsScreen = ({ route, navigation }) => {
                             Choose how you want to receive your leftover balance of ₹{displayLeftoverCredit.toFixed(2)}:
                           </Text>
 
-                          {/* Option 1: Gym Wallet */}
-                          <TouchableOpacity
-                            onPress={() => handleSelectDowngradeOption('WALLET')}
-                            style={[
-                              styles.settlementOptionCard,
-                              {
-                                backgroundColor:
-                                  downgradeOption === 'WALLET'
-                                    ? isDark
-                                      ? 'rgba(30, 58, 138, 0.25)'
-                                      : '#F0F9FF'
-                                    : colors.card,
-                                borderColor: downgradeOption === 'WALLET' ? primaryNavy : colors.border,
-                                borderWidth: downgradeOption === 'WALLET' ? 2 : 1.2,
-                              },
-                            ]}
-                            activeOpacity={0.8}
-                          >
-                            <View style={styles.settlementRow}>
-                              <MaterialIcons
-                                name="account-balance-wallet"
-                                size={22}
-                                color={downgradeOption === 'WALLET' ? primaryNavy : colors.subtitle}
-                                style={{ marginRight: 10, marginTop: 2 }}
-                              />
-                              <View style={{ flex: 1 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                  <Text style={[styles.settlementOptionTitle, { color: colors.text }]}>
-                                    Gym Wallet Balance
-                                  </Text>
-                                  <View style={[styles.settlementBadge, { backgroundColor: isDark ? '#1E3A8A' : '#DBEAFE' }]}>
-                                    <Text style={[styles.settlementBadgeText, { color: primaryNavy }]}>Instant</Text>
-                                  </View>
-                                </View>
-                                <Text style={[styles.settlementOptionDesc, { color: colors.subtitle }]}>
-                                  Instant credit to your Gym Wallet. Spendable on renewals, personal trainers, or café.
-                                </Text>
-                              </View>
-                            </View>
-                          </TouchableOpacity>
-
-                          {/* Option 2: Payment Refund */}
+                          {/* Option 1: Payment Refund */}
                           <TouchableOpacity
                             onPress={() => handleSelectDowngradeOption('REFUND')}
                             style={[

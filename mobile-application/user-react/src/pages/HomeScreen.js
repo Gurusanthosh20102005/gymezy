@@ -727,21 +727,6 @@ export const HomeScreen = ({ navigation }) => {
                 </View>
               )}
             </TouchableOpacity>
-
-            {/* Wallet Button */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Wallet')}
-              style={[
-                styles.notificationBtn,
-                {
-                  backgroundColor: isDark ? '#1E1E1E' : '#F8FAFC',
-                  borderColor: colors.border,
-                },
-              ]}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="wallet-outline" size={22} color={colors.text} />
-            </TouchableOpacity>
           </View>
         </View>
 

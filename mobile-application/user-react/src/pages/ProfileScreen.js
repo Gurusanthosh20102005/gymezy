@@ -105,7 +105,7 @@ const PRIVACY_SECTIONS = [
   {
     title: '2. How Your Data Is Used',
     content:
-      'Your information is used solely to generate digital entry passes, secure your bookings, process wallet transactions, and connect you with customer support. We never sell your personal information or contact details to third-party advertisers.',
+      'Your information is used solely to generate digital entry passes, secure your bookings, process membership payments, and connect you with customer support. We never sell your personal information or contact details to third-party advertisers.',
   },
   {
     title: '3. Data Security & Encryption',
@@ -1266,21 +1266,6 @@ export const ProfileScreen = ({ navigation, onNavigateToBookings, onNavigateToMe
 
         {/* 5. Section: Payments & Billing */}
         <Text style={[styles.sectionHeading, { color: textColor }]}>Payments & Billing</Text>
-
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('Wallet')}
-          style={[styles.menuTile, { backgroundColor: cardColor, borderColor: borderColor }]}
-        >
-          <View style={[styles.menuIconBox, { backgroundColor: isDark ? '#262626' : 'rgba(0, 191, 98, 0.12)' }]}>
-            <Ionicons name="wallet" size={20} color={AppColors.secondaryColor} />
-          </View>
-          <View style={styles.menuTileContent}>
-            <Text style={[styles.menuTileTitle, { color: textColor }]}>GYMEZY Digital Wallet</Text>
-            <Text style={[styles.menuTileSubtitle, { color: subtitleColor }]}>Prorated balance, top-ups & instant payouts</Text>
-          </View>
-          <MaterialIcons name="chevron-right" size={22} color={subtitleColor} />
-        </TouchableOpacity>
 
         <TouchableOpacity
           activeOpacity={0.7}

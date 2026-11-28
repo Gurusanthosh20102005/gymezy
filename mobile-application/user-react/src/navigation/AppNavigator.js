@@ -10,7 +10,6 @@ import { BuyMembershipScreen } from '../pages/BuyMembershipScreen';
 import { PaymentSummaryScreen } from '../pages/PaymentSummaryScreen';
 import { BookingDetailsScreen } from '../pages/BookingDetailsScreen';
 import { MembershipDetailsScreen } from '../pages/MembershipDetailsScreen';
-import { WalletScreen } from '../pages/WalletScreen';
 import { AttendanceHistoryScreen } from '../pages/AttendanceHistoryScreen';
 
 const Stack = createNativeStackNavigator();
@@ -29,11 +28,6 @@ export const AppNavigator = () => {
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="HomeTabs" component={HomeScreen} />
       <Stack.Screen name="HomeTab" component={HomeScreen} />
-      <Stack.Screen
-        name="Wallet"
-        component={WalletScreen}
-        options={{ animation: 'slide_from_right' }}
-      />
       <Stack.Screen
         name="AttendanceHistory"
         component={AttendanceHistoryScreen}

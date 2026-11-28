@@ -154,13 +154,6 @@ export const MyMembershipsScreen = ({ navigation }) => {
       {/* Top App Bar */}
       <View style={styles.appBar}>
         <Text style={[styles.appBarTitle, { color: colors.text }]}>My Memberships</Text>
-        <TouchableOpacity
-          style={[styles.notifBtn, { backgroundColor: isDark ? '#1E1E1E' : '#F8FAFC', borderColor: colors.border }]}
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('Wallet')}
-        >
-          <Ionicons name="wallet-outline" size={22} color={colors.text} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView

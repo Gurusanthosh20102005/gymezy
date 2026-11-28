@@ -152,7 +152,7 @@ class MembershipService {
   /**
    * Preview Plan Switch (Prorated Quote Dry-Run)
    * @param {string} membershipId
-   * @param {Object} payload - { targetTier, targetPlanId, useWalletBalance }
+   * @param {Object} payload - { targetTier, targetPlanId, downgradeSettlementPreference }
    */
   async previewSwitchPlan(membershipId, payload) {
     try {
@@ -180,7 +180,7 @@ class MembershipService {
   /**
    * Submit Plan Switch Request (User Action -> PENDING_GYM_APPROVAL)
    * @param {string} membershipId
-   * @param {Object} payload - { targetTier, targetPlanId, paymentMethod, transactionId, useWalletBalance }
+   * @param {Object} payload - { targetTier, targetPlanId, paymentMethod, transactionId, downgradeSettlementPreference }
    */
   async requestSwitchPlan(membershipId, payload) {
     try {
