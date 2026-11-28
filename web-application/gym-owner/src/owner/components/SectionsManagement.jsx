@@ -79,6 +79,18 @@ export const TIME_SLOTS = [
   '11:00 PM',
 ];
 
+const parseTimeToMinutes = (timeStr) => {
+  if (!timeStr) return -1;
+  const match = String(timeStr).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return -1;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const period = match[3].toUpperCase();
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+};
+
 export const DAYS_OPTIONS = [
   { label: 'Mon', value: 'Mon' },
   { label: 'Tue', value: 'Tue' },
@@ -1016,13 +1028,16 @@ export const SectionsManagement = () => {
         }
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
-        width={700}
+        width={1040}
+        centered
+        style={{ maxWidth: '95vw' }}
         footer={null}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" onFinish={handleSaveSection} style={{ marginTop: 16 }}>
-          <Row gutter={16}>
-            <Col span={14}>
+        <Form form={form} layout="vertical" onFinish={handleSaveSection} style={{ marginTop: 12 }}>
+          {/* Row 1: Title, Category, Cost, Capacity */}
+          <Row gutter={14}>
+            <Col xs={24} md={8}>
               <Form.Item
                 name="title"
                 label="Section Name / Title"
@@ -1036,7 +1051,7 @@ export const SectionsManagement = () => {
               </Form.Item>
             </Col>
 
-            <Col span={10}>
+            <Col xs={24} md={6}>
               <Form.Item
                 name="category"
                 label="Category"
@@ -1054,21 +1069,48 @@ export const SectionsManagement = () => {
                 </Select>
               </Form.Item>
             </Col>
+
+            <Col xs={12} md={5}>
+              <Form.Item
+                name="cost"
+                label="Cost / Program Fee (₹)"
+                rules={[{ required: true, message: 'Enter program cost' }]}
+              >
+                <InputNumber
+                  size="large"
+                  min={0}
+                  prefix="₹"
+                  placeholder="e.g. 1500"
+                  style={{ width: '100%', borderRadius: 'var(--radius-base)' }}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={12} md={5}>
+              <Form.Item
+                name="maxCapacity"
+                label="Capacity"
+                rules={[{ required: true, message: 'Enter capacity' }]}
+              >
+                <InputNumber
+                  size="large"
+                  min={1}
+                  max={200}
+                  placeholder="25"
+                  addonAfter="Seats"
+                  style={{ width: '100%', borderRadius: 'var(--radius-base)' }}
+                />
+              </Form.Item>
+            </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={14}>
+          {/* Row 2: Trainer, Daily Start Time, Daily End Time */}
+          <Row gutter={14}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="trainerId"
                 label="Assigned Gym Trainer (Available in Gym)"
                 rules={[{ required: true, message: 'Please select an available trainer' }]}
-                help={
-                  !isLoadingAvailableTrainers && availableTrainers.length === 0 ? (
-                    <span style={{ color: '#ef4444', fontWeight: 500 }}>
-                      No trainers are available for this time and schedule. Adjust the time slot or active days.
-                    </span>
-                  ) : undefined
-                }
                 validateStatus={!isLoadingAvailableTrainers && availableTrainers.length === 0 ? 'error' : undefined}
               >
                 <Select
@@ -1087,49 +1129,108 @@ export const SectionsManagement = () => {
               </Form.Item>
             </Col>
 
-            <Col span={10}>
+            <Col xs={12} md={6}>
               <Form.Item
-                name="cost"
-                label="Cost / Program Fee (₹)"
-                rules={[{ required: true, message: 'Enter program cost' }]}
+                name="startTime"
+                label="Daily Start Time"
+                rules={[{ required: true, message: 'Select start time' }]}
               >
-                <InputNumber
+                <Select
                   size="large"
-                  min={0}
-                  prefix="₹"
-                  placeholder="e.g. 1500"
-                  style={{ width: '100%', borderRadius: 'var(--radius-base)' }}
-                />
+                  style={{ borderRadius: 'var(--radius-base)' }}
+                  onChange={(newStart) => {
+                    const startMins = parseTimeToMinutes(newStart);
+                    const endMins = parseTimeToMinutes(form.getFieldValue('endTime'));
+                    if (startMins >= 0 && (endMins < 0 || endMins <= startMins)) {
+                      const nextSlot =
+                        TIME_SLOTS.find((s) => parseTimeToMinutes(s) >= startMins + 60) ||
+                        TIME_SLOTS.find((s) => parseTimeToMinutes(s) > startMins);
+                      if (nextSlot) {
+                        form.setFieldValue('endTime', nextSlot);
+                      }
+                    }
+                  }}
+                >
+                  {TIME_SLOTS.slice(0, -1).map((slot) => (
+                    <Option key={slot} value={slot}>
+                      {slot}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+
+            <Col xs={12} md={6}>
+              <Form.Item
+                name="endTime"
+                label="Daily End Time"
+                dependencies={['startTime']}
+                rules={[
+                  { required: true, message: 'Select end time' },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      const startMins = parseTimeToMinutes(getFieldValue('startTime'));
+                      const endMins = parseTimeToMinutes(value);
+                      if (!value || startMins < 0 || endMins > startMins) {
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(new Error('End time must be after start time'));
+                    },
+                  }),
+                ]}
+              >
+                <Select size="large" style={{ borderRadius: 'var(--radius-base)' }}>
+                  {TIME_SLOTS.filter((slot) => {
+                    const startMins = parseTimeToMinutes(watchedStartTime);
+                    return startMins < 0 || parseTimeToMinutes(slot) > startMins;
+                  }).map((slot) => (
+                    <Option key={slot} value={slot}>
+                      {slot}
+                    </Option>
+                  ))}
+                </Select>
               </Form.Item>
             </Col>
           </Row>
 
           {!isLoadingAvailableTrainers && availableTrainers.length === 0 && (
-            <Alert
-              type="warning"
-              showIcon
-              message="No Trainers Available for this Schedule"
-              description={
-                <div style={{ marginTop: 6 }}>
-                  <div>All trainers either have an overlapping batch or do not work during these hours/days:</div>
-                  <ul style={{ paddingLeft: 18, marginTop: 6, marginBottom: 4 }}>
-                    {allEvaluatedTrainers.map((t) => (
-                      <li key={t._id || t.id}>
-                        <strong>{t.name}</strong>: {t.reason || 'Schedule conflict or off-duty'}
-                      </li>
-                    ))}
-                  </ul>
-                  <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
-                    Tip: Adjust the Daily Start/End Time or active days (e.g. Mon, Wed, Fri) to assign a trainer.
-                  </div>
-                </div>
-              }
-              style={{ marginBottom: 16, borderRadius: 'var(--radius-base)' }}
-            />
+            <div
+              style={{
+                padding: '10px 12px',
+                marginBottom: 14,
+                borderRadius: 'var(--radius-base)',
+                backgroundColor: isDarkMode ? 'rgba(245, 158, 11, 0.1)' : '#fffbeb',
+                border: `1px solid ${isDarkMode ? 'rgba(245, 158, 11, 0.3)' : '#fde68a'}`,
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              <div style={{ fontWeight: 600, color: isDarkMode ? '#fbbf24' : '#b45309', marginBottom: 4 }}>
+                No trainers available — adjust time or active days:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', color: isDarkMode ? '#cbd5e1' : '#475569' }}>
+                {allEvaluatedTrainers.map((t) => {
+                  const r = String(t.reason || '').trim();
+                  const shortReason = /inactive/i.test(r)
+                    ? 'Inactive'
+                    : r.match(/does not work on\s+([A-Z,\s]+)/i)?.[1]
+                    ? `Off on ${r.match(/does not work on\s+([A-Z,\s]+)/i)[1].trim()}`
+                    : r.match(/working hours\s*\(([^)]+)\)/i)?.[1]
+                    ? `Shift: ${r.match(/working hours\s*\(([^)]+)\)/i)[1].trim()}`
+                    : r || 'Unavailable';
+                  return (
+                    <span key={t._id || t.id}>
+                      <strong>{t.name}</strong>: {shortReason}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
-          <Row gutter={16}>
-            <Col span={6}>
+          {/* Row 3: Starting Date, Duration, Estimated End Date, Weekly Schedule */}
+          <Row gutter={14}>
+            <Col xs={12} md={5}>
               <Form.Item
                 name="startDate"
                 label="Starting Date"
@@ -1143,7 +1244,7 @@ export const SectionsManagement = () => {
               </Form.Item>
             </Col>
 
-            <Col span={6}>
+            <Col xs={12} md={5}>
               <Form.Item
                 name="durationDays"
                 label="Duration (Days)"
@@ -1160,7 +1261,7 @@ export const SectionsManagement = () => {
               </Form.Item>
             </Col>
 
-            <Col span={6}>
+            <Col xs={12} md={5}>
               <Form.Item label="Estimated End Date">
                 <Input
                   size="large"
@@ -1178,128 +1279,85 @@ export const SectionsManagement = () => {
               </Form.Item>
             </Col>
 
-            <Col span={6}>
+            <Col xs={24} md={9}>
               <Form.Item
-                name="maxCapacity"
-                label="Capacity"
-                rules={[{ required: true, message: 'Enter capacity' }]}
+                name="activeDays"
+                label="Weekly Schedule (Active Days)"
+                rules={[{ required: true, message: 'Select at least one day' }]}
               >
-                <InputNumber
+                <Select
+                  mode="multiple"
                   size="large"
-                  min={1}
-                  max={200}
-                  placeholder="25"
-                  addonAfter="Seats"
-                  style={{ width: '100%', borderRadius: 'var(--radius-base)' }}
+                  placeholder="Select recurring days (e.g. Mon, Wed, Fri)"
+                  options={DAYS_OPTIONS}
+                  style={{ borderRadius: 'var(--radius-base)' }}
                 />
               </Form.Item>
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="startTime"
-                label="Daily Start Time"
-                rules={[{ required: true, message: 'Select start time' }]}
-              >
-                <Select size="large" style={{ borderRadius: 'var(--radius-base)' }}>
-                  {TIME_SLOTS.map((slot) => (
-                    <Option key={slot} value={slot}>
-                      {slot}
-                    </Option>
-                  ))}
-                </Select>
+          {/* Row 4: Description, Inclusions, Special Guidelines */}
+          <Row gutter={14}>
+            <Col xs={24} md={8}>
+              <Form.Item name="description" label="Section Description / Guidelines">
+                <Input.TextArea
+                  autoSize={{ minRows: 2, maxRows: 12 }}
+                  placeholder="Enter section description"
+                  style={{ borderRadius: 'var(--radius-base)' }}
+                />
               </Form.Item>
             </Col>
 
-            <Col span={12}>
-              <Form.Item
-                name="endTime"
-                label="Daily End Time"
-                rules={[{ required: true, message: 'Select end time' }]}
-              >
-                <Select size="large" style={{ borderRadius: 'var(--radius-base)' }}>
-                  {TIME_SLOTS.map((slot) => (
-                    <Option key={slot} value={slot}>
-                      {slot}
-                    </Option>
-                  ))}
-                </Select>
+            <Col xs={24} md={8}>
+              <Form.Item name="inclusions" label="What's Included (One item per line)">
+                <Input.TextArea
+                  autoSize={{ minRows: 2, maxRows: 12 }}
+                  placeholder="Enter included items (one per line)"
+                  style={{ borderRadius: 'var(--radius-base)' }}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} md={8}>
+              <Form.Item name="instructions" label="Special Guidelines / Notice">
+                <Input.TextArea
+                  autoSize={{ minRows: 2, maxRows: 12 }}
+                  placeholder="Enter special guidelines"
+                  style={{ borderRadius: 'var(--radius-base)' }}
+                />
               </Form.Item>
             </Col>
           </Row>
 
-          {/* Weekly Recurring Days */}
-          <Form.Item
-            name="activeDays"
-            label="Weekly Schedule (Select Active Days)"
-            rules={[{ required: true, message: 'Select at least one day' }]}
-          >
-            <Select
-              mode="multiple"
-              size="large"
-              placeholder="Select recurring days (e.g. Mon, Wed, Fri)"
-              options={DAYS_OPTIONS}
-              style={{ borderRadius: 'var(--radius-base)' }}
-            />
-          </Form.Item>
+          {/* Footer Bar: Active Switch + Submit Actions */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 8, paddingTop: 12, borderTop: `1px solid ${isDarkMode ? '#262626' : '#f1f5f9'}` }}>
+            <Form.Item name="isActive" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Space>
+                <Switch defaultChecked />
+                <Text style={{ fontSize: 13, color: isDarkMode ? '#8b949e' : '#64748b' }}>
+                  Active and visible for member enrollment
+                </Text>
+              </Space>
+            </Form.Item>
 
-          {/* Description */}
-          <Form.Item name="description" label="Section Description / Guidelines">
-            <Input.TextArea
-              rows={2}
-              placeholder="e.g. 20-day progressive yoga program covering Asanas, Pranayama and Surya Namaskar."
-              style={{ borderRadius: 'var(--radius-base)' }}
-            />
-          </Form.Item>
-
-          {/* Inclusions */}
-          <Form.Item name="inclusions" label="What's Included (One item per line)">
-            <Input.TextArea
-              rows={3}
-              placeholder="e.g.&#10;Full trainer-guided batch sessions&#10;Dedicated studio mats & equipment&#10;Locker and shower facility access"
-              style={{ borderRadius: 'var(--radius-base)' }}
-            />
-          </Form.Item>
-
-          {/* Guidelines / Notice */}
-          <Form.Item name="instructions" label="Special Guidelines / Notice">
-            <Input.TextArea
-              rows={2}
-              placeholder="e.g. Please arrive 10 minutes before the scheduled time slot."
-              style={{ borderRadius: 'var(--radius-base)' }}
-            />
-          </Form.Item>
-
-          {/* Active Switch */}
-          <Form.Item name="isActive" valuePropName="checked" label="Section Visibility">
-            <Space>
-              <Switch defaultChecked />
-              <Text style={{ fontSize: 13, color: isDarkMode ? '#8b949e' : '#64748b' }}>
-                Active and visible for member enrollment
-              </Text>
-            </Space>
-          </Form.Item>
-
-          {/* Submit Actions */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-            <Button size="large" onClick={() => setIsModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="primary"
-              size="large"
-              htmlType="submit"
-              loading={isSubmitting}
-              disabled={availableTrainers.length === 0 || !watchedTrainerId}
-              style={{
-                backgroundColor: availableTrainers.length === 0 || !watchedTrainerId ? undefined : '#003882',
-                fontWeight: 600,
-              }}
-            >
-              {editingSection ? 'Save Changes' : 'Create & Publish Section'}
-            </Button>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Button size="large" onClick={() => setIsModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="primary"
+                size="large"
+                htmlType="submit"
+                loading={isSubmitting}
+                disabled={availableTrainers.length === 0 || !watchedTrainerId}
+                style={{
+                  backgroundColor: availableTrainers.length === 0 || !watchedTrainerId ? undefined : '#003882',
+                  fontWeight: 600,
+                }}
+              >
+                {editingSection ? 'Save Changes' : 'Create & Publish Section'}
+              </Button>
+            </div>
           </div>
         </Form>
       </Modal>

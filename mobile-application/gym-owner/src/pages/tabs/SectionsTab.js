@@ -11,6 +11,7 @@ import {
   RefreshControl,
   TextInput,
   Dimensions,
+  Modal,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -50,6 +51,7 @@ export const SectionsTab = ({ topInset, navigation }) => {
   // Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingSection, setEditingSection] = useState(null);
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   // Roster Modal State
   const [showRosterModal, setShowRosterModal] = useState(false);
@@ -133,7 +135,13 @@ export const SectionsTab = ({ topInset, navigation }) => {
     try {
       await apiService.toggleSectionStatus(sectionId, !currentStatus);
       setSections((prev) =>
-        prev.map((s) => (s._id === sectionId ? { ...s, isActive: !currentStatus } : s))
+        prev.map((s) => {
+          if (s._id !== sectionId) return s;
+          const nextActive = !currentStatus;
+          const updated = { ...s, isActive: nextActive };
+          delete updated.lifecycleStatus;
+          return updated;
+        })
       );
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to update section status.');
@@ -204,8 +212,8 @@ export const SectionsTab = ({ topInset, navigation }) => {
   const activeSectionsCount = upcomingCount + ongoingCount;
   const completedSectionsCount = sections.filter((s) => getSectionLifecycleState(s) === 'COMPLETED').length;
   const totalSectionsCount = sections.length;
-  const totalCapacityCount = sections.reduce((acc, s) => acc + (Number(s.maxCapacity) || 0), 0);
-  const totalEnrolledCount = sections.reduce(
+  const totalCapacityCount = filteredSections.reduce((acc, s) => acc + (Number(s.maxCapacity) || 0), 0);
+  const totalEnrolledCount = filteredSections.reduce(
     (acc, s) => acc + (Number(s.enrolledCount) || (Array.isArray(s.enrolledUsers) ? s.enrolledUsers.length : 0)),
     0
   );
@@ -256,143 +264,88 @@ export const SectionsTab = ({ topInset, navigation }) => {
           />
         }
       >
-        {/* Dynamic Metric Cards Row (SSOT from Web SectionsManagement.jsx) */}
+        {/* Minimal Metric Summary Strip */}
         <View style={styles.metricsGrid}>
-          <View style={[styles.metricCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
-            <View style={[styles.metricIconBox, { backgroundColor: 'rgba(0, 56, 130, 0.12)' }]}>
-              <MaterialIcons name="layers" size={18} color="#003882" />
-            </View>
-            <Text style={[styles.metricVal, { color: textCol }]}>{totalSectionsCount}</Text>
-            <Text style={[styles.metricLabel, { color: subTextCol }]}>Total Batches</Text>
-          </View>
-
-          <View style={[styles.metricCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
-            <View style={[styles.metricIconBox, { backgroundColor: 'rgba(0, 191, 98, 0.12)' }]}>
-              <MaterialIcons name="check-circle" size={18} color={AppColors.secondaryColor} />
-            </View>
-            <Text style={[styles.metricVal, { color: textCol }]}>{activeSectionsCount}</Text>
-            <Text style={[styles.metricLabel, { color: subTextCol }]}>Active Batches</Text>
-          </View>
-
-          <View style={[styles.metricCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
-            <View style={[styles.metricIconBox, { backgroundColor: 'rgba(124, 58, 237, 0.12)' }]}>
-              <MaterialIcons name="groups" size={18} color="#7C3AED" />
-            </View>
-            <Text style={[styles.metricVal, { color: textCol }]}>{totalCapacityCount}</Text>
-            <Text style={[styles.metricLabel, { color: subTextCol }]}>Total Capacity</Text>
-          </View>
-
-          <View style={[styles.metricCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
-            <View style={[styles.metricIconBox, { backgroundColor: 'rgba(234, 88, 12, 0.12)' }]}>
-              <MaterialIcons name="how-to-reg" size={18} color="#EA580C" />
-            </View>
-            <Text style={[styles.metricVal, { color: textCol }]}>{totalEnrolledCount}</Text>
-            <Text style={[styles.metricLabel, { color: subTextCol }]}>Total Enrolled</Text>
-          </View>
-        </View>
-
-        {/* Search Bar */}
-        <View
-          style={[
-            styles.searchBar,
-            {
-              backgroundColor: cardBg,
-              borderColor: borderCol,
-            },
-          ]}
-        >
-          <MaterialIcons name="search" size={20} color={subTextCol} style={{ marginRight: 8 }} />
-          <TextInput
-            style={[styles.searchInput, { color: textCol }]}
-            placeholder="Search by title, trainer or day..."
-            placeholderTextColor={subTextCol}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            clearButtonMode="while-editing"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
-              <MaterialIcons name="close" size={18} color={subTextCol} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Lifecycle Segment Tabs (Active/Upcoming vs Completed vs All) */}
-        <View style={styles.lifecycleSegmentRow}>
           {[
-            { key: 'active', label: 'Active', count: activeSectionsCount, icon: 'bolt' },
-            { key: 'completed', label: 'Completed', count: completedSectionsCount, icon: 'check-circle' },
-            { key: 'all', label: 'All', count: totalSectionsCount, icon: 'layers' },
-          ].map((tab) => {
-            const isTabActive = lifecycleTab === tab.key;
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                onPress={() => setLifecycleTab(tab.key)}
-                style={[
-                  styles.lifecycleTabBtn,
-                  isTabActive
-                    ? { backgroundColor: '#003882', borderColor: '#003882' }
-                    : { backgroundColor: cardBg, borderColor: borderCol },
-                ]}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons
-                  name={tab.icon}
-                  size={14}
-                  color={isTabActive ? '#FFFFFF' : subTextCol}
-                  style={{ marginRight: 5 }}
-                />
-                <Text style={[styles.lifecycleTabText, { color: isTabActive ? '#FFFFFF' : textCol }]}>
-                  {tab.label} ({tab.count})
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+            { label: 'Batches', value: totalSectionsCount, icon: 'layers', color: '#003882' },
+            { label: 'Active', value: activeSectionsCount, icon: 'check-circle', color: AppColors.secondaryColor },
+            { label: 'Capacity', value: totalCapacityCount, icon: 'groups', color: '#7C3AED' },
+            { label: 'Enrolled', value: totalEnrolledCount, icon: 'how-to-reg', color: '#EA580C' },
+          ].map((m) => (
+            <View key={m.label} style={[styles.metricCard, { backgroundColor: cardBg, borderColor: borderCol }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <MaterialIcons name={m.icon} size={14} color={m.color} />
+                <Text style={[styles.metricVal, { color: textCol }]}>{m.value}</Text>
+              </View>
+              <Text style={[styles.metricLabel, { color: subTextCol }]} numberOfLines={1}>
+                {m.label}
+              </Text>
+            </View>
+          ))}
         </View>
 
-        {/* Category Horizontal Filter Pills */}
-        <View style={styles.categoryScrollWrap}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
-            <TouchableOpacity
-              onPress={() => setActiveCategory('all')}
-              style={[
-                styles.filterPill,
-                {
-                  backgroundColor: activeCategory === 'all' ? '#003882' : cardBg,
-                  borderColor: activeCategory === 'all' ? '#003882' : borderCol,
-                },
-              ]}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.filterPillText, { color: activeCategory === 'all' ? '#FFFFFF' : textCol }]}>
-                All ({sections.length})
-              </Text>
-            </TouchableOpacity>
+        {/* Search Bar + Filter Icon Button */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <View
+            style={[
+              styles.searchBar,
+              {
+                flex: 1,
+                marginBottom: 0,
+                backgroundColor: cardBg,
+                borderColor: borderCol,
+              },
+            ]}
+          >
+            <MaterialIcons name="search" size={20} color={subTextCol} style={{ marginRight: 8 }} />
+            <TextInput
+              style={[styles.searchInput, { color: textCol }]}
+              placeholder="Search by title, trainer or day..."
+              placeholderTextColor={subTextCol}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+                <MaterialIcons name="close" size={18} color={subTextCol} />
+              </TouchableOpacity>
+            )}
+          </View>
 
-            {SECTION_CATEGORIES.map((cat) => {
-              const isSelected = activeCategory === cat.key;
-              const countInCat = sections.filter((s) => s.category === cat.key).length;
-              return (
-                <TouchableOpacity
-                  key={cat.key}
-                  onPress={() => setActiveCategory(cat.key)}
-                  style={[
-                    styles.filterPill,
-                    {
-                      backgroundColor: isSelected ? cat.color : cardBg,
-                      borderColor: isSelected ? cat.color : borderCol,
-                    },
-                  ]}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.filterPillText, { color: isSelected ? '#FFFFFF' : textCol }]}>
-                    {cat.label} {countInCat > 0 ? `(${countInCat})` : ''}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          <TouchableOpacity
+            onPress={() => setShowFilterModal(true)}
+            activeOpacity={0.8}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              borderWidth: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: activeCategory !== 'all' || lifecycleTab !== 'active' ? '#003882' : cardBg,
+              borderColor: activeCategory !== 'all' || lifecycleTab !== 'active' ? '#003882' : borderCol,
+            }}
+          >
+            <MaterialIcons
+              name="tune"
+              size={20}
+              color={activeCategory !== 'all' || lifecycleTab !== 'active' ? '#FFFFFF' : textCol}
+            />
+            {(activeCategory !== 'all' || lifecycleTab !== 'active') && (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  width: 7,
+                  height: 7,
+                  borderRadius: 4,
+                  backgroundColor: '#10B981',
+                }}
+              />
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Content Section List */}
@@ -469,206 +422,122 @@ export const SectionsTab = ({ topInset, navigation }) => {
                   {
                     backgroundColor: cardBg,
                     borderColor: borderCol,
+                    padding: 14,
                   },
                 ]}
               >
-                {/* Top Row: Category Pill, Cost, Lifecycle Badge & Toggle */}
-                <View style={styles.cardHeaderRow}>
-                  <View style={styles.cardHeaderLeft}>
-                    <View style={[styles.catBadge, { backgroundColor: `${catColor}15` }]}>
-                      <Text style={[styles.catBadgeText, { color: catColor }]}>
-                        {(section.category || 'Batch').toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.costBadge}>
-                      <Text style={styles.costText}>₹{Number(section.cost || 0).toLocaleString('en-IN')}</Text>
-                    </View>
+                {/* Header: Title + Category/Cost + Status & Toggle */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.sectionTitle, { color: textCol, marginBottom: 2 }]} numberOfLines={1}>
+                      {section.title}
+                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: subTextCol }}>
+                      {(section.category || 'Batch').toUpperCase()} • ₹{Number(section.cost || 0).toLocaleString('en-IN')}
+                    </Text>
                   </View>
 
-                  <View style={styles.cardHeaderRight}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <View
-                      style={[
-                        styles.lifecycleBadge,
-                        {
-                          backgroundColor: isCompleted
-                            ? isDark ? 'rgba(100, 116, 139, 0.2)' : '#F1F5F9'
-                            : isOngoing
-                            ? isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFF7ED'
-                            : isPaused
-                            ? isDark ? 'rgba(239, 68, 68, 0.2)' : '#FEF2F2'
-                            : isDark ? 'rgba(2, 132, 199, 0.2)' : '#F0F9FF',
-                          borderColor: isCompleted
-                            ? '#94A3B8'
-                            : isOngoing
-                            ? '#EA580C'
-                            : isPaused
-                            ? '#EF4444'
-                            : '#0284C7',
-                        },
-                      ]}
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 6,
+                        backgroundColor: isDark ? '#1E293B' : '#F1F5F9',
+                      }}
                     >
                       <Text
-                        style={[
-                          styles.lifecycleBadgeText,
-                          {
-                            color: isCompleted
-                              ? '#64748B'
-                              : isOngoing
-                              ? '#EA580C'
-                              : isPaused
-                              ? '#EF4444'
-                              : '#0284C7',
-                          },
-                        ]}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: '700',
+                          color: isPaused ? '#EF4444' : isCompleted ? subTextCol : '#003882',
+                        }}
                       >
                         {lifecycleState}
                       </Text>
                     </View>
-                    {!isCompleted ? (
+                    {!isCompleted && (
                       <Switch
                         value={section.isActive !== false}
                         onValueChange={() => handleToggleStatus(section._id, section.isActive !== false)}
-                        trackColor={{ false: '#94A3B8', true: 'rgba(0, 191, 98, 0.4)' }}
-                        thumbColor={section.isActive !== false ? AppColors.secondaryColor : '#E2E8F0'}
-                        style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                        trackColor={{ false: '#CBD5E1', true: 'rgba(0, 56, 130, 0.35)' }}
+                        thumbColor={section.isActive !== false ? '#003882' : '#94A3B8'}
+                        style={{ transform: [{ scaleX: 0.78 }, { scaleY: 0.78 }] }}
                       />
-                    ) : null}
+                    )}
                   </View>
                 </View>
 
-                {/* Section Title */}
-                <Text style={[styles.sectionTitle, { color: textCol }]}>{section.title}</Text>
-
-                {/* Trainer Info Row */}
-                <View style={[styles.trainerBox, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC' }]}>
-                  <View style={styles.trainerAvatarCircle}>
-                    <Text style={styles.trainerAvatarText}>
-                      {(trainerName || 'T')
-                        .split(' ')
-                        .map((w) => w[0])
-                        .join('')
-                        .substring(0, 2)
-                        .toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={[styles.trainerName, { color: textCol }]} numberOfLines={1}>
+                {/* Trainer & Time Row (Minimal) */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                    <View style={[styles.trainerAvatarCircle, { width: 28, height: 28, borderRadius: 14, backgroundColor: isDark ? '#1E293B' : '#EFF6FF' }]}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#93C5FD' : '#003882' }}>
+                        {(trainerName || 'T').split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 12.5, fontWeight: '600', color: textCol, marginLeft: 8 }} numberOfLines={1}>
                       {trainerName}
                     </Text>
-                    <Text style={[styles.trainerRole, { color: subTextCol }]} numberOfLines={1}>
-                      {trainerRole}
-                    </Text>
                   </View>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: subTextCol }}>
+                    {section.startTime || '06:00 AM'} - {section.endTime || '07:00 AM'}
+                  </Text>
                 </View>
 
-                {/* Schedule Details Row */}
-                <View style={styles.scheduleRow}>
-                  <View style={styles.scheduleItem}>
-                    <MaterialIcons name="calendar-today" size={14} color="#003882" />
-                    <Text style={[styles.scheduleText, { color: subTextCol }]}>
-                      {formattedStartDate} → {formattedEndDate}
-                    </Text>
-                  </View>
+                {/* Dates, Days & Sessions (Compact 1-line summary) */}
+                <Text style={{ fontSize: 11.5, color: subTextCol, marginBottom: 10 }} numberOfLines={1}>
+                  {formattedStartDate} → {formattedEndDate}
+                  {Array.isArray(section.activeDays) && section.activeDays.length > 0
+                    ? ` • ${section.activeDays.join(', ')}`
+                    : ''}
+                  {` • ${section.durationDays || 20} Sessions`}
+                </Text>
 
-                  <View style={styles.scheduleItem}>
-                    <MaterialIcons name="access-time" size={14} color="#003882" />
-                    <Text style={[styles.scheduleText, { color: subTextCol }]}>
-                      {section.startTime || '06:00 AM'} - {section.endTime || '07:00 AM'}
+                {/* Minimal Capacity Bar */}
+                <View style={{ marginBottom: 10 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <Text style={{ fontSize: 12, color: textCol }}>
+                      <Text style={{ fontWeight: '700' }}>{enrolledCount}</Text> / {maxCap} Enrolled
+                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: availableSeats <= 3 ? '#EF4444' : subTextCol }}>
+                      {availableSeats > 0 ? `${availableSeats} Left` : 'Full'}
                     </Text>
                   </View>
-                </View>
-
-                {/* Days of Week Pills */}
-                {Array.isArray(section.activeDays) && section.activeDays.length > 0 && (
-                  <View style={styles.daysRow}>
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
-                      const isDayActive = section.activeDays.includes(day);
-                      return (
-                        <View
-                          key={day}
-                          style={[
-                            styles.dayPill,
-                            {
-                              backgroundColor: isDayActive ? '#003882' : isDark ? '#1E293B' : '#F1F5F9',
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.dayPillText,
-                              { color: isDayActive ? '#FFFFFF' : isDark ? '#64748B' : '#94A3B8' },
-                            ]}
-                          >
-                            {day}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                    <Text style={[styles.sessionsBadge, { color: subTextCol }]}>
-                      {section.durationDays || 20} Sessions
-                    </Text>
-                  </View>
-                )}
-
-                {/* Capacity Progress Bar */}
-                <View style={styles.capacitySection}>
-                  <View style={styles.capacityHeader}>
-                    <Text style={[styles.capacityText, { color: textCol }]}>
-                      <Text style={{ fontWeight: '800' }}>{enrolledCount}</Text> / {maxCap} Enrolled
-                    </Text>
-                    <Text
-                      style={[
-                        styles.seatsLeftText,
-                        { color: availableSeats <= 3 ? AppColors.dangerRed : AppColors.secondaryColor },
-                      ]}
-                    >
-                      {availableSeats > 0 ? `${availableSeats} Seats Left` : 'Batch Full'}
-                    </Text>
-                  </View>
-                  <View style={[styles.progressBarTrack, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
+                  <View style={[styles.progressBarTrack, { height: 4, backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}>
                     <View
                       style={[
                         styles.progressBarFill,
                         {
                           width: `${Math.round(fillRatio * 100)}%`,
-                          backgroundColor:
-                            availableSeats === 0
-                              ? AppColors.dangerRed
-                              : fillRatio > 0.8
-                                ? AppColors.warningAmber
-                                : AppColors.secondaryColor,
+                          backgroundColor: availableSeats === 0 ? '#EF4444' : '#003882',
                         },
                       ]}
                     />
                   </View>
                 </View>
 
-                {/* Inclusions Tags */}
-                {Array.isArray(section.inclusions) && section.inclusions.length > 0 && (
-                  <View style={styles.inclusionsRow}>
-                    {section.inclusions.slice(0, 3).map((inc, i) => (
-                      <View key={i} style={[styles.inclusionPill, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }]}>
-                        <MaterialIcons name="check" size={12} color={AppColors.secondaryColor} />
-                        <Text style={[styles.inclusionText, { color: subTextCol }]} numberOfLines={1}>
-                          {inc}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
                 {/* Action Buttons Row */}
-                <View style={[styles.actionsRow, { borderTopColor: borderCol }]}>
+                <View style={[styles.actionsRow, { borderTopColor: borderCol, paddingTop: 10 }]}>
                   <TouchableOpacity
-                    style={[styles.rosterBtn, { backgroundColor: isDark ? 'rgba(0, 56, 130, 0.2)' : '#EFF6FF' }]}
+                    style={[
+                      styles.rosterBtn,
+                      {
+                        backgroundColor: 'transparent',
+                        borderWidth: 1,
+                        borderColor: borderCol,
+                      },
+                    ]}
                     onPress={() => {
                       setSelectedSectionRoster(section);
                       setShowRosterModal(true);
                     }}
                     activeOpacity={0.8}
                   >
-                    <MaterialIcons name="people-outline" size={16} color="#003882" />
-                    <Text style={styles.rosterBtnText}>Enrolled ({enrolledCount})</Text>
+                    <MaterialIcons name="people-outline" size={15} color={isDark ? '#E2E8F0' : '#003882'} />
+                    <Text style={[styles.rosterBtnText, { color: isDark ? '#E2E8F0' : '#003882' }]}>
+                      Enrolled ({enrolledCount})
+                    </Text>
                   </TouchableOpacity>
 
                   <View style={styles.iconActionsWrap}>
@@ -787,6 +656,137 @@ export const SectionsTab = ({ topInset, navigation }) => {
           setSelectedSectionRoster(null);
         }}
       />
+
+      {/* Filter Bottom Sheet Modal */}
+      <Modal
+        visible={showFilterModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
+          <View
+            style={{
+              backgroundColor: cardBg,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              padding: 20,
+              paddingBottom: Math.max(insets.bottom, 20) + 8,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: textCol }}>Filter Sections</Text>
+              <TouchableOpacity onPress={() => setShowFilterModal(false)}>
+                <MaterialIcons name="close" size={22} color={subTextCol} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: 12, fontWeight: '700', color: subTextCol, marginBottom: 8 }}>STATUS</Text>
+            <View style={styles.lifecycleSegmentRow}>
+              {[
+                { key: 'active', label: 'Active', count: activeSectionsCount, icon: 'bolt' },
+                { key: 'completed', label: 'Completed', count: completedSectionsCount, icon: 'check-circle' },
+                { key: 'all', label: 'All', count: totalSectionsCount, icon: 'layers' },
+              ].map((tab) => {
+                const isTabActive = lifecycleTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    onPress={() => setLifecycleTab(tab.key)}
+                    style={[
+                      styles.lifecycleTabBtn,
+                      isTabActive
+                        ? { backgroundColor: '#003882', borderColor: '#003882' }
+                        : { backgroundColor: cardBg, borderColor: borderCol },
+                    ]}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons
+                      name={tab.icon}
+                      size={14}
+                      color={isTabActive ? '#FFFFFF' : subTextCol}
+                      style={{ marginRight: 5 }}
+                    />
+                    <Text style={[styles.lifecycleTabText, { color: isTabActive ? '#FFFFFF' : textCol }]}>
+                      {tab.label} ({tab.count})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={{ fontSize: 12, fontWeight: '700', color: subTextCol, marginTop: 10, marginBottom: 8 }}>CATEGORY</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
+              <TouchableOpacity
+                onPress={() => setActiveCategory('all')}
+                style={[
+                  styles.filterPill,
+                  {
+                    backgroundColor: activeCategory === 'all' ? '#003882' : cardBg,
+                    borderColor: activeCategory === 'all' ? '#003882' : borderCol,
+                  },
+                ]}
+              >
+                <Text style={[styles.filterPillText, { color: activeCategory === 'all' ? '#FFFFFF' : textCol }]}>
+                  All ({sections.length})
+                </Text>
+              </TouchableOpacity>
+              {SECTION_CATEGORIES.map((cat) => {
+                const isSelected = activeCategory === cat.key;
+                const countInCat = sections.filter((s) => s.category === cat.key).length;
+                return (
+                  <TouchableOpacity
+                    key={cat.key}
+                    onPress={() => setActiveCategory(cat.key)}
+                    style={[
+                      styles.filterPill,
+                      {
+                        backgroundColor: isSelected ? cat.color : cardBg,
+                        borderColor: isSelected ? cat.color : borderCol,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.filterPillText, { color: isSelected ? '#FFFFFF' : textCol }]}>
+                      {cat.label} {countInCat > 0 ? `(${countInCat})` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setLifecycleTab('active');
+                  setActiveCategory('all');
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: borderCol,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 13.5, fontWeight: '600', color: textCol }}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowFilterModal(false)}
+                style={{
+                  flex: 1.5,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: '#003882',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#FFFFFF' }}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -840,32 +840,25 @@ const styles = StyleSheet.create({
   },
   metricsGrid: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-    marginBottom: 14,
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 10,
   },
   metricCard: {
     flex: 1,
-    padding: 12,
-    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
   },
-  metricIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
   metricVal: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   metricLabel: {
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: '600',
     marginTop: 2,
     textAlign: 'center',
   },

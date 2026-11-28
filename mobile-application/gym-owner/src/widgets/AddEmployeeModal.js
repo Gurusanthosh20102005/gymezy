@@ -20,16 +20,18 @@ import { useToast } from './CustomScaffoldMessage';
 import { useAuth } from '../context/AuthContext';
 import { apiService } from '../services/apiService';
 import { pickImageFromDevice, capturePhotoFromCamera } from '../utils/filePickerUtils';
+import {
+  validateName,
+  validateMobile,
+  validateEmail,
+  checkPassword,
+  sanitizeMobile,
+  regionFromCountryCode,
+} from '../utils/formValidation';
 
 export const ROLE_OPTIONS = [
   'Manager (Operational Admin)',
   'Trainer',
-  'Front Desk Manager',
-  'Customer Support',
-  'Housekeeping',
-  'Nutritionist',
-  'Maintenance',
-  'Security',
 ];
 
 export const isManagerRole = (r) => {
@@ -57,30 +59,32 @@ export const RELATION_OPTIONS = [
 ];
 
 export const EMPLOYMENT_DOC_TYPES = [
-  'Offer Letter',
-  'Experience Certificate',
+  'Experience Letter',
   'Relieving Letter',
-  'Salary Slip / Payslip',
+  'Salary Slip',
   'Appointment Letter',
-  'Other Employment Doc',
+  'Other',
 ];
 
 export const PERSONAL_DOC_TYPES = [
-  'Aadhar Card',
+  'Aadhaar Card',
   'PAN Card',
   'Driving License',
   'Passport',
-  'Voter ID',
+  'Address Proof',
+  'Voter ID Card',
+  'Bank Passbook',
+  'Other',
 ];
 
 export const TRAINER_CERT_TYPES = [
-  'CPT (Certified Personal Trainer)',
-  'CSCS (Strength & Conditioning)',
-  'CrossFit Level 1 / Level 2',
-  'Yoga Alliance Certification',
-  'Nutrition & Dietetics Certificate',
-  'First Aid & CPR Certification',
-  'Other Certification',
+  'Personal Trainer Certificate',
+  'CPR / First Aid Certificate',
+  'Certified Strength & Conditioning Specialist (CSCS)',
+  'Yoga Teacher Training (YTT)',
+  'CrossFit Level 1 Coach',
+  'Sports Nutrition Certification',
+  'Other',
 ];
 
 export const AVAILABLE_SERVICES = [
@@ -91,6 +95,19 @@ export const AVAILABLE_SERVICES = [
   'HIIT Workouts',
   'Diet & Nutrition',
   'Body Transformation',
+];
+
+export const AVAILABLE_LANGUAGES = ['English', 'Hindi', 'Tamil', 'Telugu', 'Kannada'];
+
+export const AVAILABLE_CERTIFICATIONS = [
+  'ACE Certified Personal Trainer',
+  'ISSA Certified Fitness Trainer',
+  'ACSM Certified Personal Trainer',
+  'NASM Certified Personal Trainer',
+  'CSCS (Strength & Conditioning)',
+  'CPR / AED Certified',
+  'Yoga Alliance RYT 200',
+  'CrossFit Level 1 Coach',
 ];
 
 export const getServiceIconName = (service) => {
@@ -148,15 +165,16 @@ export const AddEmployeeModal = ({
   const [requireProfileEditApproval, setRequireProfileEditApproval] = useState(true);
 
   // Trainer Profile & Showcase
-  const [aboutMe, setAboutMe] = useState(
-    'Certified fitness trainer with 8+ years of experience helping clients achieve their fitness goals through personalized training and nutrition guidance.'
-  );
-  const [experience, setExperience] = useState('8+ Years');
-  const [servicesOffered, setServicesOffered] = useState(AVAILABLE_SERVICES);
-  const [certifications, setCertifications] = useState(
-    'ACE Certified Personal Trainer\nCertified Strength & Conditioning Specialist (CSCS)\nNutrition & Weight Management Certification'
-  );
-  const [languages, setLanguages] = useState('English, Hindi');
+  const [aboutMe, setAboutMe] = useState('');
+  const [experience, setExperience] = useState('');
+  const [servicesOffered, setServicesOffered] = useState([]);
+  const [certifications, setCertifications] = useState([]);
+  const [languages, setLanguages] = useState([]);
+  const [showServicesDropdown, setShowServicesDropdown] = useState(false);
+  const [showLanguagesDropdown, setShowLanguagesDropdown] = useState(false);
+  const [showCertsDropdown, setShowCertsDropdown] = useState(false);
+  const [customLanguage, setCustomLanguage] = useState('');
+  const [customCert, setCustomCert] = useState('');
 
   // Previous Employment
   const [prevCompany, setPrevCompany] = useState('');
@@ -180,7 +198,8 @@ export const AddEmployeeModal = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAttachDocModal, setShowAttachDocModal] = useState(false);
   const [attachCategory, setAttachCategory] = useState('employment');
-  const [attachDocType, setAttachDocType] = useState('Offer Letter');
+  const [attachDocType, setAttachDocType] = useState('Experience Letter');
+  const [showDocTypeDropdown, setShowDocTypeDropdown] = useState(false);
   const [attachDocNum, setAttachDocNum] = useState('');
   const [attachDocFile, setAttachDocFile] = useState(null);
 
@@ -216,16 +235,24 @@ export const AddEmployeeModal = ({
         }
         if (initialEmployee.description || initialEmployee.aboutMe) {
           setAboutMe(initialEmployee.description || initialEmployee.aboutMe);
+        } else {
+          setAboutMe('');
         }
-        if (initialEmployee.experience) setExperience(initialEmployee.experience);
-        if (Array.isArray(initialEmployee.servicesOffered)) setServicesOffered(initialEmployee.servicesOffered);
+        setExperience(initialEmployee.experience || '');
+        setServicesOffered(Array.isArray(initialEmployee.servicesOffered) ? initialEmployee.servicesOffered : []);
         if (Array.isArray(initialEmployee.certifications)) {
-          setCertifications(initialEmployee.certifications.join('\n'));
+          setCertifications(initialEmployee.certifications);
+        } else if (typeof initialEmployee.certifications === 'string') {
+          setCertifications(initialEmployee.certifications.split('\n').map((c) => c.trim()).filter(Boolean));
+        } else {
+          setCertifications([]);
         }
         if (Array.isArray(initialEmployee.languages)) {
-          setLanguages(initialEmployee.languages.join(', '));
-        } else if (typeof initialEmployee.languages === 'string') {
           setLanguages(initialEmployee.languages);
+        } else if (typeof initialEmployee.languages === 'string') {
+          setLanguages(initialEmployee.languages.split(',').map((l) => l.trim()).filter(Boolean));
+        } else {
+          setLanguages([]);
         }
         if (initialEmployee.emergencyContact) {
           setEmergencyName(initialEmployee.emergencyContact.name || '');
@@ -246,6 +273,17 @@ export const AddEmployeeModal = ({
   }, [visible, defaultRole, initialEmployee]);
 
   // Reset form
+  const [errors, setErrors] = useState({});
+
+  const clearFieldError = (field) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
   const resetForm = () => {
     setName('');
     const initialR = defaultRole === 'Manager' ? 'Manager (Operational Admin)' : (defaultRole || ROLE_OPTIONS[0]);
@@ -258,19 +296,21 @@ export const AddEmployeeModal = ({
     setShowRoleDropdown(false);
     setAccessType(isManagerRole(initialR) ? 'Admin' : 'Admin');
     setAvatar(null);
+    setErrors({});
     setRequireStaffApproval(true);
     setRequirePlanSwitchApproval(true);
     setRequireCancellationApproval(true);
     setRequireProfileEditApproval(true);
-    setAboutMe(
-      'Certified fitness trainer with 8+ years of experience helping clients achieve their fitness goals through personalized training and nutrition guidance.'
-    );
-    setExperience('8+ Years');
-    setServicesOffered(AVAILABLE_SERVICES);
-    setCertifications(
-      'ACE Certified Personal Trainer\nCertified Strength & Conditioning Specialist (CSCS)\nNutrition & Weight Management Certification'
-    );
-    setLanguages('English, Hindi');
+    setAboutMe('');
+    setExperience('');
+    setServicesOffered([]);
+    setCertifications([]);
+    setLanguages([]);
+    setShowServicesDropdown(false);
+    setShowLanguagesDropdown(false);
+    setShowCertsDropdown(false);
+    setCustomLanguage('');
+    setCustomCert('');
     setPrevCompany('');
     setPrevDesignation('');
     setPrevExp('1-2 Years');
@@ -355,6 +395,7 @@ export const AddEmployeeModal = ({
     }
     setAttachDocNum('');
     setAttachDocFile(null);
+    setShowDocTypeDropdown(false);
     setShowAttachDocModal(true);
   };
 
@@ -405,29 +446,40 @@ export const AddEmployeeModal = ({
   const handleSubmit = async () => {
     const isManager = isManagerRole(role);
     const backendRole = isManager ? 'Manager' : role;
+    const nextErrors = {};
 
-    if (!name.trim()) {
-      showToast({ message: 'Employee name is required', isError: true });
-      return;
+    const nameRes = validateName(name, { label: 'employee name' });
+    if (!nameRes.valid) nextErrors.name = nameRes.message;
+
+    const phoneRes = validateMobile(phone, countryCode);
+    if (!phoneRes.valid) nextErrors.phone = phoneRes.message;
+
+    const emailRes = validateEmail(email, { required: true });
+    if (!emailRes.valid) nextErrors.email = emailRes.message;
+
+    if (isManager && (!initialEmployee || password.trim().length > 0)) {
+      const pwRes = checkPassword(password, {
+        name: nameRes.normalized || name,
+        email: emailRes.normalized || email,
+        mobile: phone,
+      });
+      if (!pwRes.valid) nextErrors.password = pwRes.message;
     }
-    if (!phone.trim()) {
-      showToast({ message: 'Phone number is required', isError: true });
-      return;
+
+    const emergNameRes = validateName(emergencyName, { label: 'emergency contact name' });
+    if (!emergNameRes.valid) nextErrors.emergencyName = emergNameRes.message;
+
+    if (!emergencyRelation.trim()) {
+      nextErrors.emergencyRelation = 'Enter relationship';
     }
-    if (!email.trim()) {
-      showToast({ message: 'Email ID is required', isError: true });
-      return;
-    }
-    if (isManager && !initialEmployee && (!password || password.trim().length < 6)) {
-      showToast({ message: 'Portal Login Password is required (min 6 characters) for Manager', isError: true });
-      return;
-    }
-    if (isManager && password && password.trim().length < 6) {
-      showToast({ message: 'Password must be at least 6 characters long', isError: true });
-      return;
-    }
-    if (!emergencyName.trim() || !emergencyPhone.trim()) {
-      showToast({ message: 'Emergency contact name & phone are required', isError: true });
+
+    const emergPhoneRes = validateMobile(emergencyPhone, countryCode);
+    if (!emergPhoneRes.valid) nextErrors.emergencyPhone = emergPhoneRes.message;
+
+    setErrors(nextErrors);
+    const firstError = Object.values(nextErrors)[0];
+    if (firstError) {
+      showToast({ message: firstError, isError: true });
       return;
     }
 
@@ -450,7 +502,7 @@ export const AddEmployeeModal = ({
         }),
         status: initialEmployee?.status || 'Active',
         attendance: initialEmployee?.attendance || 'Present',
-        accessType: isManager ? 'Admin' : accessType,
+        accessType: isManager ? 'Admin' : 'Employee',
         managerPermissions: isCurrentUserManager
           ? (initialEmployee?.managerPermissions || {
               requireStaffApproval: true,
@@ -471,30 +523,12 @@ export const AddEmployeeModal = ({
         previousCompany: prevEmployments[0]?.companyName?.trim() || prevCompany.trim(),
         previousDesignation: prevEmployments[0]?.designation?.trim() || prevDesignation.trim(),
         previousExp: prevEmployments[0]?.experience || prevExp,
-        description:
-          aboutMe.trim() ||
-          'Certified fitness trainer with 8+ years of experience helping clients achieve their fitness goals through personalized training and nutrition guidance.',
-        aboutMe:
-          aboutMe.trim() ||
-          'Certified fitness trainer with 8+ years of experience helping clients achieve their fitness goals through personalized training and nutrition guidance.',
-        experience: experience.trim() || prevExp || '8+ Years',
-        servicesOffered: servicesOffered.length > 0 ? servicesOffered : AVAILABLE_SERVICES,
-        certifications: certifications
-          ? certifications
-              .split('\n')
-              .map((c) => c.trim().replace(/^[•\-*]\s*/, ''))
-              .filter(Boolean)
-          : [
-              'ACE Certified Personal Trainer',
-              'Certified Strength & Conditioning Specialist (CSCS)',
-              'Nutrition & Weight Management Certification',
-            ],
-        languages: languages
-          ? languages
-              .split(',')
-              .map((l) => l.trim())
-              .filter(Boolean)
-          : ['English', 'Hindi'],
+        description: aboutMe.trim(),
+        aboutMe: aboutMe.trim(),
+        experience: experience.trim() || prevEmployments[0]?.experience || prevExp || '',
+        servicesOffered: Array.isArray(servicesOffered) ? servicesOffered : [],
+        certifications: Array.isArray(certifications) ? certifications : [],
+        languages: Array.isArray(languages) ? languages : [],
         emergencyContact: {
           name: emergencyName.trim(),
           relationship: emergencyRelation.trim() || 'Spouse',
@@ -593,7 +627,7 @@ export const AddEmployeeModal = ({
                     Employee Photo
                   </Text>
                   <Text style={[styles.photoHelpSub, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
-                    {avatar ? 'Photo attached. Tap to change.' : 'Upload Photo (JPG, PNG Max 1MB)'}
+                    {avatar ? 'Photo attached. Tap to change.' : 'Upload Photo (JPG, PNG Max 2MB)'}
                   </Text>
                   <TouchableOpacity onPress={handlePickPhoto} style={{ marginTop: 6 }}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: AppColors.primaryColor }}>
@@ -612,15 +646,25 @@ export const AddEmployeeModal = ({
                   styles.formInput,
                   {
                     backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
-                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                    borderColor: errors.name ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                     color: isDark ? '#FFFFFF' : '#0F172A',
                   },
                 ]}
                 placeholder="Enter employee name"
                 placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                 value={name}
-                onChangeText={setName}
+                onChangeText={(val) => {
+                  setName(val);
+                  clearFieldError('name');
+                }}
+                onBlur={() => {
+                  const res = validateName(name, { label: 'employee name' });
+                  if (!res.valid) setErrors((prev) => ({ ...prev, name: res.message }));
+                }}
               />
+              {errors.name && (
+                <Text style={{ fontSize: 11, color: '#EF4444', marginTop: -8, marginBottom: 10 }}>{errors.name}</Text>
+              )}
 
               {/* Phone Number with Country Code */}
               <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -628,7 +672,10 @@ export const AddEmployeeModal = ({
                   <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>Code</Text>
                   <TextInput
                     value={countryCode}
-                    onChangeText={setCountryCode}
+                    onChangeText={(val) => {
+                      setCountryCode(val);
+                      clearFieldError('phone');
+                    }}
                     placeholder="+91"
                     placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                     style={[
@@ -651,7 +698,7 @@ export const AddEmployeeModal = ({
                       styles.formInput,
                       {
                         backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
-                        borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                        borderColor: errors.phone ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                         color: isDark ? '#FFFFFF' : '#0F172A',
                       },
                     ]}
@@ -659,8 +706,19 @@ export const AddEmployeeModal = ({
                     placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                     keyboardType="phone-pad"
                     value={phone}
-                    onChangeText={setPhone}
+                    onChangeText={(val) => {
+                      const region = regionFromCountryCode(countryCode);
+                      setPhone(region ? sanitizeMobile(val, region, { pasted: val.length > 10, cap: true }) : val.replace(/\D/g, '').slice(0, 15));
+                      clearFieldError('phone');
+                    }}
+                    onBlur={() => {
+                      const res = validateMobile(phone, countryCode);
+                      if (!res.valid) setErrors((prev) => ({ ...prev, phone: res.message }));
+                    }}
                   />
+                  {errors.phone && (
+                    <Text style={{ fontSize: 11, color: '#EF4444', marginTop: -8, marginBottom: 10 }}>{errors.phone}</Text>
+                  )}
                 </View>
               </View>
 
@@ -673,7 +731,7 @@ export const AddEmployeeModal = ({
                   styles.formInput,
                   {
                     backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
-                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                    borderColor: errors.email ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                     color: isDark ? '#FFFFFF' : '#0F172A',
                   },
                 ]}
@@ -682,8 +740,18 @@ export const AddEmployeeModal = ({
                 keyboardType="email-address"
                 autoCapitalize="none"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(val) => {
+                  setEmail(val);
+                  clearFieldError('email');
+                }}
+                onBlur={() => {
+                  const res = validateEmail(email, { required: true });
+                  if (!res.valid) setErrors((prev) => ({ ...prev, email: res.message }));
+                }}
               />
+              {errors.email && (
+                <Text style={{ fontSize: 11, color: '#EF4444', marginTop: -8, marginBottom: 10 }}>{errors.email}</Text>
+              )}
 
               {/* Role Picker (Dropdown Selector matching Web & Mobile Designs) */}
               <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
@@ -894,7 +962,7 @@ export const AddEmployeeModal = ({
                       flexDirection: 'row',
                       alignItems: 'center',
                       backgroundColor: isDark ? '#1E1E1E' : '#FFFFFF',
-                      borderColor: isDark ? AppColors.darkBorder : '#CBD5E1',
+                      borderColor: errors.password ? '#EF4444' : isDark ? AppColors.darkBorder : '#CBD5E1',
                       borderWidth: 1,
                       borderRadius: 10,
                       height: 46,
@@ -908,11 +976,20 @@ export const AddEmployeeModal = ({
                         color: isDark ? '#FFFFFF' : '#0F172A',
                         paddingVertical: 0,
                       }}
-                      placeholder={initialEmployee ? 'Leave blank to keep existing password' : 'Enter password (min 6 characters)'}
+                      placeholder={initialEmployee ? 'Leave blank to keep existing password' : '8-16 chars, upper, lower, number & symbol'}
                       placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                       secureTextEntry={!showPassword}
                       value={password}
-                      onChangeText={setPassword}
+                      onChangeText={(val) => {
+                        setPassword(val);
+                        clearFieldError('password');
+                      }}
+                      onBlur={() => {
+                        if (!initialEmployee || password.trim().length > 0) {
+                          const res = checkPassword(password, { name, email, mobile: phone });
+                          if (!res.valid) setErrors((prev) => ({ ...prev, password: res.message }));
+                        }
+                      }}
                       autoCapitalize="none"
                       autoCorrect={false}
                     />
@@ -927,60 +1004,11 @@ export const AddEmployeeModal = ({
                       />
                     </TouchableOpacity>
                   </View>
+                  {errors.password && (
+                    <Text style={{ fontSize: 11, color: '#EF4444', marginTop: 6 }}>{errors.password}</Text>
+                  )}
                 </View>
               )}
-
-              {/* Access Level */}
-              <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                Access Level <Text style={{ color: '#EF4444' }}>*</Text>
-              </Text>
-              <View style={styles.accessLevelRow}>
-                {ACCESS_LEVELS.map((al) => {
-                  const isSel = accessType === al.value;
-                  return (
-                    <TouchableOpacity
-                      key={al.value}
-                      style={[
-                        styles.accessLevelCard,
-                        isSel && {
-                          borderColor: AppColors.primaryColor,
-                          backgroundColor: isDark ? 'rgba(0,102,204,0.12)' : '#EFF6FF',
-                        },
-                        {
-                          borderColor: isSel
-                            ? AppColors.primaryColor
-                            : isDark
-                            ? AppColors.darkBorder
-                            : '#E2E8F0',
-                          backgroundColor: isSel
-                            ? isDark
-                              ? 'rgba(0,102,204,0.12)'
-                              : '#EFF6FF'
-                            : isDark
-                            ? 'rgba(255,255,255,0.04)'
-                            : '#F8FAFC',
-                        },
-                      ]}
-                      onPress={() => setAccessType(al.value)}
-                    >
-                      <Text
-                        style={[
-                          styles.accessLevelTitle,
-                          { color: isSel ? AppColors.primaryColor : isDark ? '#FFFFFF' : '#0F172A' },
-                        ]}
-                      >
-                        {al.label}
-                      </Text>
-                      <Text style={[styles.accessLevelDesc, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                        {al.desc}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: -6, marginBottom: 14 }}>
-                Define what this employee can access in the system.
-              </Text>
 
               {/* Trainer Profile & Showcase (Shown in User App for Trainers) */}
               {!isManagerRole(role) && (
@@ -1025,64 +1053,97 @@ export const AddEmployeeModal = ({
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                 />
 
-                {/* Services Offered Chips */}
+                {/* Services Offered (Multi-select Dropdown matching Web) */}
                 <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A', marginTop: 12 }]}>
                   Services Offered
                 </Text>
-                <View style={styles.servicesChipContainer}>
-                  {AVAILABLE_SERVICES.map((srv) => {
-                    const isSelected = servicesOffered.includes(srv);
-                    return (
-                      <TouchableOpacity
-                        key={srv}
-                        style={[
-                          styles.serviceChipBtn,
-                          isSelected && {
-                            backgroundColor: AppColors.primaryColor,
-                            borderColor: AppColors.primaryColor,
-                          },
-                          {
-                            backgroundColor: isSelected
-                              ? AppColors.primaryColor
-                              : isDark
-                              ? 'rgba(255,255,255,0.06)'
-                              : '#FFFFFF',
-                            borderColor: isSelected
-                              ? AppColors.primaryColor
-                              : isDark
-                              ? AppColors.darkBorder
-                              : '#E2E8F0',
-                          },
-                        ]}
-                        onPress={() => {
-                          if (isSelected) {
-                            setServicesOffered(servicesOffered.filter((s) => s !== srv));
-                          } else {
-                            setServicesOffered([...servicesOffered, srv]);
-                          }
-                        }}
-                      >
-                        <MaterialIcons
-                          name={getServiceIconName(srv)}
-                          size={15}
-                          color={isSelected ? '#FFFFFF' : isDark ? '#CBD5E1' : '#475569'}
-                          style={{ marginRight: 6 }}
-                        />
-                        <Text
-                          style={[
-                            styles.serviceChipText,
-                            { color: isSelected ? '#FFFFFF' : isDark ? '#FFFFFF' : '#0F172A' },
-                          ]}
+                <TouchableOpacity
+                  style={[
+                    styles.formInput,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
+                      borderColor: showServicesDropdown ? AppColors.primaryColor : (isDark ? AppColors.darkBorder : '#E2E8F0'),
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      height: 46,
+                      marginBottom: showServicesDropdown ? 6 : 12,
+                    },
+                  ]}
+                  onPress={() => setShowServicesDropdown(!showServicesDropdown)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: servicesOffered.length > 0 ? (isDark ? '#FFFFFF' : '#0F172A') : '#94A3B8',
+                      flex: 1,
+                      marginRight: 8,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {servicesOffered.length > 0 ? servicesOffered.join(', ') : 'Select services offered'}
+                  </Text>
+                  <MaterialIcons
+                    name={showServicesDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                    size={22}
+                    color={isDark ? '#94A3B8' : '#64748B'}
+                  />
+                </TouchableOpacity>
+                {showServicesDropdown && (
+                  <View
+                    style={{
+                      backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                      borderRadius: 12,
+                      marginBottom: 12,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {AVAILABLE_SERVICES.map((srv) => {
+                      const isSel = servicesOffered.includes(srv);
+                      return (
+                        <TouchableOpacity
+                          key={srv}
+                          style={{
+                            paddingVertical: 10,
+                            paddingHorizontal: 14,
+                            backgroundColor: isSel
+                              ? (isDark ? 'rgba(0, 56, 130, 0.28)' : '#EFF6FF')
+                              : 'transparent',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            borderBottomWidth: 1,
+                            borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                          }}
+                          onPress={() => {
+                            if (isSel) {
+                              setServicesOffered(servicesOffered.filter((s) => s !== srv));
+                            } else {
+                              setServicesOffered([...servicesOffered, srv]);
+                            }
+                          }}
                         >
-                          {srv}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isSel ? '700' : '500',
+                              color: isSel ? AppColors.primaryColor : (isDark ? '#FFFFFF' : '#0F172A'),
+                            }}
+                          >
+                            {srv}
+                          </Text>
+                          {isSel && <MaterialIcons name="check" size={18} color={AppColors.primaryColor} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
 
                 {/* Experience & Languages */}
-                <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                       Experience
@@ -1098,7 +1159,7 @@ export const AddEmployeeModal = ({
                       ]}
                       value={experience}
                       onChangeText={setExperience}
-                      placeholder="e.g. 8+ Years"
+                      placeholder="e.g. 3+ Years"
                       placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                     />
                   </View>
@@ -1107,44 +1168,259 @@ export const AddEmployeeModal = ({
                     <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                       Languages
                     </Text>
-                    <TextInput
+                    <TouchableOpacity
                       style={[
                         styles.formInput,
                         {
                           backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
-                          borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                          color: isDark ? '#FFFFFF' : '#0F172A',
+                          borderColor: showLanguagesDropdown ? AppColors.primaryColor : (isDark ? AppColors.darkBorder : '#E2E8F0'),
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          height: 46,
                         },
                       ]}
-                      value={languages}
-                      onChangeText={setLanguages}
-                      placeholder="e.g. English, Hindi"
-                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
-                    />
+                      onPress={() => setShowLanguagesDropdown(!showLanguagesDropdown)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          color: languages.length > 0 ? (isDark ? '#FFFFFF' : '#0F172A') : '#94A3B8',
+                          flex: 1,
+                          marginRight: 6,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {languages.length > 0 ? languages.join(', ') : 'Languages spoken'}
+                      </Text>
+                      <MaterialIcons
+                        name={showLanguagesDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                        size={20}
+                        color={isDark ? '#94A3B8' : '#64748B'}
+                      />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
-                {/* Certifications */}
-                <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A', marginTop: 12 }]}>
-                  Certifications (one per line)
+                {showLanguagesDropdown && (
+                  <View
+                    style={{
+                      backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                      borderRadius: 12,
+                      marginBottom: 12,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {Array.from(new Set([...AVAILABLE_LANGUAGES, ...languages])).map((lang) => {
+                      const isSel = languages.includes(lang);
+                      return (
+                        <TouchableOpacity
+                          key={lang}
+                          style={{
+                            paddingVertical: 10,
+                            paddingHorizontal: 14,
+                            backgroundColor: isSel
+                              ? (isDark ? 'rgba(0, 56, 130, 0.28)' : '#EFF6FF')
+                              : 'transparent',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            borderBottomWidth: 1,
+                            borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                          }}
+                          onPress={() => {
+                            if (isSel) {
+                              setLanguages(languages.filter((l) => l !== lang));
+                            } else {
+                              setLanguages([...languages, lang]);
+                            }
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isSel ? '700' : '500',
+                              color: isSel ? AppColors.primaryColor : (isDark ? '#FFFFFF' : '#0F172A'),
+                            }}
+                          >
+                            {lang}
+                          </Text>
+                          {isSel && <MaterialIcons name="check" size={18} color={AppColors.primaryColor} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 8 }}>
+                      <TextInput
+                        value={customLanguage}
+                        onChangeText={setCustomLanguage}
+                        placeholder="Add language..."
+                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
+                        style={[
+                          styles.formInput,
+                          {
+                            flex: 1,
+                            height: 38,
+                            marginBottom: 0,
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
+                            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                            color: isDark ? '#FFFFFF' : '#0F172A',
+                          },
+                        ]}
+                      />
+                      <TouchableOpacity
+                        onPress={() => {
+                          const trimmed = customLanguage.trim();
+                          if (trimmed && !languages.includes(trimmed)) {
+                            setLanguages([...languages, trimmed]);
+                          }
+                          setCustomLanguage('');
+                        }}
+                        style={{
+                          backgroundColor: AppColors.primaryColor,
+                          paddingHorizontal: 12,
+                          height: 38,
+                          borderRadius: 8,
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {/* Certifications (Multi-select + Custom Tags matching Web) */}
+                <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A', marginTop: 4 }]}>
+                  Certifications
                 </Text>
-                <TextInput
+                <TouchableOpacity
                   style={[
                     styles.formInput,
-                    styles.textAreaInput,
                     {
                       backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
-                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-                      color: isDark ? '#FFFFFF' : '#0F172A',
+                      borderColor: showCertsDropdown ? AppColors.primaryColor : (isDark ? AppColors.darkBorder : '#E2E8F0'),
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      height: 46,
+                      marginBottom: showCertsDropdown ? 6 : 4,
                     },
                   ]}
-                  multiline
-                  numberOfLines={3}
-                  value={certifications}
-                  onChangeText={setCertifications}
-                  placeholder="ACE Certified Personal Trainer&#10;Certified Strength & Conditioning Specialist (CSCS)&#10;Nutrition & Weight Management Certification"
-                  placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
-                />
+                  onPress={() => setShowCertsDropdown(!showCertsDropdown)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      color: certifications.length > 0 ? (isDark ? '#FFFFFF' : '#0F172A') : '#94A3B8',
+                      flex: 1,
+                      marginRight: 8,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {certifications.length > 0
+                      ? certifications.join(', ')
+                      : 'Type certification (e.g. ACE, ISSA, CPR) or select below'}
+                  </Text>
+                  <MaterialIcons
+                    name={showCertsDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                    size={22}
+                    color={isDark ? '#94A3B8' : '#64748B'}
+                  />
+                </TouchableOpacity>
+                {showCertsDropdown && (
+                  <View
+                    style={{
+                      backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                      borderRadius: 12,
+                      marginBottom: 8,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {Array.from(new Set([...AVAILABLE_CERTIFICATIONS, ...certifications])).map((cert) => {
+                      const isSel = certifications.includes(cert);
+                      return (
+                        <TouchableOpacity
+                          key={cert}
+                          style={{
+                            paddingVertical: 10,
+                            paddingHorizontal: 14,
+                            backgroundColor: isSel
+                              ? (isDark ? 'rgba(0, 56, 130, 0.28)' : '#EFF6FF')
+                              : 'transparent',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            borderBottomWidth: 1,
+                            borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                          }}
+                          onPress={() => {
+                            if (isSel) {
+                              setCertifications(certifications.filter((c) => c !== cert));
+                            } else {
+                              setCertifications([...certifications, cert]);
+                            }
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isSel ? '700' : '500',
+                              color: isSel ? AppColors.primaryColor : (isDark ? '#FFFFFF' : '#0F172A'),
+                              flex: 1,
+                              marginRight: 8,
+                            }}
+                          >
+                            {cert}
+                          </Text>
+                          {isSel && <MaterialIcons name="check" size={18} color={AppColors.primaryColor} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 8 }}>
+                      <TextInput
+                        value={customCert}
+                        onChangeText={setCustomCert}
+                        placeholder="Add custom certification..."
+                        placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
+                        style={[
+                          styles.formInput,
+                          {
+                            flex: 1,
+                            height: 38,
+                            marginBottom: 0,
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
+                            borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                            color: isDark ? '#FFFFFF' : '#0F172A',
+                          },
+                        ]}
+                      />
+                      <TouchableOpacity
+                        onPress={() => {
+                          const trimmed = customCert.trim();
+                          if (trimmed && !certifications.includes(trimmed)) {
+                            setCertifications([...certifications, trimmed]);
+                          }
+                          setCustomCert('');
+                        }}
+                        style={{
+                          backgroundColor: AppColors.primaryColor,
+                          paddingHorizontal: 12,
+                          height: 38,
+                          borderRadius: 8,
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
             )}
 
@@ -1255,43 +1531,21 @@ export const AddEmployeeModal = ({
                     <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A', marginTop: 8, fontSize: 12 }]}>
                       Years of Experience
                     </Text>
-                    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                      {PREV_EXP_OPTIONS.map((expOption) => {
-                        const isSel = emp.experience === expOption;
-                        return (
-                          <TouchableOpacity
-                            key={expOption}
-                            style={[
-                              styles.selectionChip,
-                              {
-                                paddingVertical: 4,
-                                paddingHorizontal: 10,
-                                backgroundColor: isSel
-                                  ? AppColors.primaryColor
-                                  : isDark
-                                  ? 'rgba(255,255,255,0.05)'
-                                  : '#FFFFFF',
-                                borderColor: isSel
-                                  ? AppColors.primaryColor
-                                  : isDark
-                                  ? AppColors.darkBorder
-                                  : '#E2E8F0',
-                              },
-                            ]}
-                            onPress={() => handleUpdatePrevEmployment(index, 'experience', expOption)}
-                          >
-                            <Text
-                              style={[
-                                styles.selectionChipText,
-                                { fontSize: 11, color: isSel ? '#FFFFFF' : isDark ? '#FFFFFF' : '#0F172A' },
-                              ]}
-                            >
-                              {expOption}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+                    <TextInput
+                      value={emp.experience ?? ''}
+                      onChangeText={(val) => handleUpdatePrevEmployment(index, 'experience', val)}
+                      placeholder="e.g. 2 Years, 6 Months"
+                      placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
+                      style={[
+                        styles.formInput,
+                        {
+                          marginBottom: 4,
+                          color: isDark ? '#FFFFFF' : '#0F172A',
+                          borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
+                        },
+                      ]}
+                    />
                   </View>
                 ))}
 
@@ -1466,18 +1720,28 @@ export const AddEmployeeModal = ({
                     </Text>
                     <TextInput
                       value={emergencyName}
-                      onChangeText={setEmergencyName}
+                      onChangeText={(val) => {
+                        setEmergencyName(val);
+                        clearFieldError('emergencyName');
+                      }}
+                      onBlur={() => {
+                        const res = validateName(emergencyName, { label: 'emergency contact name' });
+                        if (!res.valid) setErrors((prev) => ({ ...prev, emergencyName: res.message }));
+                      }}
                       placeholder="e.g. Jane Doe"
                       placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                       style={[
                         styles.formInput,
                         {
                           color: isDark ? '#FFFFFF' : '#0F172A',
-                          borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                          borderColor: errors.emergencyName ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                           backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
                         },
                       ]}
                     />
+                    {errors.emergencyName && (
+                      <Text style={{ fontSize: 11, color: '#EF4444', marginTop: -8, marginBottom: 8 }}>{errors.emergencyName}</Text>
+                    )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
@@ -1485,65 +1749,41 @@ export const AddEmployeeModal = ({
                     </Text>
                     <TextInput
                       value={emergencyRelation}
-                      onChangeText={setEmergencyRelation}
+                      onChangeText={(val) => {
+                        setEmergencyRelation(val);
+                        clearFieldError('emergencyRelation');
+                      }}
                       placeholder="e.g. Spouse"
                       placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
                       style={[
                         styles.formInput,
                         {
                           color: isDark ? '#FFFFFF' : '#0F172A',
-                          borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                          borderColor: errors.emergencyRelation ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                           backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
                         },
                       ]}
                     />
+                    {errors.emergencyRelation && (
+                      <Text style={{ fontSize: 11, color: '#EF4444', marginTop: -8, marginBottom: 8 }}>{errors.emergencyRelation}</Text>
+                    )}
                   </View>
                 </View>
-
-                {/* Relationship Chips */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                  {RELATION_OPTIONS.map((rel) => {
-                    const isSel = emergencyRelation === rel;
-                    return (
-                      <TouchableOpacity
-                        key={rel}
-                        style={[
-                          styles.selectionChipSmall,
-                          {
-                            marginRight: 6,
-                            backgroundColor: isSel
-                              ? AppColors.primaryColor
-                              : isDark
-                              ? 'rgba(255,255,255,0.05)'
-                              : '#FFFFFF',
-                            borderColor: isSel
-                              ? AppColors.primaryColor
-                              : isDark
-                              ? AppColors.darkBorder
-                              : '#E2E8F0',
-                          },
-                        ]}
-                        onPress={() => setEmergencyRelation(rel)}
-                      >
-                        <Text
-                          style={[
-                            styles.selectionChipTextSmall,
-                            { color: isSel ? '#FFFFFF' : isDark ? '#FFFFFF' : '#0F172A' },
-                          ]}
-                        >
-                          {rel}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
 
                 <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                   Phone Number <Text style={{ color: '#EF4444' }}>*</Text>
                 </Text>
                 <TextInput
                   value={emergencyPhone}
-                  onChangeText={setEmergencyPhone}
+                  onChangeText={(val) => {
+                    const region = regionFromCountryCode(countryCode);
+                    setEmergencyPhone(region ? sanitizeMobile(val, region, { pasted: val.length > 10, cap: true }) : val.replace(/\D/g, '').slice(0, 15));
+                    clearFieldError('emergencyPhone');
+                  }}
+                  onBlur={() => {
+                    const res = validateMobile(emergencyPhone, countryCode);
+                    if (!res.valid) setErrors((prev) => ({ ...prev, emergencyPhone: res.message }));
+                  }}
                   placeholder="e.g. 9876543210"
                   keyboardType="phone-pad"
                   placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : '#94A3B8'}
@@ -1551,11 +1791,14 @@ export const AddEmployeeModal = ({
                     styles.formInput,
                     {
                       color: isDark ? '#FFFFFF' : '#0F172A',
-                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                      borderColor: errors.emergencyPhone ? '#EF4444' : isDark ? AppColors.darkBorder : '#E2E8F0',
                       backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
                     },
                   ]}
                 />
+                {errors.emergencyPhone && (
+                  <Text style={{ fontSize: 11, color: '#EF4444', marginTop: -8, marginBottom: 8 }}>{errors.emergencyPhone}</Text>
+                )}
               </View>
 
               {/* Personal Verification Documents */}
@@ -1712,7 +1955,8 @@ export const AddEmployeeModal = ({
                 )}
               </View>
 
-              {/* Trainer Certificate */}
+              {/* Trainer Certificate (Hidden for Manager role) */}
+              {!isManagerRole(role) && (
               <View
                 style={[
                   styles.subSectionBox,
@@ -1865,6 +2109,7 @@ export const AddEmployeeModal = ({
                   </View>
                 )}
               </View>
+              )}
 
               {/* Bottom Actions */}
               <View style={styles.bottomActionsRow}>
@@ -1932,49 +2177,97 @@ export const AddEmployeeModal = ({
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 14 }}>
               <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                Document Type <Text style={{ color: '#EF4444' }}>*</Text>
+                Document / Certificate Type <Text style={{ color: '#EF4444' }}>*</Text>
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                {(attachCategory === 'employment'
-                  ? EMPLOYMENT_DOC_TYPES
-                  : attachCategory === 'personal'
-                  ? PERSONAL_DOC_TYPES
-                  : TRAINER_CERT_TYPES
-                ).map((dt) => {
-                  const isSel = attachDocType === dt;
-                  return (
-                    <TouchableOpacity
-                      key={dt}
-                      style={[
-                        styles.selectionChip,
-                        {
-                          marginRight: 6,
+              <TouchableOpacity
+                style={[
+                  styles.formInput,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
+                    borderColor: showDocTypeDropdown ? AppColors.primaryColor : (isDark ? AppColors.darkBorder : '#CBD5E1'),
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    height: 46,
+                    marginBottom: showDocTypeDropdown ? 6 : 14,
+                  },
+                ]}
+                onPress={() => setShowDocTypeDropdown(!showDocTypeDropdown)}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={{
+                    fontSize: 13.5,
+                    color: attachDocType ? (isDark ? '#FFFFFF' : '#0F172A') : '#94A3B8',
+                    fontWeight: '500',
+                    flex: 1,
+                    marginRight: 8,
+                  }}
+                  numberOfLines={1}
+                >
+                  {attachDocType || 'Select document type'}
+                </Text>
+                <MaterialIcons
+                  name={showDocTypeDropdown ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+                  size={22}
+                  color={isDark ? '#94A3B8' : '#64748B'}
+                />
+              </TouchableOpacity>
+
+              {showDocTypeDropdown && (
+                <View
+                  style={{
+                    backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                    borderWidth: 1,
+                    borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                    borderRadius: 12,
+                    marginBottom: 14,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {(attachCategory === 'employment'
+                    ? EMPLOYMENT_DOC_TYPES
+                    : attachCategory === 'personal'
+                    ? PERSONAL_DOC_TYPES
+                    : TRAINER_CERT_TYPES
+                  ).map((dt) => {
+                    const isSel = attachDocType === dt;
+                    return (
+                      <TouchableOpacity
+                        key={dt}
+                        style={{
+                          paddingVertical: 11,
+                          paddingHorizontal: 14,
                           backgroundColor: isSel
-                            ? AppColors.primaryColor
-                            : isDark
-                            ? 'rgba(255,255,255,0.05)'
-                            : '#F8FAFC',
-                          borderColor: isSel
-                            ? AppColors.primaryColor
-                            : isDark
-                            ? AppColors.darkBorder
-                            : '#E2E8F0',
-                        },
-                      ]}
-                      onPress={() => setAttachDocType(dt)}
-                    >
-                      <Text
-                        style={[
-                          styles.selectionChipText,
-                          { color: isSel ? '#FFFFFF' : isDark ? '#FFFFFF' : '#0F172A' },
-                        ]}
+                            ? (isDark ? 'rgba(0, 56, 130, 0.28)' : '#EFF6FF')
+                            : 'transparent',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          borderBottomWidth: 1,
+                          borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                        }}
+                        onPress={() => {
+                          setAttachDocType(dt);
+                          setShowDocTypeDropdown(false);
+                        }}
                       >
-                        {dt}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: isSel ? '700' : '500',
+                            color: isSel ? AppColors.primaryColor : (isDark ? '#FFFFFF' : '#0F172A'),
+                            flex: 1,
+                          }}
+                        >
+                          {dt}
+                        </Text>
+                        {isSel && <MaterialIcons name="check" size={18} color={AppColors.primaryColor} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
 
               <Text style={[styles.formLabel, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
                 {attachCategory === 'personal'
@@ -2062,7 +2355,7 @@ export const AddEmployeeModal = ({
                       Choose Document or Photo
                     </Text>
                     <Text style={{ fontSize: 11, color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B', marginTop: 2 }}>
-                      Supports PDF, JPG, PNG up to 1MB
+                      Supports PDF, JPG, PNG up to 2MB
                     </Text>
                     <View
                       style={{

@@ -202,3 +202,12 @@ input[type="reset"]:hover,
   font-weight: 500;
   color: var(--color-secondary, #00BF62) !important;
 }
+
+/* ==========================================================================
+   TEXTAREA: DISABLE DRAG-RESIZE & AUTO-GROW WITH CONTENT
+   ========================================================================== */
+textarea {
+  resize: none !important;
+  overflow-y: hidden !important;
+  field-sizing: content;
+}

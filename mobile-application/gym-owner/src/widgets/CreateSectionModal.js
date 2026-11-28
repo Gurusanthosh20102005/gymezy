@@ -37,6 +37,18 @@ export const TIME_SLOTS = [
   '08:00 PM', '08:30 PM', '09:00 PM', '09:30 PM', '10:00 PM', '10:30 PM',
 ];
 
+const parseTimeToMinutes = (timeStr) => {
+  if (!timeStr) return -1;
+  const match = String(timeStr).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return -1;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const period = match[3].toUpperCase();
+  if (period === 'PM' && hours !== 12) hours += 12;
+  if (period === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+};
+
 export const ALL_DAYS = [
   { id: 'Mon', label: 'M', full: 'Monday' },
   { id: 'Tue', label: 'T', full: 'Tuesday' },
@@ -409,16 +421,23 @@ export const CreateSectionModal = ({
             >
               <View style={styles.pickerTriggerLeft}>
                 <MaterialIcons name="person" size={20} color="#003882" style={{ marginRight: 8 }} />
-                <Text style={[styles.pickerTriggerText, { color: textCol }]}>
+                <Text style={[styles.pickerTriggerText, { color: !isLoadingTrainers && trainers.length === 0 ? '#EF4444' : textCol }]}>
                   {isLoadingTrainers
-                    ? 'Checking trainer availability...'
+                    ? 'Checking availability...'
                     : selectedTrainer
                       ? selectedTrainer.name
-                      : 'Select an available trainer'}
+                      : trainers.length === 0
+                        ? 'No trainers available (tap to view)'
+                        : 'Select an available trainer'}
                 </Text>
               </View>
               <MaterialIcons name="keyboard-arrow-down" size={20} color={subTextCol} />
             </TouchableOpacity>
+            {!isLoadingTrainers && trainers.length === 0 && (
+              <Text style={{ fontSize: 11.5, color: '#B45309', marginTop: 4 }}>
+                Adjust start/end time or active days to match a trainer’s shift.
+              </Text>
+            )}
           </View>
 
           {/* Cost & Capacity in 2 columns */}
@@ -683,9 +702,23 @@ export const CreateSectionModal = ({
                         <Text style={{ color: '#166534', fontSize: 11, fontWeight: '600' }}>Available</Text>
                       </View>
                     ) : (
-                      <View style={{ backgroundColor: isDark ? '#334155' : '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                        <Text style={{ color: '#64748B', fontSize: 11, fontWeight: '600' }}>Not Available</Text>
-                      </View>
+                      (() => {
+                        const r = String(t.reason || '').trim();
+                        const shortReason = /inactive/i.test(r)
+                          ? 'Inactive'
+                          : r.match(/does not work on\s+([A-Z,\s]+)/i)?.[1]
+                          ? `Off on ${r.match(/does not work on\s+([A-Z,\s]+)/i)[1].trim()}`
+                          : r.match(/working hours\s*\(([^)]+)\)/i)?.[1]
+                          ? `Shift: ${r.match(/working hours\s*\(([^)]+)\)/i)[1].trim()}`
+                          : r || 'Unavailable';
+                        return (
+                          <View style={{ backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, maxWidth: '46%' }}>
+                            <Text style={{ color: isDark ? '#FBBF24' : '#B45309', fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
+                              {shortReason}
+                            </Text>
+                          </View>
+                        );
+                      })()
                     )}
                   </TouchableOpacity>
                 );
@@ -707,11 +740,19 @@ export const CreateSectionModal = ({
             </TouchableOpacity>
           </View>
           <ScrollView style={{ maxHeight: 280 }}>
-            {TIME_SLOTS.map((slot) => (
+            {TIME_SLOTS.slice(0, -1).map((slot) => (
               <TouchableOpacity
                 key={slot}
                 onPress={() => {
                   setStartTime(slot);
+                  const startMins = parseTimeToMinutes(slot);
+                  const endMins = parseTimeToMinutes(endTime);
+                  if (startMins >= 0 && (endMins < 0 || endMins <= startMins)) {
+                    const nextSlot =
+                      TIME_SLOTS.find((s) => parseTimeToMinutes(s) >= startMins + 60) ||
+                      TIME_SLOTS.find((s) => parseTimeToMinutes(s) > startMins);
+                    if (nextSlot) setEndTime(nextSlot);
+                  }
                   setShowStartTimePicker(false);
                 }}
                 style={[
@@ -742,7 +783,10 @@ export const CreateSectionModal = ({
             </TouchableOpacity>
           </View>
           <ScrollView style={{ maxHeight: 280 }}>
-            {TIME_SLOTS.map((slot) => (
+            {TIME_SLOTS.filter((slot) => {
+              const startMins = parseTimeToMinutes(startTime);
+              return startMins < 0 || parseTimeToMinutes(slot) > startMins;
+            }).map((slot) => (
               <TouchableOpacity
                 key={slot}
                 onPress={() => {

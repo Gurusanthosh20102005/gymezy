@@ -1164,139 +1164,56 @@ export const MembersTab = ({ topInset, navigation, activeMode: controlledMode, o
           </TouchableOpacity>
         </View>
 
-        {/* 3. DYNAMIC STAT CARDS (Matches Web Owner Console Exactly) */}
-        {activeMode === 'MEMBERS' && (
-          <View style={styles.statCardsGrid}>
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="people" size={18} color="#2563EB" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Total Members</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{dynamicTotal}</Text>
-              <Text style={[styles.statCardSubtitle, { color: '#2563EB' }]}>Registered members</Text>
+        {/* 3. MINIMAL STAT STRIP */}
+        {(() => {
+          const stripItems =
+            activeMode === 'MEMBERS'
+              ? [
+                  { label: 'Total', value: dynamicTotal, icon: 'people', color: '#2563EB' },
+                  { label: 'Active', value: dynamicActive, icon: 'check-circle', color: '#16A34A' },
+                  { label: 'Expiring', value: dynamicExpiringSoon, icon: 'schedule', color: '#D97706' },
+                  { label: 'Expired', value: dynamicExpired, icon: 'cancel', color: '#EF4444' },
+                ]
+              : activeMode === 'SWITCHES'
+              ? [
+                  { label: 'Total', value: switchRequests.length, icon: 'sync', color: '#2563EB' },
+                  { label: 'Review', value: switchRequests.filter((r) => r.status === 'PENDING_GYM_APPROVAL').length, icon: 'pending', color: '#D97706' },
+                  { label: 'Admin', value: switchRequests.filter((r) => ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(r.status)).length, icon: 'admin-panel-settings', color: '#6366F1' },
+                  { label: 'Resolved', value: switchRequests.filter((r) => ['APPROVED', 'COMPLETED', 'APPROVED_AND_EXECUTED', 'REJECTED_BY_GYM', 'REJECTED_BY_SUPER_ADMIN'].includes(r.status)).length, icon: 'task-alt', color: '#16A34A' },
+                ]
+              : [
+                  { label: 'Total', value: cancellations.length, icon: 'cancel', color: '#EF4444' },
+                  { label: 'Pending', value: cancellations.filter((r) => r.status === 'Pending Gym Approval').length, icon: 'pending-actions', color: '#F59E0B' },
+                  { label: 'Quoted', value: cancellations.filter((r) => r.status === 'Quoted Refund' || r.status === 'Pending Gym Approval').length, icon: 'sync', color: '#3B82F6' },
+                  { label: 'Settled', value: cancellations.filter((r) => r.status === 'Approved' || r.status === 'Approved by Admin' || r.status === 'COMPLETED').length, icon: 'task-alt', color: '#10B981' },
+                ];
+          return (
+            <View style={styles.statCardsGrid}>
+              {stripItems.map((m) => (
+                <View
+                  key={m.label}
+                  style={[
+                    styles.statCard,
+                    {
+                      backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                      borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <MaterialIcons name={m.icon} size={14} color={m.color} />
+                    <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                      {m.value}
+                    </Text>
+                  </View>
+                  <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]} numberOfLines={1}>
+                    {m.label}
+                  </Text>
+                </View>
+              ))}
             </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="check-circle" size={18} color="#16A34A" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Active Members</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{dynamicActive}</Text>
-              <Text style={[styles.statCardSubtitle, { color: '#16A34A' }]}>Current active plans</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="schedule" size={18} color="#D97706" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Expiring Soon</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{dynamicExpiringSoon}</Text>
-              <Text style={[styles.statCardSubtitle, { color: '#D97706' }]}>Requires renewal</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="cancel" size={18} color="#EF4444" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Expired</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{dynamicExpired}</Text>
-              <Text style={[styles.statCardSubtitle, { color: '#EF4444' }]}>Membership lapsed</Text>
-            </View>
-          </View>
-        )}
-
-        {activeMode === 'SWITCHES' && (
-          <View style={styles.statCardsGrid}>
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="sync" size={18} color="#2563EB" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Total Switches</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{switchRequests.length}</Text>
-              <Text style={[styles.statCardSubtitle, { color: '#2563EB' }]}>Member initiated</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="pending" size={18} color="#D97706" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Pending Review</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: '#D97706' }]}>
-                {switchRequests.filter((r) => r.status === 'PENDING_GYM_APPROVAL').length}
-              </Text>
-              <Text style={[styles.statCardSubtitle, { color: '#D97706' }]}>Action required</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="admin-panel-settings" size={18} color="#6366F1" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Pending Admin</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                {switchRequests.filter((r) => ['PENDING_GYM_ADMIN_APPROVAL', 'PENDING_SUPER_ADMIN_APPROVAL', 'FORWARDED_TO_ADMIN', 'IN_REVIEW_SUPER_ADMIN'].includes(r.status)).length}
-              </Text>
-              <Text style={[styles.statCardSubtitle, { color: '#6366F1' }]}>Awaiting Gym Admin</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="task-alt" size={18} color="#16A34A" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Resolved</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                {switchRequests.filter((r) => ['APPROVED', 'COMPLETED', 'APPROVED_AND_EXECUTED', 'REJECTED_BY_GYM', 'REJECTED_BY_SUPER_ADMIN'].includes(r.status)).length}
-              </Text>
-              <Text style={[styles.statCardSubtitle, { color: '#16A34A' }]}>Finalized transfers</Text>
-            </View>
-          </View>
-        )}
-
-        {/* 3C. CANCELLATION STAT CARDS (Exact Web Owner Console 4 Cards) */}
-        {activeMode === 'CANCELLATIONS' && (
-          <View style={styles.statCardsGrid}>
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="cancel" size={18} color="#EF4444" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Total Requests</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{cancellations.length}</Text>
-              <Text style={[styles.statCardSubtitle, { color: isDark ? '#888888' : '#64748B' }]}>Across all plans</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="pending-actions" size={18} color="#F59E0B" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Pending Approval</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: '#F59E0B' }]}>
-                {cancellations.filter((r) => r.status === 'Pending Gym Approval').length}
-              </Text>
-              <Text style={[styles.statCardSubtitle, { color: '#F59E0B' }]}>Action required</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="sync" size={18} color="#3B82F6" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Refund Quoted</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: '#3B82F6' }]}>
-                {cancellations.filter((r) => r.status === 'Quoted Refund' || r.status === 'Pending Gym Approval').length}
-              </Text>
-              <Text style={[styles.statCardSubtitle, { color: '#3B82F6' }]}>In refund review</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-              <View style={styles.statCardHeader}>
-                <MaterialIcons name="task-alt" size={18} color="#10B981" />
-                <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Settled</Text>
-              </View>
-              <Text style={[styles.statCardValue, { color: '#10B981' }]}>
-                {cancellations.filter((r) => r.status === 'Approved' || r.status === 'Approved by Admin' || r.status === 'COMPLETED').length}
-              </Text>
-              <Text style={[styles.statCardSubtitle, { color: '#10B981' }]}>Refund completed</Text>
-            </View>
-          </View>
-        )}
+          );
+        })()}
 
         {/* 4. SEARCH & FILTER ROW */}
         <View style={styles.searchFilterRow}>
@@ -5202,39 +5119,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // Dynamic Stat Cards Grid (Matching Web App)
+  // Minimal Stat Strip
   statCardsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   statCard: {
-    width: '48.5%',
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     borderRadius: 12,
     borderWidth: 1,
-    padding: 12,
-  },
-  statCardHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
   },
   statCardTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
-  statCardValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  statCardSubtitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
+    textAlign: 'center',
+  },
+  statCardValue: {
+    fontSize: 15,
+    fontWeight: '800',
   },
 
   // Plan Switch Requests Card Styles

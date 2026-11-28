@@ -259,43 +259,35 @@ export const BookingsTab = ({ topInset, navigation }) => {
           cmd walk-in button */}
         </View>
 
-        {/* 2. Key Metrics Stat Cards (Matches Web Dashboard) */}
+        {/* 2. Minimal Key Metrics Strip */}
         <View style={styles.statCardsGrid}>
-          <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-            <View style={styles.statCardHeader}>
-              <MaterialIcons name="confirmation-number" size={18} color="#10B981" />
-              <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Total Passes</Text>
+          {[
+            { label: 'Total', value: totalBookingsCount, icon: 'confirmation-number', color: '#10B981' },
+            { label: 'Walk-in', value: walkInCount, icon: 'person-add', color: '#7C3AED' },
+            { label: 'App', value: appBookingsCount, icon: 'smartphone', color: '#2563EB' },
+            { label: 'Checked-in', value: checkedInCount, icon: 'how-to-reg', color: '#059669' },
+          ].map((m) => (
+            <View
+              key={m.label}
+              style={[
+                styles.statCard,
+                {
+                  backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                  borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                },
+              ]}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <MaterialIcons name={m.icon} size={14} color={m.color} />
+                <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                  {m.value}
+                </Text>
+              </View>
+              <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]} numberOfLines={1}>
+                {m.label}
+              </Text>
             </View>
-            <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{totalBookingsCount}</Text>
-            <Text style={[styles.statCardSubtitle, { color: '#10B981' }]}>Passes & sessions</Text>
-          </View>
-
-          <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-            <View style={styles.statCardHeader}>
-              <MaterialIcons name="person-add" size={18} color="#7C3AED" />
-              <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Walk-in Passes</Text>
-            </View>
-            <Text style={[styles.statCardValue, { color: '#7C3AED' }]}>{walkInCount}</Text>
-            <Text style={[styles.statCardSubtitle, { color: '#7C3AED' }]}>Desk registrations</Text>
-          </View>
-
-          <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-            <View style={styles.statCardHeader}>
-              <MaterialIcons name="smartphone" size={18} color="#2563EB" />
-              <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>App Bookings</Text>
-            </View>
-            <Text style={[styles.statCardValue, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>{appBookingsCount}</Text>
-            <Text style={[styles.statCardSubtitle, { color: '#2563EB' }]}>Booked via app</Text>
-          </View>
-
-          <View style={[styles.statCard, { backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF', borderColor: isDark ? AppColors.darkBorder : '#E2E8F0' }]}>
-            <View style={styles.statCardHeader}>
-              <MaterialIcons name="how-to-reg" size={18} color="#059669" />
-              <Text style={[styles.statCardTitle, { color: isDark ? '#94A3B8' : '#64748B' }]}>Checked-in</Text>
-            </View>
-            <Text style={[styles.statCardValue, { color: '#059669' }]}>{checkedInCount}</Text>
-            <Text style={[styles.statCardSubtitle, { color: '#059669' }]}>Active in gym</Text>
-          </View>
+          ))}
         </View>
 
         {/* 3. Search Bar */}
@@ -790,34 +782,26 @@ const styles = StyleSheet.create({
   },
   statCardsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   statCard: {
-    width: '48.5%',
-    padding: 12,
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     borderRadius: 12,
     borderWidth: 1,
-  },
-  statCardHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
   },
   statCardTitle: {
-    fontSize: 11.5,
+    fontSize: 10,
     fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
   },
   statCardValue: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
-    marginBottom: 2,
-  },
-  statCardSubtitle: {
-    fontSize: 10.5,
-    fontWeight: '600',
   },
   searchRow: {
     marginBottom: 12,

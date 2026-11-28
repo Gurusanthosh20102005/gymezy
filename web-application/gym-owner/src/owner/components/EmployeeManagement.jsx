@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import {
+  validateName,
+  validateMobile,
+  validateEmail,
+  checkPassword,
+  validatePositiveNumber,
+} from '../../utils/formValidation';
+import {
   Card,
   Table,
   Tag,
@@ -65,6 +72,7 @@ import {
   PaperClipOutlined,
   LockOutlined,
   DownloadOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import confetti from 'canvas-confetti';
 import { useTheme } from '../../theme/ThemeContext';
@@ -233,6 +241,7 @@ export const EmployeeManagement = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalServerEmployees, setTotalServerEmployees] = useState(0);
+  const [employeeSummary, setEmployeeSummary] = useState(null);
 
   const [namePhoneSearch, setNamePhoneSearch] = useState('');
   const debouncedNamePhoneSearch = useDebounce(namePhoneSearch, 350);
@@ -274,6 +283,9 @@ export const EmployeeManagement = ({
 
       const totalCount = rawData?.total !== undefined ? rawData.total : (rawData?.count || serverEmployees.length);
       setTotalServerEmployees(totalCount);
+      if (rawData?.summary) {
+        setEmployeeSummary(rawData.summary);
+      }
 
       const normalized = serverEmployees.map((emp, index) => ({
         ...emp,
@@ -914,6 +926,10 @@ export const EmployeeManagement = ({
     if (tempEmploymentType === 'Temporary') {
       if (!values.startDate || !values.endDate) {
         message.warning('Please select start date and end date for temporary staff.');
+        return;
+      }
+      if (values.endDate.isBefore(values.startDate, 'day')) {
+        message.warning('End date cannot be earlier than start date.');
         return;
       }
     } else if (tempEmploymentType === 'Part-Time') {
@@ -1620,179 +1636,90 @@ export const EmployeeManagement = ({
         </div>
       </div>
 
-      {/* 4 SUMMARY STAT CARDS */}
+      {/* 4 SUMMARY STAT CARDS (Matches Mobile: Total Staff, Trainers, Managers, Pending) */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {/* Card 1: Total Employees */}
-        <Col xs={24} sm={12} lg={6}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  backgroundColor: isDarkMode ? 'rgba(114, 46, 209, 0.2)' : '#f3effe',
-                  color: isDarkMode ? '#b37feb' : '#722ed1',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 20,
-                  flexShrink: 0,
-                }}
-              >
-                <TeamOutlined />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 500 }}>
-                  Total Employees
+        {[
+          {
+            title: 'Total Staff',
+            value: employeeSummary?.totalEmployees ?? totalServerEmployees ?? employeesList.length,
+            sub: 'All team members',
+            icon: <TeamOutlined />,
+            color: '#003882',
+            bg: isDarkMode ? 'rgba(0, 56, 130, 0.2)' : '#edf4fe',
+          },
+          {
+            title: 'Trainers',
+            value:
+              employeeSummary?.trainersCount ??
+              employeesList.filter((e) => /trainer|coach/i.test(e.role || '')).length,
+            sub: 'Coaches & instructors',
+            icon: <UserOutlined />,
+            color: '#00bf62',
+            bg: isDarkMode ? 'rgba(0, 191, 98, 0.2)' : '#eaf8ef',
+          },
+          {
+            title: 'Managers',
+            value:
+              employeeSummary?.managersCount ??
+              employeesList.filter((e) => /manager/i.test(e.role || '')).length,
+            sub: 'Portal managers',
+            icon: <SafetyCertificateOutlined />,
+            color: '#722ed1',
+            bg: isDarkMode ? 'rgba(114, 46, 209, 0.2)' : '#f3effe',
+          },
+          {
+            title: 'Pending',
+            value:
+              employeeSummary?.pendingCount ??
+              employeesList.filter((e) => e.approvalStatus === 'Pending Approval').length,
+            sub: 'Awaiting approval',
+            icon: <ClockCircleOutlined />,
+            color: '#fa8c16',
+            bg: isDarkMode ? 'rgba(250, 140, 22, 0.2)' : '#fef4e8',
+          },
+        ].map((card) => (
+          <Col xs={24} sm={12} lg={6} key={card.title}>
+            <Card
+              style={{
+                backgroundColor: 'var(--bg-surface-elevated)',
+                borderColor: 'var(--border-color)',
+                borderRadius: 'var(--radius-base)',
+                boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
+              }}
+              styles={{ body: { padding: '20px' } }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    backgroundColor: card.bg,
+                    color: card.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 20,
+                    flexShrink: 0,
+                  }}
+                >
+                  {card.icon}
                 </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, marginTop: 2 }}>
-                  {totalEmployeesCount}
-                </div>
-                <div style={{ fontSize: 12, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                  <TeamOutlined /> All Staff
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
-
-        {/* Card 2: Active Employees */}
-        <Col xs={24} sm={12} lg={6}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  backgroundColor: isDarkMode ? 'rgba(0, 191, 98, 0.2)' : '#eaf8ef',
-                  color: '#00bf62',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 20,
-                  flexShrink: 0,
-                }}
-              >
-                <UserOutlined />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 500 }}>
-                  Active Employees
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, marginTop: 2 }}>
-                  {activeEmployeesCount}
-                </div>
-                <div style={{ fontSize: 12, color: '#00bf62', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                  <span style={{ fontSize: 8 }}>●</span> Currently Working
+                <div>
+                  <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 500 }}>
+                    {card.title}
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, marginTop: 2 }}>
+                    {card.value}
+                  </div>
+                  <div style={{ fontSize: 12, color: card.color, fontWeight: 600, marginTop: 4 }}>
+                    {card.sub}
+                  </div>
                 </div>
               </div>
-            </div>
-          </Card>
-        </Col>
-
-        {/* Card 3: On Leave Today */}
-        <Col xs={24} sm={12} lg={6}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  backgroundColor: isDarkMode ? 'rgba(250, 140, 22, 0.2)' : '#fef4e8',
-                  color: '#fa8c16',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 20,
-                  flexShrink: 0,
-                }}
-              >
-                <CalendarOutlined />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 500 }}>
-                  On Leave Today
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, marginTop: 2 }}>
-                  {onLeaveEmployeesCount}
-                </div>
-                <div style={{ fontSize: 12, color: '#fa8c16', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                  <CalendarOutlined /> On Leave
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
-
-        {/* Card 4: New This Month */}
-        <Col xs={24} sm={12} lg={6}>
-          <Card
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: 'var(--border-color)',
-              borderRadius: 'var(--radius-base)',
-              boxShadow: isDarkMode ? 'none' : '0 1px 3px rgba(0,0,0,0.03)',
-            }}
-            styles={{ body: { padding: '20px' } }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: '50%',
-                  backgroundColor: isDarkMode ? 'rgba(22, 119, 255, 0.2)' : '#edf4fe',
-                  color: '#1677ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 20,
-                  flexShrink: 0,
-                }}
-              >
-                <UserAddOutlined />
-              </div>
-              <div>
-                <div style={{ fontSize: 13, color: isDarkMode ? '#888888' : '#64748b', fontWeight: 500 }}>
-                  New This Month
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: isDarkMode ? '#ffffff' : '#0f172a', lineHeight: 1.2, marginTop: 2 }}>
-                  {newThisMonthCount}
-                </div>
-                <div style={{ fontSize: 12, color: '#1677ff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                  Joined in {currentMonthName}
-                </div>
-              </div>
-            </div>
-          </Card>
-        </Col>
+            </Card>
+          </Col>
+        ))}
       </Row>
 
       {/* FILTER & SEARCH CARD */}
@@ -1835,11 +1762,6 @@ export const EmployeeManagement = ({
               <Option value="ALL">All Roles</Option>
               <Option value="Manager">Manager</Option>
               <Option value="Trainer">Trainer</Option>
-              <Option value="Customer Support">Customer Support</Option>
-              <Option value="Housekeeping">Housekeeping</Option>
-              <Option value="Maintenance">Maintenance</Option>
-              <Option value="Nutritionist">Nutritionist</Option>
-              <Option value="Security">Security</Option>
             </Select>
           </Col>
 
@@ -2091,8 +2013,8 @@ export const EmployeeManagement = ({
                     input.onchange = (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 1024 * 1024) {
-                        message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
+                      if (file.size > 2 * 1024 * 1024) {
+                        message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -2316,13 +2238,6 @@ export const EmployeeManagement = ({
                             >
                               <Option value="Manager">Manager</Option>
                               <Option value="Trainer">Trainer</Option>
-                              <Option value="Head Trainer">Head Trainer</Option>
-                              <Option value="Customer Support">Customer Support</Option>
-                              <Option value="Housekeeping">Housekeeping</Option>
-                              <Option value="Nutritionist">Nutritionist</Option>
-                              <Option value="Physiotherapist">Physiotherapist</Option>
-                              <Option value="Maintenance">Maintenance</Option>
-                              <Option value="Security">Security</Option>
                             </Select>
                           </Form.Item>
                         </Col>
@@ -2638,20 +2553,17 @@ export const EmployeeManagement = ({
                                 <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4, color: isDarkMode ? '#e2e8f0' : '#334155' }}>
                                   Years of Experience
                                 </div>
-                                <Select
-                                  placeholder="Select experience"
-                                  value={emp.experience || '1-2 Years'}
-                                  onChange={(val) => {
+                                <Input
+                                  placeholder="e.g. 2 Years, 6 Months"
+                                  value={emp.experience ?? ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
                                     setEditPrevEmployments((prev) =>
                                       prev.map((item) => (item.id === emp.id ? { ...item, experience: val } : item))
                                     );
                                   }}
-                                  style={{ width: '100%', height: 38 }}
-                                >
-                                  <Option value="1-2 Years">1-2 Years</Option>
-                                  <Option value="3-5 Years">3-5 Years</Option>
-                                  <Option value="5+ Years">5+ Years</Option>
-                                </Select>
+                                  style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }}
+                                />
                               </div>
                             </Col>
                           </Row>
@@ -3204,8 +3116,8 @@ export const EmployeeManagement = ({
                     input.onchange = (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      if (file.size > 1024 * 1024) {
-                        message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
+                      if (file.size > 2 * 1024 * 1024) {
+                        message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -3224,8 +3136,8 @@ export const EmployeeManagement = ({
                       message.error('Please drop an image file (JPG, PNG).');
                       return;
                     }
-                    if (file.size > 1024 * 1024) {
-                      message.error('File size exceeds 1MB limit. Please upload an image under 1MB.');
+                    if (file.size > 2 * 1024 * 1024) {
+                        message.error('File size exceeds 2MB limit. Please upload an image under 2MB.');
                       return;
                     }
                     const reader = new FileReader();
@@ -3253,7 +3165,7 @@ export const EmployeeManagement = ({
                     <>
                       <CameraOutlined style={{ fontSize: 28, color: '#722ed1', marginBottom: 6 }} />
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: '#722ed1' }}>Upload Photo</div>
-                      <div style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2 }}>JPG, PNG (Max 1MB)</div>
+                      <div style={{ fontSize: 10, color: isDarkMode ? '#888888' : '#64748b', marginTop: 2 }}>JPG, PNG (Max 2MB)</div>
                     </>
                   )}
                 </div>
@@ -3263,7 +3175,14 @@ export const EmployeeManagement = ({
                 <Form.Item
                   label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Employee Name</span>}
                   name="name"
-                  rules={[{ required: true, message: 'Please enter employee name' }]}
+                  rules={[
+                    {
+                      validator: (_, value) => {
+                        const res = validateName(value, { label: 'employee name' });
+                        return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                      },
+                    },
+                  ]}
                   style={{ marginBottom: 12 }}
                 >
                   <Input placeholder="Enter employee name" style={{ height: 40, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }} />
@@ -3281,7 +3200,19 @@ export const EmployeeManagement = ({
                             <Option value="+971">+971</Option>
                           </Select>
                         </Form.Item>
-                        <Form.Item name="phone" noStyle rules={[{ required: true, message: 'Enter phone' }]}>
+                        <Form.Item
+                          name="phone"
+                          noStyle
+                          rules={[
+                            {
+                              validator: (_, value) => {
+                                const code = addEmployeeForm.getFieldValue('countryCode') || '+91';
+                                const res = validateMobile(value, code);
+                                return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                              },
+                            },
+                          ]}
+                        >
                           <Input placeholder="9876543210" style={{ width: '62%', height: 40, borderRadius: '0 8px 8px 0', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }} />
                         </Form.Item>
                       </Input.Group>
@@ -3291,7 +3222,14 @@ export const EmployeeManagement = ({
                     <Form.Item
                       label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Email ID</span>}
                       name="email"
-                      rules={[{ required: true, type: 'email', message: 'Enter valid email' }]}
+                      rules={[
+                        {
+                          validator: (_, value) => {
+                            const res = validateEmail(value, { required: true });
+                            return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                          },
+                        },
+                      ]}
                       style={{ marginBottom: 12 }}
                     >
                       <Input placeholder="staff@gymezy.com" style={{ height: 40, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }} />
@@ -3307,11 +3245,6 @@ export const EmployeeManagement = ({
                   <Select style={{ height: 40 }}>
                     {!isManager && <Option value="Manager">Manager (Operational Admin)</Option>}
                     <Option value="Trainer">Trainer</Option>
-                    <Option value="Customer Support">Customer Support</Option>
-                    <Option value="Housekeeping">Housekeeping</Option>
-                    <Option value="Nutritionist">Nutritionist</Option>
-                    <Option value="Maintenance">Maintenance</Option>
-                    <Option value="Security">Security</Option>
                   </Select>
                 </Form.Item>
               </Col>
@@ -3378,13 +3311,22 @@ export const EmployeeManagement = ({
                   label={<span style={{ fontWeight: 600, fontSize: 12.5 }}>Portal Login Password</span>}
                   name="password"
                   rules={[
-                    { required: addRoleWatch === 'Manager', message: 'Please set a portal login password for the manager' },
-                    { min: 6, message: 'Password must be at least 6 characters long' },
+                    {
+                      validator: (_, value) => {
+                        if (addRoleWatch !== 'Manager') return Promise.resolve();
+                        const res = checkPassword(value, {
+                          name: addEmployeeForm.getFieldValue('name'),
+                          email: addEmployeeForm.getFieldValue('email'),
+                          mobile: addEmployeeForm.getFieldValue('phone'),
+                        });
+                        return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                      },
+                    },
                   ]}
                   style={{ marginBottom: 4 }}
                 >
                   <Input.Password
-                    placeholder="Enter password (min 6 characters)"
+                    placeholder="8-16 chars, upper, lower, number & symbol"
                     style={{ height: 40, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }}
                   />
                 </Form.Item>
@@ -3591,20 +3533,17 @@ export const EmployeeManagement = ({
                         <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4, color: isDarkMode ? '#e2e8f0' : '#334155' }}>
                           Years of Experience
                         </div>
-                        <Select
-                          placeholder="Select experience"
-                          value={emp.experience || '1-2 Years'}
-                          onChange={(val) => {
+                        <Input
+                          placeholder="e.g. 2 Years, 6 Months"
+                          value={emp.experience ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
                             setAddPrevEmployments((prev) =>
                               prev.map((item) => (item.id === emp.id ? { ...item, experience: val } : item))
                             );
                           }}
-                          style={{ width: '100%', height: 38 }}
-                        >
-                          <Option value="1-2 Years">1-2 Years</Option>
-                          <Option value="3-5 Years">3-5 Years</Option>
-                          <Option value="5+ Years">5+ Years</Option>
-                        </Select>
+                          style={{ width: '100%', height: 38, borderRadius: 'var(--radius-base)' }}
+                        />
                       </div>
                     </Col>
                   </Row>
@@ -3716,7 +3655,19 @@ export const EmployeeManagement = ({
 
               <Row gutter={12}>
                 <Col xs={24} sm={8}>
-                  <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12 }}>Emergency Contact Name</span>} name="emergencyName" rules={[{ required: true, message: 'Enter emergency contact' }]} style={{ marginBottom: 12 }}>
+                  <Form.Item
+                    label={<span style={{ fontWeight: 600, fontSize: 12 }}>Emergency Contact Name</span>}
+                    name="emergencyName"
+                    rules={[
+                      {
+                        validator: (_, value) => {
+                          const res = validateName(value, { label: 'emergency contact name' });
+                          return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                        },
+                      },
+                    ]}
+                    style={{ marginBottom: 12 }}
+                  >
                     <Input placeholder="Contact full name" style={{ height: 38, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }} />
                   </Form.Item>
                 </Col>
@@ -3726,7 +3677,19 @@ export const EmployeeManagement = ({
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={8}>
-                  <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12 }}>Phone Number</span>} name="emergencyPhone" rules={[{ required: true, message: 'Enter emergency phone' }]} style={{ marginBottom: 12 }}>
+                  <Form.Item
+                    label={<span style={{ fontWeight: 600, fontSize: 12 }}>Phone Number</span>}
+                    name="emergencyPhone"
+                    rules={[
+                      {
+                        validator: (_, value) => {
+                          const res = validateMobile(value, '+91');
+                          return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                        },
+                      },
+                    ]}
+                    style={{ marginBottom: 12 }}
+                  >
                     <Input placeholder="+91 98765 43210" style={{ height: 38, borderRadius: 'var(--radius-base)', backgroundColor: isDarkMode ? '#1e1e1e' : '#ffffff' }} />
                   </Form.Item>
                 </Col>
@@ -4045,9 +4008,9 @@ export const EmployeeManagement = ({
                 input.onchange = (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  if (file.size > 1024 * 1024) {
-                    setDocFileError('File size exceeds 1MB limit. Please select a smaller document.');
-                    message.error('Document file size exceeds 1MB limit.');
+                  if (file.size > 2 * 1024 * 1024) {
+                    setDocFileError('File size exceeds 2MB limit. Please select a smaller document.');
+                    message.error('Document file size exceeds 2MB limit.');
                     return;
                   }
                   setDocFile(file);
@@ -4061,9 +4024,9 @@ export const EmployeeManagement = ({
                 e.preventDefault();
                 const file = e.dataTransfer.files?.[0];
                 if (!file) return;
-                if (file.size > 1024 * 1024) {
-                  setDocFileError('File size exceeds 1MB limit. Please select a smaller document.');
-                  message.error('Document file size exceeds 1MB limit.');
+                if (file.size > 2 * 1024 * 1024) {
+                  setDocFileError('File size exceeds 2MB limit. Please select a smaller document.');
+                  message.error('Document file size exceeds 2MB limit.');
                   return;
                 }
                 setDocFile(file);
@@ -4099,7 +4062,7 @@ export const EmployeeManagement = ({
                     Click to browse or drop file here
                   </div>
                   <div style={{ fontSize: 11, color: isDarkMode ? '#888888' : '#64748b', marginTop: 4 }}>
-                    Supports PDF, PNG, JPG, DOCX (Max 1MB)
+                    Supports PDF, PNG, JPG, DOCX (Max 2MB)
                   </div>
                 </>
               )}
@@ -4249,8 +4212,8 @@ export const EmployeeManagement = ({
                       input.onchange = (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        if (file.size > 1024 * 1024) {
-                          message.error('Staff photo exceeds 1MB limit. Please select an image under 1MB.');
+                        if (file.size > 2 * 1024 * 1024) {
+                          message.error('Staff photo exceeds 2MB limit. Please select an image under 2MB.');
                           return;
                         }
                         const reader = new FileReader();
@@ -4269,8 +4232,8 @@ export const EmployeeManagement = ({
                         message.error('Please drop an image file (JPG, PNG).');
                         return;
                       }
-                      if (file.size > 1024 * 1024) {
-                        message.error('Staff photo exceeds 1MB limit. Please select an image under 1MB.');
+                      if (file.size > 2 * 1024 * 1024) {
+                        message.error('Staff photo exceeds 2MB limit. Please select an image under 2MB.');
                         return;
                       }
                       const reader = new FileReader();
@@ -4298,14 +4261,26 @@ export const EmployeeManagement = ({
                       <>
                         <CameraOutlined style={{ fontSize: 24, color: '#722ed1', marginBottom: 4 }} />
                         <div style={{ fontSize: 11.5, fontWeight: 700, color: '#722ed1' }}>Upload Photo</div>
-                        <div style={{ fontSize: 9.5, color: isDarkMode ? '#888888' : '#64748b' }}>JPG, PNG (Max 1MB)</div>
+                        <div style={{ fontSize: 9.5, color: isDarkMode ? '#888888' : '#64748b' }}>JPG, PNG (Max 2MB)</div>
                       </>
                     )}
                   </div>
                 </Col>
 
                 <Col span={15}>
-                  <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12 }}>Full Name</span>} name="name" rules={[{ required: true, message: 'Required' }]} style={{ marginBottom: 10 }}>
+                  <Form.Item
+                    label={<span style={{ fontWeight: 600, fontSize: 12 }}>Full Name</span>}
+                    name="name"
+                    rules={[
+                      {
+                        validator: (_, value) => {
+                          const res = validateName(value, { label: 'full name' });
+                          return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                        },
+                      },
+                    ]}
+                    style={{ marginBottom: 10 }}
+                  >
                     <Input placeholder="Enter full name" style={{ height: 38, borderRadius: 'var(--radius-base)' }} />
                   </Form.Item>
 
@@ -4317,7 +4292,19 @@ export const EmployeeManagement = ({
                           <Option value="+1">+1</Option>
                         </Select>
                       </Form.Item>
-                      <Form.Item name="phone" noStyle rules={[{ required: true, message: 'Required' }]}>
+                      <Form.Item
+                        name="phone"
+                        noStyle
+                        rules={[
+                          {
+                            validator: (_, value) => {
+                              const code = tempStaffForm.getFieldValue('countryCode') || '+91';
+                              const res = validateMobile(value, code);
+                              return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                            },
+                          },
+                        ]}
+                      >
                         <Input placeholder="Enter phone" style={{ width: '62%', height: 38, borderRadius: '0 8px 8px 0' }} />
                       </Form.Item>
                     </Input.Group>
@@ -4325,7 +4312,19 @@ export const EmployeeManagement = ({
                 </Col>
               </Row>
 
-              <Form.Item label={<span style={{ fontWeight: 600, fontSize: 12 }}>Email ID</span>} name="email" style={{ marginBottom: 12 }}>
+              <Form.Item
+                label={<span style={{ fontWeight: 600, fontSize: 12 }}>Email ID</span>}
+                name="email"
+                rules={[
+                  {
+                    validator: (_, value) => {
+                      const res = validateEmail(value, { required: false });
+                      return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                    },
+                  },
+                ]}
+                style={{ marginBottom: 12 }}
+              >
                 <Input placeholder="Enter email address" style={{ height: 38, borderRadius: 'var(--radius-base)' }} />
               </Form.Item>
 
@@ -4546,7 +4545,20 @@ export const EmployeeManagement = ({
                     </Form.Item>
                   </Col>
                   <Col span={12}>
-                    <Form.Item label={<span style={{ fontSize: 11 }}>Amount</span>} name="payAmount" initialValue="500" rules={[{ required: true }]} style={{ marginBottom: 8 }}>
+                    <Form.Item
+                      label={<span style={{ fontSize: 11 }}>Amount</span>}
+                      name="payAmount"
+                      initialValue="500"
+                      rules={[
+                        {
+                          validator: (_, value) => {
+                            const res = validatePositiveNumber(value, { label: 'pay amount', min: 1 });
+                            return res.valid ? Promise.resolve() : Promise.reject(new Error(res.message));
+                          },
+                        },
+                      ]}
+                      style={{ marginBottom: 8 }}
+                    >
                       <Input prefix="₹" style={{ height: 38, borderRadius: 'var(--radius-base)' }} />
                     </Form.Item>
                   </Col>

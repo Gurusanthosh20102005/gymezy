@@ -136,12 +136,9 @@ export const EmployeesTab = ({ topInset, navigation }) => {
     }).length;
   }, [metrics, employees]);
 
-  const staffCount = useMemo(() => {
-    if (metrics?.staffCount !== undefined) return metrics.staffCount;
-    return employees.filter((e) => {
-      const roleStr = (e.role || '').toLowerCase();
-      return !roleStr.includes('trainer') && !roleStr.includes('coach');
-    }).length;
+  const managersCount = useMemo(() => {
+    if (metrics?.managersCount !== undefined) return metrics.managersCount;
+    return employees.filter((e) => (e.role || '').toLowerCase().includes('manager')).length;
   }, [metrics, employees]);
 
   const pendingCount = useMemo(() => {
@@ -290,87 +287,38 @@ export const EmployeesTab = ({ topInset, navigation }) => {
           />
         }
       >
-        {/* 2. Key Metrics Row */}
+        {/* 2. Minimal Key Metrics Strip */}
         <View style={styles.metricsRow}>
-          <View
-            style={[
-              styles.metricCard,
-              {
-                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-              },
-            ]}
-          >
-            <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(0, 102, 204, 0.12)' }]}>
-              <MaterialIcons name="badge" size={18} color={AppColors.primaryColor} />
+          {[
+            { label: 'Total Staff', value: metrics?.totalEmployees ?? totalCount ?? employees.length, icon: 'badge', color: AppColors.primaryColor },
+            { label: 'Trainers', value: trainersCount, icon: 'fitness-center', color: AppColors.successGreen },
+            { label: 'Managers', value: managersCount, icon: 'manage-accounts', color: '#A855F7' },
+            { label: 'Pending', value: pendingCount, icon: 'hourglass-empty', color: AppColors.warningAmber },
+          ].map((m) => (
+            <View
+              key={m.label}
+              style={[
+                styles.metricCard,
+                {
+                  backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
+                  borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
+                },
+              ]}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <MaterialIcons name={m.icon} size={14} color={m.color} />
+                <Text style={[styles.metricNumber, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                  {m.value}
+                </Text>
+              </View>
+              <Text
+                style={[styles.metricLabel, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}
+                numberOfLines={1}
+              >
+                {m.label}
+              </Text>
             </View>
-            <Text style={[styles.metricNumber, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-              {employees.length}
-            </Text>
-            <Text style={[styles.metricLabel, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
-              Total Staff
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.metricCard,
-              {
-                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-              },
-            ]}
-          >
-            <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
-              <MaterialIcons name="fitness-center" size={18} color={AppColors.successGreen} />
-            </View>
-            <Text style={[styles.metricNumber, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-              {trainersCount}
-            </Text>
-            <Text style={[styles.metricLabel, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
-              Trainers
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.metricCard,
-              {
-                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-              },
-            ]}
-          >
-            <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(168, 85, 247, 0.12)' }]}>
-              <MaterialIcons name="support-agent" size={18} color="#A855F7" />
-            </View>
-            <Text style={[styles.metricNumber, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-              {staffCount}
-            </Text>
-            <Text style={[styles.metricLabel, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
-              Floor Staff
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.metricCard,
-              {
-                backgroundColor: isDark ? AppColors.darkCard : '#FFFFFF',
-                borderColor: isDark ? AppColors.darkBorder : '#E2E8F0',
-              },
-            ]}
-          >
-            <View style={[styles.metricIconWrap, { backgroundColor: 'rgba(245, 158, 11, 0.12)' }]}>
-              <MaterialIcons name="hourglass-empty" size={18} color={AppColors.warningAmber} />
-            </View>
-            <Text style={[styles.metricNumber, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-              {pendingCount}
-            </Text>
-            <Text style={[styles.metricLabel, { color: isDark ? 'rgba(255,255,255,0.5)' : '#64748B' }]}>
-              Pending
-            </Text>
-          </View>
+          ))}
         </View>
 
         {/* 4. Search Bar */}
@@ -1389,31 +1337,25 @@ const styles = StyleSheet.create({
   metricsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   metricCard: {
     flex: 1,
-    padding: 10,
-    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
   },
-  metricIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
   metricNumber: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   metricLabel: {
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
+    textAlign: 'center',
   },
   searchContainer: {
     flexDirection: 'row',
